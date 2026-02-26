@@ -1,0 +1,149 @@
+Folder PATH listing
+Volume serial number is B43E-3812
+C:.
+|   .env.example
+|   app.json
+|   babel.config.js
+|   global.css
+|   package.json
+|   project-tree.txt
+|   README.md
+|   tailwind.config.js
+|   tsconfig.json
+|   
++---app
+|   |   index.tsx
+|   |   login.tsx
+|   |   redirect.tsx
+|   |   _layout.tsx
+|   |   
+|   +---(auth)
+|   |       forgot-password.tsx
+|   |       login.tsx
+|   |       reset-password.tsx
+|   |       signup.tsx
+|   |       _layout.tsx
+|   |       
+|   +---(landlord)
+|   |   |   subscription.tsx
+|   |   |   _layout.tsx
+|   |   |   
+|   |   +---(tabs)
+|   |   |       create.tsx
+|   |   |       dashboard.tsx
+|   |   |       enquiries.tsx
+|   |   |       listings.tsx
+|   |   |       profile.tsx
+|   |   |       _layout.tsx
+|   |   |       
+|   |   \---listing
+|   |           [id].tsx
+|   |           
+|   +---(student)
+|   |   |   _layout.tsx
+|   |   |   
+|   |   +---(tabs)
+|   |   |       messages.tsx
+|   |   |       profile.tsx
+|   |   |       rooms.tsx
+|   |   |       saved.tsx
+|   |   |       _layout.tsx
+|   |   |       
+|   |   +---chat
+|   |   |       [enquiryId].tsx
+|   |   |       
+|   |   \---room
+|   |           [id].tsx
+|   |           
+|   +---auth
+|   |       callback.tsx
+|   |       
+|   +---landlord
+|   |   |   dashboard.tsx
+|   |   |   
+|   |   \---enquiries
+|   |       |   enquiries-client.tsx
+|   |       |   index.tsx
+|   |       |   [id].tsx
+|   |       |   
+|   |       +---[id]
+|   |       |       chat-client.tsx
+|   |       |       index.tsx
+|   |       |       
+|   |       \---`[id`]
+|   +---onboarding
+|   |       index.tsx
+|   |       
+|   +---room
+|   |       index.tsx
+|   |       room-client.tsx
+|   |       [id].tsx
+|   |       
+|   +---rooms
+|   |       index.tsx
+|   |       
+|   +---student
+|   |   |   dashboard.tsx
+|   |   |   
+|   |   +---dashboard
+|   |   |       dashboard-client.tsx
+|   |   |       index.tsx
+|   |   |       
+|   |   +---enquiries
+|   |   |   |   enquiries-client.tsx
+|   |   |   |   index.tsx
+|   |   |   |   [id].tsx
+|   |   |   |   _layout.tsx
+|   |   |   |   
+|   |   |   +---[id]
+|   |   |   |       chat-client.tsx
+|   |   |   |       index.tsx
+|   |   |   |       
+|   |   |   \---`[id`]
+|   |   \---saved
+|   |           index.tsx
+|   |           savedRooms-client.tsx
+|   |           
+|   \---_components
+|           AuthProvider.tsx
+|           LandlordGuard.tsx
+|           StudentGuard.tsx
+|           TopNav.tsx
+|           
++---assets
+|       adaptive-icon.png
+|       icon.png
+|       splash.png
+|       
++---components
+|   |   amenities.ts
+|   |   AmenitiesSection.tsx
+|   |   AppHeader.tsx
+|   |   AuthProvider.tsx
+|   |   EnquiryTile.tsx
+|   |   LandlordGuard.tsx
+|   |   MapPicker.tsx
+|   |   ScreenShell.tsx
+|   |   Stars.tsx
+|   |   StudentGuard.tsx
+|   |   TopNav.tsx
+|   |   
+|   \---chat
+|           ChatInput.tsx
+|           MessageBubble.tsx
+|           
++---lib
+|       api.ts
+|       chatApi.ts
+|       env.ts
+|       supabase.ts
+|       supabaseServer.ts
+|       types.ts
+|       
++---providers
+|       AuthProvider.tsx
+|       
+\---ui
+        Button.tsx
+        Input.tsx
+        
