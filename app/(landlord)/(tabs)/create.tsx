@@ -23,7 +23,6 @@ type Billing = "inclusive" | "exclusive";
 type GenderPolicy = "boys" | "girls" | "both";
 type OccupancyMode = "single" | "shared";
 type ContactMethod = "whatsapp" | "call" | "both";
-type Tier = "basic" | "silver" | "gold" | "platinum";
 
 type AmenityKey =
   | "wifi"
@@ -64,12 +63,7 @@ type PhotoItem = {
   error?: string;
 };
 
-const TIER_RULES: Record<Tier, { maxListings: number; maxPhotosPerListing: number }> = {
-  basic: { maxListings: 1, maxPhotosPerListing: 1 },
-  silver: { maxListings: 5, maxPhotosPerListing: 3 },
-  gold: { maxListings: 10, maxPhotosPerListing: 6 },
-  platinum: { maxListings: 25, maxPhotosPerListing: 12 },
-};
+const FREE_MAX_PHOTOS = 50;
 
 const ROOM_TYPE_OPTIONS = ["Single room", "Double room", "Self-contained", "Shared room"] as const;
 const RULE_OPTIONS = ["No smoking", "No loud music", "No pets", "Visitors allowed", "Gate closes at night"] as const;
@@ -119,11 +113,6 @@ function splitCsv(text: string) {
   return text.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
-function subExpired(endDate?: string | null) {
-  if (!endDate) return false;
-  return new Date(`${endDate}T23:59:59`).getTime() < Date.now();
-}
-
 async function uploadListingImageExpo(localUri: string) {
   const cloudName = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const uploadPreset = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
@@ -170,73 +159,18 @@ export default function CreateListingScreen() {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locState, setLocState] = useState<"idle" | "getting" | "ok" | "denied" | "error">("idle");
   const [locError, setLocError] = useState<string | null>(null);
-  const [tier, setTier] = useState<Tier>("basic");
-  const [subTableMissing, setSubTableMissing] = useState(false);
-  const [activeListingsCount, setActiveListingsCount] = useState(0);
-  const [limitsLoading, setLimitsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
-  const tierRule = TIER_RULES[tier];
   const uploadedImageUrls = useMemo(
     () => photos.filter((p) => p.status === "done" && p.remoteUrl).map((p) => p.remoteUrl as string),
     [photos],
   );
   const uploadingCount = useMemo(() => photos.filter((p) => p.status === "uploading").length, [photos]);
-  const remainingPhotoSlots = Math.max(0, tierRule.maxPhotosPerListing - photos.length);
-  const listingLimitReached = activeListingsCount >= tierRule.maxListings;
-  const listingSlotsLeft = Math.max(0, tierRule.maxListings - activeListingsCount);
+  const remainingPhotoSlots = Math.max(0, FREE_MAX_PHOTOS - photos.length);
 
   const finalRoomTypes = useMemo(() => Array.from(new Set([...roomTypes, ...splitCsv(customRoomTypes)])), [roomTypes, customRoomTypes]);
   const finalRules = useMemo(() => Array.from(new Set([...rules, ...splitCsv(customRules)])), [rules, customRules]);
-
-  useEffect(() => {
-    const loadLimits = async () => {
-      if (!user?.id) {
-        setLimitsLoading(false);
-        return;
-      }
-      setLimitsLoading(true);
-      setErrorMsg(null);
-      setInfoMsg(null);
-
-      const { data: sub, error: subErr } = await supabase
-        .from("subscriptions")
-        .select("tier,end_date,is_active,created_at")
-        .eq("landlord_id", user.id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (subErr) {
-        const msg = subErr.message || "";
-        const missing = /relation .*subscriptions.* does not exist|Could not find the table/i.test(msg);
-        setSubTableMissing(missing);
-        if (!missing) setErrorMsg(msg);
-        setTier("basic");
-      } else {
-        const nextTier = ((sub as any)?.tier as Tier | undefined) ?? "basic";
-        if (nextTier !== "basic" && subExpired((sub as any)?.end_date ?? null)) {
-          setTier("basic");
-          setInfoMsg("Subscription expired. Basic tier limits are applied.");
-        } else {
-          setTier(nextTier);
-        }
-      }
-
-      const { count, error: countErr } = await supabase
-        .from("listings")
-        .select("id", { count: "exact", head: true })
-        .eq("landlord_id", user.id);
-      if (countErr) setErrorMsg((prev) => prev ?? countErr.message);
-      setActiveListingsCount(count ?? 0);
-      setLimitsLoading(false);
-    };
-
-    loadLimits();
-  }, [user?.id]);
 
   const toggleArrayValue = (value: string, list: string[], setter: (v: string[]) => void) => {
     setter(list.includes(value) ? list.filter((x) => x !== value) : [...list, value]);
@@ -276,9 +210,8 @@ export default function CreateListingScreen() {
   const pickAndUploadImages = async () => {
     if (pickingImages || loading) return;
     setErrorMsg(null);
-    setInfoMsg(null);
     if (remainingPhotoSlots <= 0) {
-      setErrorMsg(`Photo limit reached for ${tier.toUpperCase()} tier (max ${tierRule.maxPhotosPerListing}).`);
+      setErrorMsg(`Photo limit reached (max ${FREE_MAX_PHOTOS}).`);
       return;
     }
 
@@ -339,7 +272,6 @@ export default function CreateListingScreen() {
 
   const submit = async () => {
     if (!user) return;
-    if (listingLimitReached) return Alert.alert("Listing limit reached", `Your ${tier.toUpperCase()} plan allows ${tierRule.maxListings} listing(s).`);
     if (!title.trim()) return Alert.alert("Title is required");
     if (!contactPhone.trim()) return Alert.alert("Contact phone is required");
     if (!location) return Alert.alert("Location is required", "Tap 'Use my current location'.");
@@ -375,7 +307,6 @@ export default function CreateListingScreen() {
     const { data, error } = await supabase.from("listings").insert(payload).select("id").single();
     setLoading(false);
     if (error) return Alert.alert(error.message);
-    setActiveListingsCount((n) => n + 1);
     Alert.alert("Listing created");
     if (data?.id) router.replace({ pathname: "/(landlord)/listing/[id]", params: { id: data.id } });
     else router.replace("/(landlord)/(tabs)/listings");
@@ -385,20 +316,13 @@ export default function CreateListingScreen() {
     <SafeAreaView style={styles.root}>
       <TopNav title="Create listing" />
       <ScrollView contentContainerStyle={styles.content}>
-        <SectionCard title="Subscription limits">
+        <SectionCard title="Access">
           {errorMsg ? <Notice tone="error" text={errorMsg} /> : null}
-          {infoMsg ? <Notice tone="ok" text={infoMsg} /> : null}
-          {subTableMissing ? <Notice tone="note" text="No subscriptions table detected. Basic plan limits are applied." /> : null}
-          {limitsLoading ? (
-            <View style={styles.loadingRow}><ActivityIndicator color="#ff0f64" /><Text style={styles.meta}>Loading limits...</Text></View>
-          ) : (
-            <View style={{ gap: 4 }}>
-              <Text style={styles.bigMeta}>{tier.toUpperCase()} plan</Text>
-              <Text style={styles.meta}>Listings: {activeListingsCount} / {tierRule.maxListings} (remaining {listingSlotsLeft})</Text>
-              <Text style={styles.meta}>Photos per listing: up to {tierRule.maxPhotosPerListing}</Text>
-              {listingLimitReached ? <Text style={styles.warnText}>You have reached your listing limit for this plan.</Text> : null}
-            </View>
-          )}
+          <View style={{ gap: 4 }}>
+            <Text style={styles.bigMeta}>Free for all landlords</Text>
+            <Text style={styles.meta}>Create and edit unlimited listings.</Text>
+            <Text style={styles.meta}>Add up to {FREE_MAX_PHOTOS} photos per listing.</Text>
+          </View>
         </SectionCard>
 
         <SectionCard title="Basic information">
@@ -417,8 +341,8 @@ export default function CreateListingScreen() {
         </SectionCard>
 
         <SectionCard title="Photos">
-          <Text style={styles.meta}>Upload up to {tierRule.maxPhotosPerListing} photo(s) for this listing.</Text>
-          <Pressable style={[styles.softBtn, (pickingImages || remainingPhotoSlots <= 0) && { opacity: 0.6 }]} onPress={pickAndUploadImages} disabled={pickingImages || remainingPhotoSlots <= 0}>
+          <Text style={styles.meta}>Upload up to {FREE_MAX_PHOTOS} photo(s) for this listing.</Text>
+          <Pressable style={[styles.softBtn, pickingImages && { opacity: 0.6 }]} onPress={pickAndUploadImages} disabled={pickingImages}>
             <Text style={styles.softBtnText}>{pickingImages ? "Picking..." : remainingPhotoSlots > 0 ? "Add photos" : "Photo limit reached"}</Text>
           </Pressable>
           <View style={styles.wrap}>
@@ -502,7 +426,7 @@ export default function CreateListingScreen() {
           <TextInput value={description} onChangeText={setDescription} style={[styles.input, styles.textArea]} multiline placeholder="Describe the place..." placeholderTextColor="#9aa3bd" />
         </SectionCard>
 
-        <Pressable style={[styles.submit, (loading || listingLimitReached || limitsLoading) && { opacity: 0.7 }]} onPress={submit} disabled={loading || listingLimitReached || limitsLoading}>
+        <Pressable style={[styles.submit, loading && { opacity: 0.7 }]} onPress={submit} disabled={loading}>
           <Text style={styles.submitText}>{loading ? "Creating..." : "Create listing"}</Text>
         </Pressable>
       </ScrollView>

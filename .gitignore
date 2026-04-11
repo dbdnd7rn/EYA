@@ -10,3 +10,5 @@ expo-env.d.ts
 .expo/*
 
 node_modules
+android/
+ios/

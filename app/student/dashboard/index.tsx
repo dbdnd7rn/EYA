@@ -5,7 +5,7 @@ export default function StudentDashboardAlias() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/(student)/(tabs)/rooms");
+    router.replace("/(student)/(tabs)/home");
   }, [router]);
 
   return null;

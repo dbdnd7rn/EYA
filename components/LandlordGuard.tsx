@@ -3,6 +3,8 @@ import { ActivityIndicator, View, Text, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "../providers/AuthProvider";
 import { supabase } from "../lib/supabase";
+import { normalizeAppRole } from "@/lib/roleRouting";
+import { ENV } from "@/lib/env";
 
 export default function LandlordGuard({ children }: { children: React.ReactNode }) {
   const { user, role, loading: authLoading, refreshRole } = useAuth();
@@ -27,15 +29,44 @@ export default function LandlordGuard({ children }: { children: React.ReactNode 
           await refreshRole(user.id);
         }
 
+        if (ENV.DEV_AUTH_MODE) {
+          const currentRole = normalizeAppRole(role);
+          if (currentRole === "agent") {
+            router.replace("/(agent)/(tabs)/dashboard");
+            return;
+          }
+          if (currentRole === "vendor") {
+            router.replace("/(market)/(tabs)/dashboard");
+            return;
+          }
+          if (currentRole === "student") {
+            router.replace("/(student)/(tabs)/home");
+            return;
+          }
+          if (currentRole !== "landlord" && currentRole !== "admin") {
+            router.replace("/onboarding");
+            return;
+          }
+          return;
+        }
+
         const { data } = await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
           .maybeSingle();
 
-        const currentRole = ((data as any)?.role ?? role) as string | null;
+        const currentRole = normalizeAppRole((data as any)?.role ?? role);
+        if (currentRole === "agent") {
+          router.replace("/(agent)/(tabs)/dashboard");
+          return;
+        }
+        if (currentRole === "vendor") {
+          router.replace("/(market)/(tabs)/dashboard");
+          return;
+        }
         if (currentRole === "student") {
-          router.replace("/(student)/(tabs)/rooms");
+          router.replace("/(student)/(tabs)/home");
           return;
         }
 

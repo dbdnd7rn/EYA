@@ -1,4 +1,4 @@
-export type Role = "student" | "landlord" | "admin";
+export type Role = "student" | "landlord" | "agent" | "admin";
 
 export type ListingMini = {
   id: string;

@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Pa-Level",
-    "slug": "pa-level",
-    "scheme": "palevel",
+    "name": "EYA",
+    "slug": "pamaketi",
+    "scheme": "pamaketi",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,20 +16,39 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "EYA needs microphone access for in-app enquiry calls.",
+        "NSCameraUsageDescription": "EYA uses camera permission for in-app call compatibility."
+      }
     },
     "android": {
+      "permissions": [
+        "POST_NOTIFICATIONS",
+        "RECORD_AUDIO",
+        "CAMERA",
+        "MODIFY_AUDIO_SETTINGS"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.vac.palevel"
+      "package": "com.vac.pamaketi"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-notifications",
+      "expo-camera",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b34d4328-7e80-46b8-a6b4-1e47ecb883d8"
+      }
     }
   }
 }

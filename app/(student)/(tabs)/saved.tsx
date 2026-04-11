@@ -1,7 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Image,
   Pressable,
@@ -15,6 +14,7 @@ import {
 import { useRouter } from "expo-router";
 import { Bookmark, MapPin, Trash2, Search } from "lucide-react-native";
 import TopNav from "@/components/TopNav";
+import RoomsBottomNav from "@/components/rooms/RoomsBottomNav";
 import {
   applyPendingSavedOpsToRows,
   getSavedRoomsCache,
@@ -251,8 +251,8 @@ export default function SavedRoomsScreen() {
               </Text>
             </Pressable>
 
-            <Pressable style={styles.secondaryBtn} onPress={() => router.push("/student/dashboard")}>
-              <Text style={styles.secondaryBtnText}>Back to dashboard</Text>
+            <Pressable style={styles.secondaryBtn} onPress={() => router.push("/(student)/(tabs)/home")}>
+              <Text style={styles.secondaryBtnText}>Back to home</Text>
             </Pressable>
 
             <Pressable style={styles.primaryBtn} onPress={() => router.push("/(student)/(tabs)/rooms")}>
@@ -340,13 +340,15 @@ export default function SavedRoomsScreen() {
           </View>
         )}
       </ScrollView>
+
+      <RoomsBottomNav active="saved" />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
-  content: { padding: 16, paddingBottom: 30, gap: 12 },
+  content: { padding: 16, paddingBottom: 120, gap: 12 },
   loadingWrap: { padding: 16, gap: 12 },
   skeletonCard: { height: 220, borderRadius: 24, backgroundColor: "#dde6ff" },
   headerBlock: { gap: 10 },

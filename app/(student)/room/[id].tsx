@@ -1,7 +1,8 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-import React, { useEffect, useMemo, useState } from "react";
+﻿/* eslint-disable react-hooks/exhaustive-deps */
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Alert,
   Image,
   Modal,
@@ -39,11 +40,15 @@ import {
   Waves,
   Wifi,
   Zap,
+  ArrowLeft,
+  MessageCircle,
+  Heart,
+  Phone,
 } from "lucide-react-native";
-import TopNav from "@/components/TopNav";
 import { formatCacheTime, getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { getSavedStatusWithPending, queueOfflineSaveToggle } from "@/lib/savedRoomsOffline";
 import { supabase } from "@/lib/supabase";
+import { goBackOrFallback } from "@/lib/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
 
@@ -177,6 +182,13 @@ function formatPrice(amount?: number | null) {
   return `K${Number(amount).toLocaleString("en-MW")}`;
 }
 
+function buildLandlordPrompt(listing: Listing) {
+  if (!listing.price_from || listing.price_from <= 0) {
+    return `Hi, is "${listing.title}" still available, and how much is it per month?`;
+  }
+  return `Hi, is "${listing.title}" still available?`;
+}
+
 function safeNum(n: any) {
   const x = Number(n);
   return Number.isFinite(x) ? x : 0;
@@ -264,6 +276,7 @@ export default function RoomDetailsScreen() {
   const [showAllAmenities, setShowAllAmenities] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [verifLoading, setVerifLoading] = useState(false);
+  const reveal = useRef(new Animated.Value(0)).current;
 
   const photos = listing?.image_urls ?? [];
   const primaryPhoto = photos[0] ?? null;
@@ -302,6 +315,23 @@ export default function RoomDetailsScreen() {
       return { group, shown, hiddenCount: present.length - shown.length };
     }).filter(Boolean) as { group: typeof AMENITY_GROUPS[number]; shown: { key: AmenityKey; label: string }[]; hiddenCount: number }[];
   }, [listing?.amenities, showAllAmenities]);
+
+  const sectionAnim = (index: number) => ({
+    opacity: reveal.interpolate({
+      inputRange: [index * 0.12, index * 0.12 + 0.35],
+      outputRange: [0, 1],
+      extrapolate: "clamp",
+    }),
+    transform: [
+      {
+        translateY: reveal.interpolate({
+          inputRange: [index * 0.12, index * 0.12 + 0.35],
+          outputRange: [16, 0],
+          extrapolate: "clamp",
+        }),
+      },
+    ],
+  });
 
   const computeSummary = (rows: ReviewRow[]) => {
     const vals = rows.map((r) => safeNum(r.rating)).filter((x) => x >= 1 && x <= 5);
@@ -661,12 +691,23 @@ export default function RoomDetailsScreen() {
     }
   };
 
+  useEffect(() => {
+    if (loading || !listing) return;
+    reveal.setValue(0);
+    Animated.timing(reveal, {
+      toValue: 1,
+      duration: 420,
+      useNativeDriver: true,
+    }).start();
+  }, [loading, listing?.id, reveal]);
+
   if (loading) {
     return (
       <SafeAreaView style={styles.root}>
-        <TopNav title="Room" />
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#ff0f64" />
+        <View style={styles.skeletonWrap}>
+          {Array.from({ length: 7 }).map((_, i) => (
+            <View key={i} style={[styles.skeletonCard, i === 0 ? styles.skeletonHero : null]} />
+          ))}
         </View>
       </SafeAreaView>
     );
@@ -674,13 +715,14 @@ export default function RoomDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <TopNav title="Room" />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor="#ff0f64" />}
+        showsVerticalScrollIndicator={false}
       >
-        <Pressable onPress={() => router.push("/(student)/(tabs)/rooms")} style={styles.backRow}>
-          <Text style={styles.backText}>{"<- Back to rooms"}</Text>
+        <Pressable onPress={() => goBackOrFallback(router, "/(student)/(tabs)/rooms")} style={styles.backRow}>
+          <ArrowLeft size={16} color="#0e2756" />
+          <Text style={styles.backText}>Back to Stay</Text>
         </Pressable>
 
         {err ? (
@@ -692,7 +734,7 @@ export default function RoomDetailsScreen() {
 
         {!listing ? null : (
           <>
-            <View style={styles.heroWrap}>
+            <Animated.View style={[styles.heroWrap, sectionAnim(0)]}>
               {primaryPhoto ? (
                 <Image source={{ uri: primaryPhoto }} style={styles.hero} resizeMode="cover" />
               ) : (
@@ -705,17 +747,24 @@ export default function RoomDetailsScreen() {
                   <Text style={styles.verifiedBadgeText}>VERIFIED</Text>
                 </View>
               ) : null}
-            </View>
+            </Animated.View>
 
             {photos.length > 1 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 10, paddingRight: 6 }}
+                snapToInterval={98}
+                decelerationRate="fast"
+                disableIntervalMomentum
+              >
                 {photos.slice(0, 10).map((p, i) => (
                   <View key={`${p}-${i}`} style={styles.thumb}><Image source={{ uri: p }} style={styles.thumbImg} resizeMode="cover" /></View>
                 ))}
               </ScrollView>
             ) : null}
 
-            <View style={styles.card}>
+            <Animated.View style={[styles.card, sectionAnim(1)]}>
               <View style={styles.titleTagRow}>
                 <Text style={styles.typeText}>{listing.listing_type === "hostel" ? "Hostel" : "Bedsitter"}</Text>
                 {isVerified ? (
@@ -727,7 +776,7 @@ export default function RoomDetailsScreen() {
                 {verifLoading ? <Text style={styles.smallMuted}>Checking verification...</Text> : null}
               </View>
               <Text style={styles.title}>{listing.title}</Text>
-              <Text style={styles.muted}>{[listing.area, listing.city, listing.campus].filter(Boolean).join(" • ") || "Location on enquiry"}</Text>
+              <Text style={styles.muted}>{[listing.area, listing.city, listing.campus].filter(Boolean).join(" â€¢ ") || "Location on enquiry"}</Text>
               <View style={styles.quickStatsRow}>
                 <View style={styles.quickStat}>
                   <Text style={styles.quickStatLabel}>Price</Text>
@@ -740,9 +789,9 @@ export default function RoomDetailsScreen() {
                 </View>
               </View>
               {listing.description ? <Text style={styles.desc}>{listing.description}</Text> : null}
-            </View>
+            </Animated.View>
 
-            <View style={styles.card}>
+            <Animated.View style={[styles.card, sectionAnim(2)]}>
               <Text style={styles.sectionTitle}>Room details</Text>
               <Text style={styles.sectionSub}>Billing, occupancy and room setup.</Text>
               <View style={styles.detailGrid}>
@@ -771,9 +820,9 @@ export default function RoomDetailsScreen() {
                   <Text style={styles.detailCellValue}>{String(listing.total_rooms ?? "-")}</Text>
                 </View>
               </View>
-            </View>
+            </Animated.View>
             {!!listing.amenities?.length && (
-              <View style={styles.card}>
+              <Animated.View style={[styles.card, sectionAnim(3)]}>
                 <View style={styles.sectionHeadRow}>
                   <View>
                     <Text style={styles.sectionTitle}>Amenities</Text>
@@ -812,24 +861,24 @@ export default function RoomDetailsScreen() {
                     </Text>
                   </Pressable>
                 ) : null}
-              </View>
+              </Animated.View>
             )}
 
             {!!listing.rules?.length && (
-              <View style={styles.card}>
+              <Animated.View style={[styles.card, sectionAnim(4)]}>
                 <Text style={styles.sectionTitle}>Rules</Text>
                 <View style={{ gap: 6, marginTop: 8 }}>
                   {listing.rules.map((r, i) => (
                     <Text key={`${r}-${i}`} style={styles.meta}>- {r}</Text>
                   ))}
                 </View>
-              </View>
+              </Animated.View>
             )}
 
-            <View style={styles.card}>
+            <Animated.View style={[styles.card, sectionAnim(5)]}>
               <Text style={styles.sectionTitle}>Location</Text>
               <Text style={styles.sectionSub}>
-                {[listing.area, listing.city, listing.campus].filter(Boolean).join(" • ") || "Location on enquiry"}
+                {[listing.area, listing.city, listing.campus].filter(Boolean).join(" â€¢ ") || "Location on enquiry"}
               </Text>
 
               {listing.latitude != null && listing.longitude != null ? (
@@ -866,9 +915,9 @@ export default function RoomDetailsScreen() {
                   <Text style={styles.mapPlaceholderSub}>Ask the landlord for the exact pin when enquiring.</Text>
                 </View>
               )}
-            </View>
+            </Animated.View>
 
-            <View style={styles.card}>
+            <Animated.View style={[styles.card, sectionAnim(6)]}>
               <Text style={styles.sectionTitle}>Reviews</Text>
               {reviewsCacheTime ? <Text style={styles.smallMuted}>Reviews cache: {formatCacheTime(reviewsCacheTime)}</Text> : null}
               {ratingCount > 0 ? (
@@ -922,27 +971,87 @@ export default function RoomDetailsScreen() {
                   ))}
                 </View>
               )}
-            </View>
+            </Animated.View>
 
-            <View style={styles.card}>
+            <Animated.View style={[styles.card, sectionAnim(7)]}>
+              <Text style={styles.sectionTitle}>Move-in readiness</Text>
+              <Text style={styles.sectionSub}>Checklist to protect yourself before payment.</Text>
+              <View style={{ gap: 6, marginTop: 8 }}>
+                <Text style={styles.meta}>- Visit the room physically or by live video call first.</Text>
+                <Text style={styles.meta}>- Confirm landlord identity and exact room terms in writing.</Text>
+                <Text style={styles.meta}>- Keep payment proof and signed agreement copy.</Text>
+                <Text style={styles.meta}>- Take move-in photos for inventory and damage records.</Text>
+              </View>
+            </Animated.View>
+
+            <Animated.View style={[styles.card, sectionAnim(8)]}>
               <Text style={styles.sectionTitle}>Actions</Text>
-              <Text style={styles.sectionSub}>Save, enquire or contact the landlord.</Text>
+              <Text style={styles.sectionSub}>Enquire first, then choose your preferred contact method.</Text>
               <View style={{ gap: 10, marginTop: 10 }}>
-                <Pressable style={[styles.btnNavy, saved ? styles.btnNavySaved : null]} onPress={toggleSave} disabled={saving}>
-                  <Text style={[styles.btnText, saved ? { color: "#0e2756" } : null]}>{saving ? "Saving..." : saved ? "Saved" : "Save room"}</Text>
-                </Pressable>
-
                 <Pressable
-                  style={styles.btnPink}
+                  style={[styles.btnPink, styles.btnPrimary]}
                   onPress={() => {
                     if (!uid || role !== "student") {
                       Alert.alert("Login as a student to send enquiries");
                       return;
                     }
+                    setEnquiryText((current) => (current.trim() ? current : buildLandlordPrompt(listing)));
                     setShowEnquiry(true);
                   }}
                 >
-                  <Text style={styles.btnText}>Send enquiry</Text>
+                  <View style={styles.btnRow}>
+                    <MessageCircle size={15} color="#fff" />
+                    <Text style={styles.btnText}>Ask landlord</Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.btnNavy, styles.btnSecondary]}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(student)/checkout",
+                      params: {
+                        mode: "stay",
+                        title: listing.title,
+                        base: String(listing.price_from ?? 0),
+                        delivery: "0",
+                        escrow: "1",
+                      },
+                    })
+                  }
+                >
+                  <View style={styles.btnRow}>
+                    <ShieldCheck size={15} color="#fff" />
+                    <Text style={styles.btnText}>Reserve with escrow</Text>
+                  </View>
+                </Pressable>
+
+                {listing.contact_phone ? (
+                  <>
+                    {(listing.contact_method === "call" || listing.contact_method === "both") && (
+                      <Pressable style={[styles.btnNavy, styles.btnSecondary]} onPress={() => Linking.openURL(`tel:+${listing.contact_phone}`)}>
+                        <View style={styles.btnRow}>
+                          <Phone size={15} color="#fff" />
+                          <Text style={styles.btnText}>Call landlord</Text>
+                        </View>
+                      </Pressable>
+                    )}
+
+                    {(listing.contact_method === "whatsapp" || listing.contact_method === "both") && (
+                      <Pressable style={styles.btnGreen} onPress={() => Linking.openURL(`https://wa.me/${listing.contact_phone}`)}>
+                        <Text style={styles.btnText}>Chat on WhatsApp</Text>
+                      </Pressable>
+                    )}
+                  </>
+                ) : (
+                  <Text style={{ marginTop: 2, color: "#5f6b85", fontWeight: "700" }}>Contact details not provided.</Text>
+                )}
+
+                <Pressable style={[styles.btnNavy, saved ? styles.btnNavySaved : styles.btnTertiary]} onPress={toggleSave} disabled={saving}>
+                  <View style={styles.btnRow}>
+                    <Heart size={15} color={saved ? "#0e2756" : "#fff"} />
+                    <Text style={[styles.btnText, saved ? { color: "#0e2756" } : null]}>{saving ? "Saving..." : saved ? "Saved" : "Save room"}</Text>
+                  </View>
                 </Pressable>
 
                 <Pressable
@@ -957,26 +1066,8 @@ export default function RoomDetailsScreen() {
                 >
                   <Text style={styles.btnReportText}>Report listing</Text>
                 </Pressable>
-
-                {listing.contact_phone ? (
-                  <>
-                    {(listing.contact_method === "whatsapp" || listing.contact_method === "both") && (
-                      <Pressable style={styles.btnGreen} onPress={() => Linking.openURL(`https://wa.me/${listing.contact_phone}`)}>
-                        <Text style={styles.btnText}>Chat on WhatsApp</Text>
-                      </Pressable>
-                    )}
-
-                    {(listing.contact_method === "call" || listing.contact_method === "both") && (
-                      <Pressable style={styles.btnNavy} onPress={() => Linking.openURL(`tel:+${listing.contact_phone}`)}>
-                        <Text style={styles.btnText}>Call landlord</Text>
-                      </Pressable>
-                    )}
-                  </>
-                ) : (
-                  <Text style={{ marginTop: 8, color: "#5f6b85", fontWeight: "700" }}>Contact details not provided.</Text>
-                )}
               </View>
-            </View>
+            </Animated.View>
           </>
         )}
       </ScrollView>
@@ -985,7 +1076,7 @@ export default function RoomDetailsScreen() {
         <View style={styles.modalWrap}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Report this listing</Text>
-            <Text style={styles.sectionSub}>Help us keep Pa-Level safe.</Text>
+            <Text style={styles.sectionSub}>Help us keep EYA safe.</Text>
             {reportDone ? (
               <View style={styles.noteBox}>
                 <Text style={styles.noteText}>{reportDone}</Text>
@@ -1056,22 +1147,47 @@ export default function RoomDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f6f7fb" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 14, gap: 12, paddingBottom: 30 },
-  backRow: { paddingVertical: 4 },
-  backText: { color: "#0e2756", fontWeight: "800", textDecorationLine: "underline" },
+  root: { flex: 1, backgroundColor: "#f3f4f7" },
+  skeletonWrap: { padding: 16, gap: 10 },
+  skeletonCard: { height: 92, borderRadius: 18, backgroundColor: "#dde6ff" },
+  skeletonHero: { height: 240, borderRadius: 22 },
+  content: { padding: 16, gap: 12, paddingBottom: 118 },
+  backRow: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#dfe5f4",
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  backText: { color: "#0e2756", fontWeight: "800", fontSize: 12 },
   errorBox: { borderWidth: 1, borderColor: "#ffd4e3", backgroundColor: "#fff0f6", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10 },
   errorText: { color: "#b0003a", fontWeight: "900" },
   cacheMeta: { color: "#5f6b85", fontWeight: "700", fontSize: 12 },
   heroWrap: { position: "relative" },
   verifiedBadge: { position: "absolute", top: 12, right: 12, backgroundColor: "#0e2756", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   verifiedBadgeText: { color: "#fff", fontWeight: "900", fontSize: 11 },
-  hero: { width: "100%", height: 240, borderRadius: 20, backgroundColor: "#c8d6ff" },
+  hero: { width: "100%", height: 250, borderRadius: 22, backgroundColor: "#c8d6ff" },
   heroPlaceholder: { alignItems: "center", justifyContent: "center" },
-  thumb: { width: 88, height: 64, borderRadius: 14, overflow: "hidden", backgroundColor: "#c8d6ff" },
+  thumb: { width: 92, height: 68, borderRadius: 14, overflow: "hidden", backgroundColor: "#c8d6ff" },
   thumbImg: { width: "100%", height: "100%" },
-  card: { backgroundColor: "#fff", borderRadius: 22, padding: 14, gap: 8, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 12, elevation: 2 },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#e7ebf5",
+    padding: 14,
+    gap: 8,
+    shadowColor: "#0e2756",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
   titleTagRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
   typeText: { color: "#ff0f64", fontWeight: "900", fontSize: 12 },
   inlineVerifiedPill: {
@@ -1085,8 +1201,8 @@ const styles = StyleSheet.create({
   },
   inlineVerifiedPillText: { color: "#fff", fontWeight: "900", fontSize: 11 },
   verifiedPill: { backgroundColor: "#0e2756", color: "#fff", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, overflow: "hidden", fontSize: 11, fontWeight: "900" },
-  title: { fontSize: 24, fontWeight: "900", color: "#0e2756" },
-  muted: { color: "#5f6b85", fontWeight: "700" },
+  title: { fontSize: 26, fontWeight: "900", color: "#0e2756", lineHeight: 31 },
+  muted: { color: "#5f6b85", fontWeight: "700", fontSize: 13, lineHeight: 19 },
   quickStatsRow: { flexDirection: "row", gap: 10, marginTop: 4 },
   quickStat: {
     flex: 1,
@@ -1097,12 +1213,12 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   quickStatLabel: { color: "#5f6b85", fontWeight: "800", fontSize: 11, textTransform: "uppercase" },
-  quickStatValue: { color: "#0e2756", fontWeight: "900", fontSize: 16, marginTop: 3 },
-  quickStatValueSm: { color: "#0e2756", fontWeight: "800", fontSize: 12, marginTop: 3 },
+  quickStatValue: { color: "#0e2756", fontWeight: "900", fontSize: 17, marginTop: 3 },
+  quickStatValueSm: { color: "#0e2756", fontWeight: "800", fontSize: 13, marginTop: 3, lineHeight: 18 },
   quickStatSub: { color: "#5f6b85", fontWeight: "700", fontSize: 11 },
   desc: { color: "#0e2756", fontWeight: "600", marginTop: 6, lineHeight: 20 },
-  sectionTitle: { color: "#0e2756", fontWeight: "900", fontSize: 16 },
-  sectionSub: { color: "#5f6b85", fontWeight: "700", marginTop: 4 },
+  sectionTitle: { color: "#0e2756", fontWeight: "900", fontSize: 17, lineHeight: 22 },
+  sectionSub: { color: "#5f6b85", fontWeight: "700", marginTop: 4, fontSize: 13, lineHeight: 18 },
   detailGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   detailCell: {
     width: "48.5%",
@@ -1147,6 +1263,20 @@ const styles = StyleSheet.create({
   btnNavy: { backgroundColor: "#0e2756", borderRadius: 16, paddingVertical: 12, alignItems: "center" },
   btnNavySaved: { backgroundColor: "#f6f7fb", borderWidth: 1, borderColor: "#e1e4ef" },
   btnPink: { backgroundColor: "#ff0f64", borderRadius: 16, paddingVertical: 12, alignItems: "center" },
+  btnPrimary: {
+    shadowColor: "#ff0f64",
+    shadowOpacity: 0.26,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  btnSecondary: {
+    borderWidth: 1,
+    borderColor: "#1a3f82",
+  },
+  btnTertiary: {
+    backgroundColor: "#16315f",
+  },
   showMoreBtn: {
     backgroundColor: "#fff0f6",
     borderRadius: 16,
@@ -1162,6 +1292,7 @@ const styles = StyleSheet.create({
   btnSoft: { backgroundColor: "#f6f7fb", borderRadius: 16, paddingVertical: 12, paddingHorizontal: 16, alignItems: "center", borderWidth: 1, borderColor: "#e1e4ef" },
   btnSoftText: { color: "#0e2756", fontWeight: "900" },
   btnText: { color: "#fff", fontWeight: "900" },
+  btnRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   mapCard: {
     marginTop: 10,
     height: 210,
@@ -1213,3 +1344,6 @@ const styles = StyleSheet.create({
   modalRow: { flexDirection: "row", gap: 10, justifyContent: "flex-end" },
   modalTitle: { color: "#0e2756", fontWeight: "900", fontSize: 18 },
 });
+
+
+

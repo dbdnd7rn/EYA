@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -6,9 +6,13 @@ import {
   BadgeCheck,
   Building2,
   ClipboardList,
+  CookingPot,
+  Bike,
+  MapPinned,
   MessageCircle,
+  PackageSearch,
   Search,
-  ShieldAlert,
+  Store,
   UserPlus,
 } from "lucide-react-native";
 
@@ -20,24 +24,31 @@ type Step = {
 
 const studentSteps: Step[] = [
   { Icon: UserPlus, title: "Create an account", desc: "Sign up and verify your email to access features." },
-  { Icon: Search, title: "Search rooms", desc: "Browse hostels & bedsitters near your campus." },
-  { Icon: MessageCircle, title: "Send enquiries", desc: "Message landlords to confirm availability & rules." },
-  { Icon: ShieldAlert, title: "Payment safety", desc: "We don't handle payments. View first before paying." },
+  { Icon: Search, title: "Explore sections", desc: "Switch between rooms, products, and restaurants near campus." },
+  { Icon: MapPinned, title: "Check exact location", desc: "View where each room, vendor, or restaurant is based." },
+  { Icon: Bike, title: "Request delivery", desc: "Tap deliver to your door and pay an extra delivery fee." },
 ];
 
 const landlordSteps: Step[] = [
   { Icon: UserPlus, title: "Create an account", desc: "Sign up and verify your email." },
   {
-    Icon: Building2,
-    title: "Add listing details",
-    desc: "Upload photos, price, rules, location & amenities.",
+    Icon: Store,
+    title: "Create your storefront",
+    desc: "Publish room listings, campus products, or daily restaurant offers.",
   },
-  { Icon: BadgeCheck, title: "Get verified", desc: "Verification helps students trust your listing." },
+  { Icon: BadgeCheck, title: "Get verified", desc: "Verification helps buyers trust your listings and menus." },
   {
     Icon: ClipboardList,
-    title: "Manage enquiries",
-    desc: "Reply to students fast and fill rooms quicker.",
+    title: "Manage incoming orders",
+    desc: "Respond quickly, confirm stock, and prepare items for delivery.",
   },
+];
+
+const deliverySteps: Step[] = [
+  { Icon: PackageSearch, title: "Order received", desc: "Rider sees pickup and drop-off details immediately." },
+  { Icon: CookingPot, title: "Pick up order", desc: "Collect from vendor or restaurant and confirm in-app." },
+  { Icon: MessageCircle, title: "Update customer", desc: "Share arrival updates while heading to doorstep." },
+  { Icon: Building2, title: "Complete delivery", desc: "Deliver safely and close the order with proof." },
 ];
 
 export default function HomeHowItWorksSection() {
@@ -59,17 +70,17 @@ export default function HomeHowItWorksSection() {
             lineHeight: 22,
           }}
         >
-          Pa-Level helps students find accommodation near campus and helps landlords list rooms faster - all in one
-          place.
+          EYA now combines student accommodation, local campus shopping, and restaurant ordering with optional paid
+          delivery.
         </Text>
       </View>
 
       <FlowCard
         title="For Students"
-        subtitle="Create an account -> find a room -> message the landlord."
-        ctaText="Create student account"
+        subtitle="Create an account -> find rooms/products/food -> request delivery if needed."
+        ctaText="Create account"
         ctaColor="#ff0f64"
-        onPress={() => router.push({ pathname: "/(auth)/signup", params: { role: "student" } })}
+        onPress={() => router.push("/(auth)/signup")}
         steps={studentSteps}
       >
         <View
@@ -83,20 +94,19 @@ export default function HomeHowItWorksSection() {
             borderColor: "#ffd4e3",
           }}
         >
-          <Text style={{ color: "#b0003a", fontSize: 13, lineHeight: 20 }}>
-            <Text style={{ fontWeight: "700" }}>Payment notice:</Text> Pa-Level does not collect or process rent
-            payments. Any payment made to a landlord is at your own risk. We recommend viewing a place first and never
-            sending money for a room you haven't confirmed.
-          </Text>
-        </View>
+            <Text style={{ color: "#b0003a", fontSize: 13, lineHeight: 20 }}>
+              <Text style={{ fontWeight: "700" }}>Payment notice:</Text> Confirm product quality, menu details, and
+              delivery charges before paying. Always verify the listing location shown in-app.
+            </Text>
+          </View>
       </FlowCard>
 
       <FlowCard
-        title="For Landlords"
-        subtitle="Create an account -> list your rooms -> get enquiries."
-        ctaText="Create landlord account"
+        title="For Vendors and Property Owners"
+        subtitle="Create account -> publish listings -> receive enquiries and orders."
+        ctaText="Create account"
         ctaColor="#0e2756"
-        onPress={() => router.push({ pathname: "/(auth)/signup", params: { role: "landlord" } })}
+        onPress={() => router.push("/(auth)/signup")}
         steps={landlordSteps}
       >
         <Pressable
@@ -116,6 +126,15 @@ export default function HomeHowItWorksSection() {
         </Pressable>
       </FlowCard>
 
+      <FlowCard
+        title="For Delivery Riders"
+        subtitle="Accept order -> pick up -> deliver to customer doorstep."
+        ctaText="Create agent account"
+        ctaColor="#305f0e"
+        onPress={() => router.push("/(auth)/signup")}
+        steps={deliverySteps}
+      />
+
       <View
         style={{
           marginTop: 40,
@@ -131,7 +150,7 @@ export default function HomeHowItWorksSection() {
       >
         <Text style={{ color: "#fff", fontSize: 26, fontWeight: "900" }}>Start searching now</Text>
         <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.84)", fontSize: 14, lineHeight: 22 }}>
-          Login to browse rooms, save favourites, and message landlords.
+          Login to browse rooms, shop products, order food, and request paid doorstep delivery.
         </Text>
 
         <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
@@ -143,7 +162,7 @@ export default function HomeHowItWorksSection() {
           </Pressable>
 
           <Pressable
-            onPress={() => router.push({ pathname: "/(auth)/signup", params: { role: "student" } })}
+            onPress={() => router.push("/(auth)/signup")}
             style={{
               borderRadius: 16,
               backgroundColor: "#ff0f64",
@@ -156,7 +175,7 @@ export default function HomeHowItWorksSection() {
               elevation: 3,
             }}
           >
-            <Text style={{ color: "#fff", fontSize: 14, fontWeight: "900" }}>Sign up (Student)</Text>
+            <Text style={{ color: "#fff", fontSize: 14, fontWeight: "900" }}>Sign up</Text>
           </Pressable>
         </View>
       </View>
@@ -283,3 +302,6 @@ function StepCard({ stepData, step }: { stepData: Step; step: number }) {
     </View>
   );
 }
+
+
+

@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+﻿import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type Envelope<T> = {
   v: number;
@@ -7,7 +7,7 @@ type Envelope<T> = {
 };
 
 const CACHE_VERSION = 1;
-const PREFIX = "palevel:cache:";
+const PREFIX = "pamaketi:cache:";
 
 function key(name: string) {
   return `${PREFIX}${name}`;
@@ -29,6 +29,15 @@ export async function getCachedJson<T>(name: string): Promise<{ data: T; ts: num
   } catch {
     return null;
   }
+}
+
+export async function removeCachedJson(name: string) {
+  await AsyncStorage.removeItem(key(name));
+}
+
+export function isCacheStale(ts: number | null | undefined, maxAgeMs: number) {
+  if (!ts || !Number.isFinite(ts)) return true;
+  return Date.now() - ts > maxAgeMs;
 }
 
 export function formatCacheTime(ts?: number | null) {

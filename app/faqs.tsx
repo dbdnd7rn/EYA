@@ -1,23 +1,27 @@
-import React from "react";
+﻿import React from "react";
 import { Text, View } from "react-native";
 import PublicPageShell from "@/components/PublicPageShell";
 
 const FAQS = [
   {
-    q: "Is Pa-Level free to use?",
-    a: "Yes. Students can browse listings and contact landlords. Some landlord features may require verification or subscription depending on the platform rules.",
+    q: "Is EYA free to use?",
+    a: "Yes. Browsing rooms, marketplace products, and nearby restaurants is currently free while we continue rolling out features.",
   },
   {
-    q: "Does Pa-Level handle payments?",
-    a: "No. Pa-Level does not process payments to landlords. Always view the place first before sending any money.",
+    q: "Does EYA handle payments?",
+    a: "Not yet. Confirm listing details, product quality, and delivery charges before paying any seller or restaurant.",
   },
   {
-    q: "How do I report a listing?",
-    a: "Open the room page and tap Report listing. Your report goes to the admin team for review.",
+    q: "Can I request doorstep delivery?",
+    a: "Yes. Eligible products and restaurant orders include a 'Deliver to door' option with an extra delivery fee.",
   },
   {
-    q: "Why do some listings show VERIFIED?",
-    a: "Verified means the landlord has been verified through our checks where applicable.",
+    q: "How do I verify item location?",
+    a: "Each listing shows area and campus details so you can confirm where the product or restaurant is located before ordering.",
+  },
+  {
+    q: "How do I report a vendor, room, or restaurant?",
+    a: "Go to Support and submit a report. Include as much detail as possible so the team can investigate quickly.",
   },
 ];
 
@@ -26,7 +30,7 @@ export default function FAQsPage() {
     <PublicPageShell title="FAQs">
       <View style={{ gap: 12 }}>
         <Text style={{ color: "#5f6b85", fontSize: 14 }}>
-          Quick answers about using Pa-Level. If you still need help, contact support.
+          Quick answers about using EYA. If you still need help, contact support.
         </Text>
 
         {FAQS.map((f) => (
@@ -39,3 +43,6 @@ export default function FAQsPage() {
     </PublicPageShell>
   );
 }
+
+
+

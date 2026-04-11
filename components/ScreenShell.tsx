@@ -1,5 +1,6 @@
 import React from "react";
-import { SafeAreaView, ScrollView, View, Text } from "react-native";
+import { ScrollView, View, Text } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import TopNav from "@/components/TopNav";
 
 export default function ScreenShell({

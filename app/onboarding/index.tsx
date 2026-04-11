@@ -1,15 +1,41 @@
-/* eslint-disable react-hooks/exhaustive-deps */
+﻿/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import { listMyVendors, createVendor } from "@/lib/newApp/vendors";
 import PublicFooter from "@/components/PublicFooter";
+import { normalizeAppRole } from "@/lib/roleRouting";
+import { ENV } from "@/lib/env";
+import { getDevAuthRecord, setDevAuthRecord } from "@/lib/devAuth";
+import { useAuth } from "@/providers/AuthProvider";
 
-type Role = "landlord" | "student";
+type Role = "landlord" | "student" | "agent" | "vendor";
+
+async function ensureSellerVendor(ownerId: string, name: string) {
+  const existing = await listMyVendors(ownerId);
+  const current = existing.find((row) => row.supports_market) ?? existing[0] ?? null;
+  if (current) return current;
+
+  try {
+    return await createVendor(ownerId, {
+      name: name || "Seller Shop",
+      description: "Campus seller storefront",
+      supports_market: true,
+      supports_food: false,
+    });
+  } catch {
+    const retry = await listMyVendors(ownerId);
+    const resolved = retry.find((row) => row.supports_market) ?? retry[0] ?? null;
+    if (resolved) return resolved;
+    throw new Error("Could not create or load seller shop. Please retry.");
+  }
+}
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { role: authRole, refreshRole } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<Role | "">("");
@@ -17,6 +43,22 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     (async () => {
+      if (ENV.DEV_AUTH_MODE) {
+        const record = await getDevAuthRecord();
+        if (!record) {
+          router.replace("/(auth)/login");
+          return;
+        }
+
+        const normalized = normalizeAppRole(record.role ?? authRole);
+        if (normalized === "landlord") router.replace("/(landlord)/(tabs)/dashboard");
+        else if (normalized === "vendor") router.replace("/(market)/(tabs)/dashboard");
+        else if (normalized === "agent") router.replace("/(agent)/(tabs)/dashboard");
+        else if (normalized === "student") router.replace("/(student)/(tabs)/home");
+        else setLoading(false);
+        return;
+      }
+
       const { data } = await supabase.auth.getUser();
       if (!data.user) {
         router.replace("/(auth)/login");
@@ -30,8 +72,11 @@ export default function OnboardingPage() {
         .maybeSingle();
 
       if ((profile as any)?.onboarded) {
-        if ((profile as any)?.role === "landlord") router.replace("/(landlord)/(tabs)/dashboard");
-        else router.replace("/(student)/(tabs)/rooms");
+        const role = normalizeAppRole((profile as any)?.role);
+        if (role === "landlord") router.replace("/(landlord)/(tabs)/dashboard");
+        else if (role === "vendor") router.replace("/(market)/(tabs)/dashboard");
+        else if (role === "agent") router.replace("/(agent)/(tabs)/dashboard");
+        else router.replace("/(student)/(tabs)/home");
         return;
       }
 
@@ -43,6 +88,21 @@ export default function OnboardingPage() {
     setError(null);
     if (!role) return setError("Please select a role");
 
+    if (ENV.DEV_AUTH_MODE) {
+      const record = await getDevAuthRecord();
+      if (!record) {
+        router.replace("/(auth)/login");
+        return;
+      }
+      await setDevAuthRecord({ email: record.email, role });
+      await refreshRole(record.id);
+      if (role === "landlord") router.replace("/(landlord)/(tabs)/dashboard");
+      else if (role === "vendor") router.replace("/(market)/(tabs)/dashboard");
+      else if (role === "agent") router.replace("/(agent)/(tabs)/dashboard");
+      else router.replace("/(student)/(tabs)/home");
+      return;
+    }
+
     const { data } = await supabase.auth.getUser();
     if (!data.user) return;
 
@@ -50,8 +110,23 @@ export default function OnboardingPage() {
 
     if (error) return setError(error.message);
 
+    if (role === "vendor") {
+      try {
+        const sellerName =
+          (data.user.user_metadata?.full_name as string | undefined) ||
+          [data.user.user_metadata?.first_name, data.user.user_metadata?.last_name].filter(Boolean).join(" ").trim() ||
+          data.user.email ||
+          "Seller Shop";
+        await ensureSellerVendor(data.user.id, sellerName);
+      } catch (vendorError: any) {
+        console.warn("Seller shop setup deferred during onboarding:", vendorError?.message ?? vendorError);
+      }
+    }
+
     if (role === "landlord") router.replace("/(landlord)/(tabs)/dashboard");
-    else router.replace("/(student)/(tabs)/rooms");
+    else if (role === "vendor") router.replace("/(market)/(tabs)/dashboard");
+    else if (role === "agent") router.replace("/(agent)/(tabs)/dashboard");
+    else router.replace("/(student)/(tabs)/home");
   };
 
   if (loading) {
@@ -69,10 +144,10 @@ export default function OnboardingPage() {
     <SafeAreaView className="flex-1 bg-[#f6f7fb]">
       <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
         <View className="flex-1 items-center justify-center px-6 py-12">
-          <View className="w-full max-w-md rounded-[32px] bg-white p-6 shadow-xl">
+            <View className="w-full max-w-md rounded-[32px] bg-white p-6 shadow-xl">
             <Text className="text-xs font-extrabold uppercase tracking-[6px] text-[#ff0f64]">ONBOARDING</Text>
 
-            <Text className="mt-3 text-3xl font-extrabold leading-tight text-[#0e2756]">Welcome to Pa-Level</Text>
+            <Text className="mt-3 text-3xl font-extrabold leading-tight text-[#0e2756]">Welcome to EYA</Text>
 
             <Text className="mt-2 text-sm text-[#5f6b85]">Tell us how you'll use the platform.</Text>
 
@@ -100,6 +175,24 @@ export default function OnboardingPage() {
                   I'm a Landlord
                 </Text>
               </Pressable>
+
+              <Pressable
+                className={`rounded-2xl px-4 py-4 ${role === "vendor" ? "bg-[#ff0f64]" : "bg-[#f6f7fb]"}`}
+                onPress={() => setRole("vendor")}
+              >
+                <Text className={`text-center text-sm font-extrabold ${role === "vendor" ? "text-white" : "text-[#0e2756]"}`}>
+                  I'm a Seller
+                </Text>
+              </Pressable>
+
+              <Pressable
+                className={`rounded-2xl px-4 py-4 ${role === "agent" ? "bg-[#ff0f64]" : "bg-[#f6f7fb]"}`}
+                onPress={() => setRole("agent")}
+              >
+                <Text className={`text-center text-sm font-extrabold ${role === "agent" ? "text-white" : "text-[#0e2756]"}`}>
+                  I'm an Agent / Rider
+                </Text>
+              </Pressable>
             </View>
 
             <Pressable onPress={completeOnboarding} className="mt-6 rounded-2xl bg-[#0e2756] px-4 py-4">
@@ -113,3 +206,6 @@ export default function OnboardingPage() {
     </SafeAreaView>
   );
 }
+
+
+

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-type Role = "student" | "landlord" | "admin" | null;
+type Role = "student" | "landlord" | "agent" | "admin" | null;
 
 type AuthContextType = {
   user: any;

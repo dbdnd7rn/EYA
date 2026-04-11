@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/exhaustive-deps */
+﻿/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -6,6 +6,7 @@ import {
   Image,
   Pressable,
   SafeAreaView,
+  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -305,6 +306,13 @@ export default function StudentProfileScreen() {
   };
 
   const displayName = `${firstName || "User"} ${lastName || ""}`.trim();
+  const appLink = "https://pamaketi.vercel.app";
+
+  const shareReferral = async () => {
+    await Share.share({
+      message: `Join me on EYA to find student accommodation. Get the app here: ${appLink}`,
+    });
+  };
 
   if (authLoading || loading) {
     return (
@@ -477,6 +485,18 @@ export default function StudentProfileScreen() {
         </View>
 
         <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Refer friends</Text>
+          <Text style={styles.accountSub}>Share the app link so friends can install and join EYA.</Text>
+          <View style={styles.referralPill}>
+            <Text style={styles.referralLabel}>App link</Text>
+            <Text style={styles.referralCode}>{appLink}</Text>
+          </View>
+          <Pressable style={styles.primaryBtn} onPress={shareReferral}>
+            <Text style={styles.primaryBtnText}>Share app link</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Account</Text>
           <Text style={styles.accountSub}>Log out from this device.</Text>
 
@@ -486,7 +506,7 @@ export default function StudentProfileScreen() {
           </Pressable>
         </View>
 
-        <Text style={styles.footerMeta}>pa-level • clean student experience</Text>
+        <Text style={styles.footerMeta}>EYA - Everything You Access</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -622,5 +642,21 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   logoutBtnText: { color: "#b42318", fontWeight: "800", fontSize: 13 },
+  referralPill: {
+    backgroundColor: "#f6f7fb",
+    borderWidth: 1,
+    borderColor: "#e1e4ef",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 2,
+  },
+  referralLabel: { color: "#5b6887", fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
+  referralCode: { color: "#0e2756", fontWeight: "900", fontSize: 18, letterSpacing: 0.4 },
   footerMeta: { textAlign: "center", color: "#9aa3bd", fontSize: 11, marginTop: 4, fontWeight: "600" },
 });
+
+
+
+
+

@@ -1,7 +1,8 @@
-﻿import React from "react";
+import React from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Facebook, Globe, Instagram, Linkedin, Mail, Phone, Twitter } from "lucide-react-native";
+import EyaWordmark from "@/components/brand/EyaWordmark";
 
 const open = async (url: string) => {
   try {
@@ -19,10 +20,8 @@ export default function PublicFooter() {
     <View style={{ marginTop: 40, backgroundColor: "#0e2756", paddingHorizontal: 24, paddingTop: 28, paddingBottom: 20 }}>
       <View style={{ width: "100%", maxWidth: 1120, alignSelf: "center", gap: 20 }}>
         <View>
-          <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900" }}>Pa-Level</Text>
-          <Text style={{ marginTop: 8, color: "#b7c4e6", fontSize: 13, lineHeight: 20 }}>
-            Student accommodation marketplace in Malawi. Helping students find safe and verified housing near campus.
-          </Text>
+          <EyaWordmark width={108} height={40} withTagline={false} />
+          <Text style={{ marginTop: 8, color: "#b7c4e6", fontSize: 13, lineHeight: 20 }}>Everything You Access</Text>
         </View>
 
         <View style={{ gap: 10 }}>
@@ -56,9 +55,9 @@ export default function PublicFooter() {
         <View style={{ gap: 10 }}>
           <Text style={{ color: "#fff", fontSize: 12, letterSpacing: 0.7, fontWeight: "900" }}>CONTACT</Text>
 
-          <Pressable onPress={() => open("mailto:hello.palevel@gmail.com")} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <Pressable onPress={() => open("mailto:hello.pamaketi@gmail.com")} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
             <Mail size={16} color="#d6e1ff" />
-            <Text style={{ color: "#d6e1ff", fontSize: 13, fontWeight: "600" }}>hello.palevel@gmail.com</Text>
+            <Text style={{ color: "#d6e1ff", fontSize: 13, fontWeight: "600" }}>hello.pamaketi@gmail.com</Text>
           </Pressable>
 
           <Pressable onPress={() => open("tel:+265996595135")} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
@@ -102,8 +101,9 @@ export default function PublicFooter() {
       </View>
 
       <View style={{ marginTop: 22, borderTopWidth: 1, borderTopColor: "#1f3b73", paddingTop: 14 }}>
-        <Text style={{ color: "#9db0da", fontSize: 11, textAlign: "center" }}>© {year} Pa-Level. All rights reserved.</Text>
+        <Text style={{ color: "#9db0da", fontSize: 11, textAlign: "center" }}>© {year} EYA. All rights reserved.</Text>
       </View>
     </View>
   );
 }
+

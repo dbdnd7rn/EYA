@@ -28,16 +28,6 @@ type ProfileRow = {
   created_at?: string | null;
 };
 
-type SubscriptionRow = {
-  id: string;
-  tier: "basic" | "silver" | "gold" | "platinum";
-  price_mwk: number | null;
-  start_date: string | null;
-  end_date: string | null;
-  is_active: boolean | null;
-  created_at: string | null;
-};
-
 type VerificationRow = {
   id: string;
   status: "none" | "pending" | "verified" | "rejected" | "expired";
@@ -62,14 +52,6 @@ function verificationBadge(status: VerificationRow["status"]) {
   return { label: "NOT REQUESTED", bg: "#5f6b85" };
 }
 
-function tierBadge(tier?: SubscriptionRow["tier"] | null) {
-  if (!tier) return null;
-  if (tier === "platinum") return { label: "PLATINUM", bg: "#0e2756" };
-  if (tier === "gold") return { label: "GOLD", bg: "#ff0f64" };
-  if (tier === "silver") return { label: "SILVER", bg: "#5f6b85" };
-  return { label: "BASIC", bg: "#5f6b85" };
-}
-
 export default function LandlordProfileScreen() {
   const { user, role, signOut } = useAuth();
   const router = useRouter();
@@ -79,7 +61,6 @@ export default function LandlordProfileScreen() {
   const [requestingVer, setRequestingVer] = useState(false);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
-  const [subscription, setSubscription] = useState<SubscriptionRow | null>(null);
   const [verification, setVerification] = useState<VerificationRow | null>(null);
 
   const [fullName, setFullName] = useState("");
@@ -91,7 +72,6 @@ export default function LandlordProfileScreen() {
   const currentRole = String(profile?.role ?? role ?? "landlord");
   const verStatus = (verification?.status ?? "none") as VerificationRow["status"];
   const verBadge = verificationBadge(verStatus);
-  const subBadge = tierBadge(subscription?.tier ?? null);
 
   const displayEmail = profile?.email ?? user?.email ?? "-";
   const memberSince = profile?.created_at ?? null;
@@ -102,19 +82,6 @@ export default function LandlordProfileScreen() {
       `${profile?.first_name ?? ""} ${profile?.last_name ?? profile?.surname ?? ""}`.trim();
     return (joined ?? "").trim() || "Landlord";
   }, [profile]);
-
-  const loadSubscription = async (userId: string) => {
-    const { data, error } = await supabase
-      .from("subscriptions")
-      .select("id, tier, price_mwk, start_date, end_date, is_active, created_at")
-      .eq("landlord_id", userId)
-      .order("is_active", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    if (error) throw new Error(error.message);
-    setSubscription((data?.[0] as SubscriptionRow) ?? null);
-  };
 
   const loadVerification = async (userId: string) => {
     const { data, error } = await supabase
@@ -170,13 +137,6 @@ export default function LandlordProfileScreen() {
           `${profileData.first_name ?? ""} ${profileData.last_name ?? profileData.surname ?? ""}`.trim();
         setFullName((initialName ?? "").trim());
         setPhone((profileData.phone ?? "").trim());
-
-        try {
-          await loadSubscription(user.id);
-        } catch (e: any) {
-          setErr((prev) => prev ?? e?.message ?? "Could not load subscription.");
-          setSubscription(null);
-        }
 
         try {
           await loadVerification(user.id);
@@ -307,7 +267,7 @@ export default function LandlordProfileScreen() {
           <View style={styles.heroTop}>
             <View style={{ flex: 1 }}>
               <Text style={styles.h1}>Landlord profile</Text>
-              <Text style={styles.sub}>Manage your landlord identity, verification, and subscription.</Text>
+              <Text style={styles.sub}>Manage your landlord identity and verification.</Text>
             </View>
             <Pressable style={styles.logoutBtn} onPress={logout}>
               <Text style={styles.logoutText}>Log out</Text>
@@ -327,7 +287,7 @@ export default function LandlordProfileScreen() {
 
               <View style={styles.statusRow}>
                 <Text style={[styles.badge, { backgroundColor: verBadge.bg }]}>{verBadge.label}</Text>
-                {subBadge ? <Text style={[styles.badge, { backgroundColor: subBadge.bg }]}>{subBadge.label}</Text> : null}
+                <Text style={[styles.badge, { backgroundColor: "#0e2756" }]}>FREE ACCESS</Text>
                 <Text style={styles.badgeSoft}>Role: {currentRole}</Text>
               </View>
 
@@ -363,13 +323,9 @@ export default function LandlordProfileScreen() {
               <View style={styles.grid2}>
                 <InfoTile title="Member since" value={fmtDate(memberSince)} />
                 <InfoTile
-                  title="Subscription"
-                  value={
-                    subscription
-                      ? `${subscription.tier} - ${subscription.is_active ? "active" : "inactive"}`
-                      : "No subscription yet"
-                  }
-                  sub={subscription ? `${fmtDate(subscription.start_date)} -> ${fmtDate(subscription.end_date)}` : undefined}
+                  title="Access"
+                  value="Free for all landlords"
+                  sub="Unlimited create, edit, and photos"
                 />
               </View>
 
@@ -406,7 +362,6 @@ export default function LandlordProfileScreen() {
                   <QuickAction label="My listings" onPress={() => router.push("/(landlord)/(tabs)/listings")} />
                   <QuickAction label="Enquiries" onPress={() => router.push("/(landlord)/(tabs)/enquiries")} />
                   <QuickAction label="Create listing" onPress={() => router.push("/(landlord)/(tabs)/create")} />
-                  <QuickAction label="Subscription" onPress={() => router.push("/(landlord)/subscription")} />
                 </View>
               </View>
             </>

@@ -2,24 +2,26 @@ import React from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable, Text, TextInput, View } from "react-native";
 import PublicPageShell from "@/components/PublicPageShell";
+import { createAdminNotification } from "@/lib/appNotifications";
+import { goBackOrFallback } from "@/lib/navigation";
 import { supabase } from "@/lib/supabase";
 
 type SupportType = "report_listing" | "message_us" | "suggestion";
 
 export default function SupportPage() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ listing_id?: string; type?: string }>();
+  const params = useLocalSearchParams<{ listing_id?: string; type?: string; subject?: string; prefill?: string; name?: string }>();
 
   const [type, setType] = React.useState<SupportType>(
     params.type === "report_listing" || params.type === "suggestion" || params.type === "message_us"
       ? params.type
       : "message_us",
   );
-  const [subject, setSubject] = React.useState("");
-  const [message, setMessage] = React.useState("");
+  const [subject, setSubject] = React.useState(params.subject ? String(params.subject) : "");
+  const [message, setMessage] = React.useState(params.prefill ? String(params.prefill) : "");
   const [email, setEmail] = React.useState("");
   const [phone, setPhone] = React.useState("");
-  const [name, setName] = React.useState("");
+  const [name, setName] = React.useState(params.name ? String(params.name) : "");
   const [sending, setSending] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
 
@@ -54,8 +56,19 @@ export default function SupportPage() {
       });
 
       if (error) throw error;
+      try {
+        await createAdminNotification({
+          title: "New support ticket",
+          message: `${type.replace(/_/g, " ")} ticket submitted${subject.trim() ? `: ${subject.trim()}` : "."}`,
+          type: "support_ticket_created",
+          priority: "important",
+          data: { ticketType: type, listingId: listingId ? String(listingId) : null },
+        });
+      } catch {
+        // Support request creation should not fail because admin notification delivery failed.
+      }
       setMsg("Submitted. Thank you, we'll review it.");
-      setTimeout(() => router.back(), 700);
+      setTimeout(() => goBackOrFallback(router, "/"), 700);
     } catch (e: any) {
       setMsg(e?.message || "Failed to submit. Try again.");
     } finally {

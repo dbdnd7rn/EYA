@@ -18,9 +18,8 @@ export default function OfflineBanner() {
       }}
     >
       <Text style={{ color: "#b0003a", fontWeight: "800", textAlign: "center", fontSize: 12 }}>
-        Offline mode: cached pages and rooms are available. Login, chat, and sync need internet.
+        Offline mode: cached screens are available across student, seller, and agent flows. Payments, image uploads, and live sync still need internet.
       </Text>
     </View>
   );
 }
-
