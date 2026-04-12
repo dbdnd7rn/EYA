@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { CirclePlus, LogOut, PencilLine, Search, Trash2 } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
 import { useSellerWorkspace } from "@/components/seller/useSellerWorkspace";
@@ -32,6 +32,7 @@ const PREVIEW_PRODUCTS: PreviewProduct[] = [
 
 export default function SellerProductsPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const { signOut } = useAuth();
   const { workspace, archiveProduct, setProductActive, metrics } = useSellerWorkspace();
   const [query, setQuery] = useState("");
@@ -40,9 +41,12 @@ export default function SellerProductsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [metaMap, setMetaMap] = useState<Record<string, { category?: string | null; promotion?: { title: string; type: "percent" | "flat"; value: number; active: boolean } | null } | null>>({});
   const inputRef = useRef<TextInput | null>(null);
+  const isOpenFlow = pathname.startsWith("/sell/");
+  const setupRoute = isOpenFlow ? "/sell/setup" : "/(market)/setup";
+  const addProductRoute = isOpenFlow ? "/sell/add-product" : "/(market)/add-product";
 
   const sourceProducts = workspace.hasVendor ? workspace.products : PREVIEW_PRODUCTS;
-  const goToSetup = () => router.push("/(market)/setup");
+  const goToSetup = () => router.push(setupRoute);
 
   const rows = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -98,7 +102,7 @@ export default function SellerProductsPage() {
       goToSetup();
       return;
     }
-    router.push({ pathname: "/(market)/add-product", params: { itemId: productId } });
+    router.push({ pathname: addProductRoute, params: { itemId: productId } });
   };
 
   const toggleProductVisibility = async (productId: string, isActive: boolean) => {
@@ -143,12 +147,12 @@ export default function SellerProductsPage() {
       <SoftPageGlow variant="home" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topRow}>
-          <Text style={styles.pageTitle}>Products</Text>
+          <Text style={styles.pageTitle}>Edit listings</Text>
           <View style={styles.topActions}>
             <Pressable style={styles.iconCircle} onPress={() => inputRef.current?.focus()}>
               <Search size={18} color="#0e2756" />
             </Pressable>
-            <Pressable style={styles.iconCircle} onPress={() => (workspace.hasVendor ? router.push("/(market)/add-product") : goToSetup())}>
+            <Pressable style={styles.iconCircle} onPress={() => (workspace.hasVendor ? router.push(addProductRoute) : goToSetup())}>
               <CirclePlus size={18} color="#0e2756" />
             </Pressable>
             <Pressable

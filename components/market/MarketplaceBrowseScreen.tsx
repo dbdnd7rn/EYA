@@ -209,8 +209,9 @@ export default function MarketplaceBrowseScreen({ detailRoute }: Props) {
   const messageRoute = isStudentBrowse ? "/(student)/(tabs)/messages" : "/(market)/buyers";
   const locationRoute = isStudentBrowse ? "/(student)/address" : "/(market)/shop-settings";
   const exploreAllRoute = isStudentBrowse ? "/(student)/market/all-products" : "/(market)/all-products";
+  const showInlineSellerListings = false;
 
-  const openSellerSetup = () => router.push("/sell/setup");
+  const openSellerSetup = () => router.push(sellerWorkspace.hasVendor ? "/sell/products" : "/sell/setup");
   const openSellerEditor = (itemId: string) => router.push({ pathname: "/sell/add-product", params: { itemId } });
   const toggleOwnListing = async (itemId: string, isActive: boolean) => {
     try {
@@ -321,7 +322,7 @@ export default function MarketplaceBrowseScreen({ detailRoute }: Props) {
           <ChevronRight size={18} color="#102a54" />
         </Pressable>
 
-        {isStudentBrowse && sellerWorkspace.hasVendor ? (
+        {showInlineSellerListings ? (
           <View style={styles.manageSection}>
             <View style={styles.sectionHead}>
               <Text style={styles.sectionTitle}>Your listings</Text>

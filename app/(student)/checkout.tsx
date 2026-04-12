@@ -17,6 +17,7 @@ import {
   WalletCards,
 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import MarketPaymentsComingSoonScreen from "@/components/market/MarketPaymentsComingSoonScreen";
 import PaymentBrandLogo from "@/components/payment/PaymentBrandLogo";
 import { formatCacheTime } from "@/lib/offlineCache";
 import { goBackOrFallback } from "@/lib/navigation";
@@ -156,6 +157,11 @@ export default function CheckoutScreen() {
     let active = true;
 
     const loadDraft = async () => {
+      if (mode === "market") {
+        setQuantity(initialQuantity);
+        setDraftLoaded(true);
+        return;
+      }
       const cached = await getCheckoutDraft(user?.id);
       if (!active) return;
       if (cached?.data?.scope === draftScope) {
@@ -174,10 +180,10 @@ export default function CheckoutScreen() {
     return () => {
       active = false;
     };
-  }, [draftScope, initialQuantity, user?.id]);
+  }, [draftScope, initialQuantity, mode, user?.id]);
 
   useEffect(() => {
-    if (!draftLoaded) return;
+    if (mode === "market" || !draftLoaded) return;
     void saveCheckoutDraft(user?.id, {
       scope: draftScope,
       payMethod,
@@ -188,7 +194,23 @@ export default function CheckoutScreen() {
     }).then(() => {
       setDraftSavedAt(Date.now());
     });
-  }, [couponCode, draftLoaded, draftScope, mobileNumber, payMethod, quantity, user?.id]);
+  }, [couponCode, draftLoaded, draftScope, mobileNumber, mode, payMethod, quantity, user?.id]);
+
+  if (isMarketMode) {
+    return (
+      <MarketPaymentsComingSoonScreen
+        audience="buyer"
+        primaryAction={{
+          label: "Back to market",
+          onPress: () => goBackOrFallback(router, "/(student)/(tabs)/marketplace"),
+        }}
+        secondaryAction={{
+          label: "Browse listings",
+          onPress: () => router.replace("/(student)/(tabs)/marketplace"),
+        }}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -253,7 +275,7 @@ export default function CheckoutScreen() {
   };
 
   const payNow = async (options?: { fromMobileMoneyModal?: boolean }) => {
-    const requiresCatalogOrder = mode === "market" || mode === "food";
+    const requiresCatalogOrder = mode === "food";
     if (requiresCatalogOrder && (!isUuid(itemId) || !isUuid(vendorId))) {
       Alert.alert("Item unavailable", "This item is using old preview data. Refresh the catalog and choose a live product.");
       return;
@@ -282,8 +304,8 @@ export default function CheckoutScreen() {
         Alert.alert("Login required", "Please log in again to use wallet balance.");
         return;
       }
-      if (!(mode === "market" || mode === "food") || !itemId || !vendorId) {
-        Alert.alert("Wallet unavailable", "Wallet payments are currently supported for food and market orders only.");
+      if (mode !== "food" || !itemId || !vendorId) {
+        Alert.alert("Wallet unavailable", "Wallet payments are currently supported for food orders only.");
         return;
       }
 
@@ -369,9 +391,9 @@ export default function CheckoutScreen() {
           mode,
           title,
           user_id: user.id,
-          purpose: mode === "market" || mode === "food" ? "campus_market_order" : "stay_reservation",
+          purpose: mode === "food" ? "campus_market_order" : "stay_reservation",
           order:
-            (mode === "market" || mode === "food") && itemId && vendorId
+            mode === "food" && itemId && vendorId
               ? {
                   vendor_id: vendorId,
                   channel,

@@ -267,7 +267,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
             })
           }
         >
-          <Text style={styles.ctaText}>Proceed to cart</Text>
+          <Text style={styles.ctaText}>Payments coming soon</Text>
         </Pressable>
       </View>
     </SafeAreaView>

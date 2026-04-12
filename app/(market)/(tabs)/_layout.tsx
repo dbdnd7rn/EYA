@@ -21,7 +21,7 @@ export default function MarketTabs() {
       <Tabs.Screen name="dashboard" options={{ title: "Dashboard", tabBarIcon: ({ color }) => <LayoutDashboard color={color} /> }} />
       <Tabs.Screen name="orders" options={{ title: "Orders", tabBarIcon: ({ color }) => <ClipboardList color={color} /> }} />
       <Tabs.Screen name="products" options={{ title: "Items", tabBarIcon: ({ color }) => <Package2 color={color} /> }} />
-      <Tabs.Screen name="account" options={{ title: "Wallet", tabBarIcon: ({ color }) => <WalletCards color={color} /> }} />
+      <Tabs.Screen name="account" options={{ title: "Payments", tabBarIcon: ({ color }) => <WalletCards color={color} /> }} />
       <Tabs.Screen name="marketplace" options={{ href: null }} />
     </Tabs>
   );

@@ -64,6 +64,8 @@ export default function AddProductPage() {
   const { workspace, saveProduct, archiveProduct } = useSellerWorkspace();
   const editing = useMemo(() => workspace.products.find((item) => item.id === params.itemId), [params.itemId, workspace.products]);
   const isOpenFlow = pathname.startsWith("/sell/");
+  const productsRoute = isOpenFlow ? "/sell/products" : "/(market)/(tabs)/products";
+  const homeRoute = isOpenFlow ? "/(student)/(tabs)/marketplace" : "/(market)/(tabs)/dashboard";
 
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
@@ -173,7 +175,7 @@ export default function AddProductPage() {
       }
 
       if (editing) {
-        router.replace(isOpenFlow ? "/(student)/(tabs)/marketplace" : "/(market)/(tabs)/products");
+        router.replace(productsRoute);
         return;
       }
 
@@ -212,7 +214,7 @@ export default function AddProductPage() {
             try {
               setSaving(true);
               await archiveProduct(editing.id);
-              router.replace(isOpenFlow ? "/(student)/(tabs)/marketplace" : "/(market)/(tabs)/products");
+              router.replace(productsRoute);
             } catch (err: any) {
               Alert.alert("Delete failed", err?.message ?? "Could not remove this listing.");
             } finally {
@@ -229,7 +231,7 @@ export default function AddProductPage() {
       <SafeAreaView style={styles.root}>
         <SoftPageGlow variant="home" />
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Pressable style={styles.backBtn} onPress={() => router.replace(isOpenFlow ? "/(student)/(tabs)/marketplace" : "/(market)/(tabs)/products")}>
+          <Pressable style={styles.backBtn} onPress={() => router.replace(productsRoute)}>
             <ChevronLeft size={22} color="#102a54" />
           </Pressable>
 
@@ -251,7 +253,7 @@ export default function AddProductPage() {
             <Pressable style={styles.primaryBtn} onPress={resetForm}>
               <Text style={styles.primaryBtnText}>Add another product</Text>
             </Pressable>
-            <Pressable style={styles.secondaryBtn} onPress={() => router.replace(isOpenFlow ? "/(student)/(tabs)/marketplace" : "/(market)/(tabs)/dashboard")}>
+            <Pressable style={styles.secondaryBtn} onPress={() => router.replace(homeRoute)}>
               <Text style={styles.secondaryBtnText}>{isOpenFlow ? "Back to marketplace" : "Go to dashboard"}</Text>
             </Pressable>
           </View>
