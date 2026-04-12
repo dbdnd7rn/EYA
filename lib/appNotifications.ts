@@ -18,7 +18,7 @@ export type AppNotificationType =
   | "trust_report_created"
   | "trust_report_updated";
 
-export type AppNotificationRole = "student" | "vendor" | "agent" | "admin";
+export type AppNotificationRole = "student" | "vendor" | "agent" | "landlord" | "admin";
 
 export type AppNotificationRow = {
   id: string;
@@ -43,7 +43,7 @@ type CreateNotificationInput = {
   data?: Record<string, unknown>;
 };
 
-function uniq(values: Array<string | null | undefined>) {
+function uniq(values: (string | null | undefined)[]) {
   return [...new Set(values.filter((value): value is string => typeof value === "string" && value.trim().length > 0))];
 }
 
@@ -146,6 +146,13 @@ export function notificationHrefForRole(role: AppNotificationRole, type?: string
   if (role === "agent") {
     if (normalized.includes("payment") || normalized.includes("wallet")) return "/(agent)/(tabs)/earnings";
     return "/(agent)/(tabs)/deliveries";
+  }
+
+  if (role === "landlord") {
+    if (normalized.includes("message")) return "/(landlord)/(tabs)/enquiries";
+    if (normalized.includes("payment") || normalized.includes("wallet")) return "/(landlord)/subscription";
+    if (normalized.includes("support")) return "/support";
+    return "/(landlord)/(tabs)/dashboard";
   }
 
   if (normalized.includes("trust")) return "/admin/reports";

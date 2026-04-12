@@ -266,6 +266,7 @@ export default function StudentEnquiryChat() {
 
   const sendText = async () => {
     if (!user || !enquiry || isClosed) return;
+    const studentId = user.id;
     const content = text.trim();
     if (!content) return;
 
@@ -291,11 +292,14 @@ export default function StudentEnquiryChat() {
       setMessages((prev) => (prev.some((m) => m.id === (data as MessageRow).id) ? prev : [...prev, data as MessageRow]));
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
     }
+    await supabase.from("enquiries").update({ status: "new" }).eq("id", enquiry.id).eq("student_id", studentId);
+    setEnquiry((prev) => (prev ? { ...prev, status: "new" } : prev));
     setText("");
   };
 
   const pickAndSendImage = async () => {
     if (!user || !enquiry || isClosed) return;
+    const studentId = user.id;
 
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
@@ -333,6 +337,8 @@ export default function StudentEnquiryChat() {
         setMessages((prev) => (prev.some((m) => m.id === (data as MessageRow).id) ? prev : [...prev, data as MessageRow]));
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
       }
+      await supabase.from("enquiries").update({ status: "new" }).eq("id", enquiry.id).eq("student_id", studentId);
+      setEnquiry((prev) => (prev ? { ...prev, status: "new" } : prev));
     } catch (e: any) {
       const msg = String(e?.message ?? "Image upload failed.");
       if (msg.toLowerCase().includes("heic")) {
@@ -349,7 +355,8 @@ export default function StudentEnquiryChat() {
   };
 
   const sendCallSignal = async (kind: "invite" | "accept" | "decline", callId: string) => {
-    if (!enquiry) return false;
+    if (!user || !enquiry) return false;
+    const studentId = user.id;
     const { data, error } = await supabase
       .from("messages")
       .insert({
@@ -374,6 +381,8 @@ export default function StudentEnquiryChat() {
       setMessages((prev) => (prev.some((m) => m.id === (data as MessageRow).id) ? prev : [...prev, data as MessageRow]));
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
     }
+    await supabase.from("enquiries").update({ status: "new" }).eq("id", enquiry.id).eq("student_id", studentId);
+    setEnquiry((prev) => (prev ? { ...prev, status: "new" } : prev));
     return true;
   };
 

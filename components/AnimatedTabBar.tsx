@@ -19,6 +19,11 @@ export type AnimatedTabTheme = {
   glowColor: string;
   sceneBackgroundColor: string;
   blurTint?: "light" | "dark" | "default";
+  floatingTabName?: string;
+  floatingTabBackgroundColor?: string;
+  floatingTabIconColor?: string;
+  floatingTabBorderColor?: string;
+  floatingTabShadowColor?: string;
 };
 
 type Props = BottomTabBarProps & {
@@ -43,6 +48,9 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
     0,
     visibleRoutes.findIndex((route) => route.key === activeRouteKey),
   );
+  const hasFloatingTab = Boolean(theme.floatingTabName && visibleRoutes.some((route) => route.name === theme.floatingTabName));
+  const activeVisibleRoute = visibleRoutes[activeVisibleIndex];
+  const activeRouteIsFloating = activeVisibleRoute?.name === theme.floatingTabName;
   const [barWidth, setBarWidth] = React.useState(0);
   const tabCount = visibleRoutes.length || 1;
   const tabWidth = barWidth > 0 ? barWidth / tabCount : 0;
@@ -58,7 +66,7 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
 
   const indicatorStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: indicatorX.value }],
-    opacity: tabWidth > 0 ? 1 : 0,
+    opacity: tabWidth > 0 && !activeRouteIsFloating ? 1 : 0,
   }));
 
   return (
@@ -67,6 +75,7 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
         onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
         style={[
           styles.shell,
+          hasFloatingTab && styles.shellFloating,
           {
             backgroundColor: theme.backgroundColor,
             borderColor: theme.borderColor,
@@ -87,9 +96,10 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
           ]}
         />
 
-        {visibleRoutes.map((route, index) => {
+        {visibleRoutes.map((route) => {
           const descriptor = descriptors[route.key];
           const { options } = descriptor;
+          const isFloating = route.name === theme.floatingTabName;
           const label =
             typeof options.tabBarLabel === "string"
               ? options.tabBarLabel
@@ -97,19 +107,29 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
                 ? options.title
                 : route.name;
           const isFocused = activeRouteKey === route.key;
+          const iconColor = isFloating
+            ? theme.floatingTabIconColor ?? "#fff"
+            : isFocused
+              ? theme.activeColor
+              : theme.inactiveColor;
 
           return (
             <TabBarItem
               key={route.key}
               badge={options.tabBarBadge as TabBadge}
+              floatingBorderColor={theme.floatingTabBorderColor}
+              floatingButtonColor={theme.floatingTabBackgroundColor}
+              floatingShadowColor={theme.floatingTabShadowColor ?? theme.glowColor}
+              hideLabel={isFloating}
               isFocused={isFocused}
+              isFloating={isFloating}
               label={label}
               tabWidth={tabWidth}
               theme={theme}
               icon={options.tabBarIcon?.({
                 focused: isFocused,
-                color: isFocused ? theme.activeColor : theme.inactiveColor,
-                size: 22,
+                color: iconColor,
+                size: isFloating ? 34 : 22,
               })}
               onPress={() => {
                 const event = navigation.emit({
@@ -138,8 +158,13 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
 
 function TabBarItem({
   badge,
+  floatingBorderColor,
+  floatingButtonColor,
+  floatingShadowColor,
+  hideLabel,
   icon,
   isFocused,
+  isFloating,
   label,
   onLongPress,
   onPress,
@@ -147,8 +172,13 @@ function TabBarItem({
   theme,
 }: {
   badge?: TabBadge;
+  floatingBorderColor?: string;
+  floatingButtonColor?: string;
+  floatingShadowColor?: string;
+  hideLabel?: boolean;
   icon: React.ReactNode;
   isFocused: boolean;
+  isFloating?: boolean;
   label: string;
   onLongPress: () => void;
   onPress: () => void;
@@ -166,18 +196,12 @@ function TabBarItem({
   }, [focusProgress, isFocused]);
 
   const animatedStyle = useAnimatedStyle(() => {
-    const color = interpolateColor(
-      focusProgress.value,
-      [0, 1],
-      [theme.inactiveColor, theme.activeColor],
-    );
-
     return {
       transform: [{ scale: pressedScale.value }],
-      shadowOpacity: focusProgress.value * 0.28,
-      shadowRadius: 14 * focusProgress.value,
+      shadowOpacity: isFloating ? 0 : focusProgress.value * 0.28,
+      shadowRadius: isFloating ? 0 : 14 * focusProgress.value,
       shadowColor: theme.glowColor,
-      elevation: 7 * focusProgress.value,
+      elevation: isFloating ? 0 : 7 * focusProgress.value,
     };
   });
 
@@ -194,6 +218,7 @@ function TabBarItem({
     <Animated.View
       style={[
         styles.itemWrap,
+        isFloating && styles.itemWrapFloating,
         animatedStyle,
         {
           width: tabWidth || undefined,
@@ -211,7 +236,15 @@ function TabBarItem({
           pressedScale.value = withSpring(1, { damping: 12, stiffness: 220 });
         }}
         onPress={onPress}
-        style={styles.pressable}
+        style={[
+          styles.pressable,
+          isFloating && styles.pressableFloating,
+          isFloating && {
+            backgroundColor: floatingButtonColor ?? theme.activeColor,
+            borderColor: floatingBorderColor ?? "#fff",
+            shadowColor: floatingShadowColor ?? theme.glowColor,
+          },
+        ]}
       >
         <View style={styles.iconWrap}>{icon}</View>
         {badge ? (
@@ -221,9 +254,11 @@ function TabBarItem({
             </Animated.Text>
           </View>
         ) : null}
-        <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
-          {label}
-        </Animated.Text>
+        {!hideLabel ? (
+          <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
+            {label}
+          </Animated.Text>
+        ) : null}
       </Pressable>
     </Animated.View>
   );
@@ -240,7 +275,13 @@ export function createTabScreenOptions(theme: AnimatedTabTheme) {
 }
 
 export function renderAnimatedTabBar(theme: AnimatedTabTheme, visibleTabNames?: string[]) {
-  return (props: BottomTabBarProps) => <AnimatedTabBar {...props} theme={theme} visibleTabNames={visibleTabNames} />;
+  function AnimatedTabBarRenderer(props: BottomTabBarProps) {
+    return <AnimatedTabBar {...props} theme={theme} visibleTabNames={visibleTabNames} />;
+  }
+
+  AnimatedTabBarRenderer.displayName = "AnimatedTabBarRenderer";
+
+  return AnimatedTabBarRenderer;
 }
 
 const styles = StyleSheet.create({
@@ -264,6 +305,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 10,
   },
+  shellFloating: {
+    overflow: "visible",
+    paddingTop: 2,
+  },
   indicator: {
     position: "absolute",
     top: 8,
@@ -279,6 +324,11 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     shadowOffset: { width: 0, height: 0 },
   },
+  itemWrapFloating: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: -34,
+  },
   pressable: {
     minHeight: 66,
     borderRadius: 28,
@@ -287,6 +337,18 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 10,
     paddingVertical: 8,
+  },
+  pressableFloating: {
+    width: 88,
+    minHeight: 88,
+    borderRadius: 44,
+    borderWidth: 6,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    shadowOpacity: 0.32,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
   },
   iconWrap: {
     minHeight: 24,

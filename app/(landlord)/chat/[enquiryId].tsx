@@ -223,6 +223,7 @@ export default function LandlordEnquiryChatClient() {
 
   const sendText = async () => {
     if (!user || !enquiry || isClosed) return;
+    const landlordId = user.id;
     const clean = text.trim();
     if (!clean) return;
 
@@ -253,11 +254,14 @@ export default function LandlordEnquiryChatClient() {
       setMessages((prev) => (prev.some((m) => m.id === (data as MessageRow).id) ? prev : [...prev, data as MessageRow]));
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
     }
+    await supabase.from("enquiries").update({ status: "replied" }).eq("id", enquiry.id).eq("landlord_id", landlordId);
+    setEnquiry((prev) => (prev ? { ...prev, status: "replied" } : prev));
     setText("");
   };
 
   const pickAndSendImage = async () => {
     if (!user || !enquiry || isClosed) return;
+    const landlordId = user.id;
 
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
@@ -295,6 +299,8 @@ export default function LandlordEnquiryChatClient() {
         setMessages((prev) => (prev.some((m) => m.id === (data as MessageRow).id) ? prev : [...prev, data as MessageRow]));
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
       }
+      await supabase.from("enquiries").update({ status: "replied" }).eq("id", enquiry.id).eq("landlord_id", landlordId);
+      setEnquiry((prev) => (prev ? { ...prev, status: "replied" } : prev));
     } catch (e: any) {
       const msg = String(e?.message ?? "Image upload failed.");
       if (msg.toLowerCase().includes("heic")) {
@@ -309,7 +315,8 @@ export default function LandlordEnquiryChatClient() {
   };
 
   const sendCallSignal = async (kind: "invite" | "accept" | "decline", callId: string) => {
-    if (!enquiry) return false;
+    if (!user || !enquiry) return false;
+    const landlordId = user.id;
     const { data, error } = await supabase
       .from("messages")
       .insert({
@@ -334,6 +341,8 @@ export default function LandlordEnquiryChatClient() {
       setMessages((prev) => (prev.some((m) => m.id === (data as MessageRow).id) ? prev : [...prev, data as MessageRow]));
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
     }
+    await supabase.from("enquiries").update({ status: "replied" }).eq("id", enquiry.id).eq("landlord_id", landlordId);
+    setEnquiry((prev) => (prev ? { ...prev, status: "replied" } : prev));
     return true;
   };
 

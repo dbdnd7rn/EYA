@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,9 +13,19 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import TopNav from "@/components/TopNav";
+import {
+  Bell,
+  ChevronRight,
+  CreditCard,
+  Ellipsis,
+  House,
+  LogOut,
+  Settings,
+  Shield,
+} from "lucide-react-native";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
+import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
 
 type ProfileRow = {
   id?: string;
@@ -24,57 +35,77 @@ type ProfileRow = {
   surname?: string | null;
   email?: string | null;
   phone?: string | null;
+  avatar_url?: string | null;
   role?: "student" | "landlord" | "admin" | string | null;
   created_at?: string | null;
 };
 
-type VerificationRow = {
-  id: string;
-  status: "none" | "pending" | "verified" | "rejected" | "expired";
-  requested_at: string | null;
-  verified_at: string | null;
-  expires_at: string | null;
-  rejection_reason: string | null;
-};
-
-function fmtDate(d?: string | null) {
-  if (!d) return "-";
-  const dt = new Date(d);
-  if (Number.isNaN(dt.getTime())) return d;
-  return dt.toLocaleDateString();
+function initials(name?: string | null) {
+  const clean = (name ?? "").trim();
+  if (!clean) return "LL";
+  const parts = clean.split(/\s+/).filter(Boolean);
+  const a = parts[0]?.[0] ?? "L";
+  const b = parts[1]?.[0] ?? "L";
+  return `${a}${b}`.toUpperCase();
 }
 
-function verificationBadge(status: VerificationRow["status"]) {
-  if (status === "verified") return { label: "VERIFIED", bg: "#0e2756" };
-  if (status === "pending") return { label: "PENDING", bg: "#ff0f64" };
-  if (status === "rejected") return { label: "REJECTED", bg: "#b0003a" };
-  if (status === "expired") return { label: "EXPIRED", bg: "#5f6b85" };
-  return { label: "NOT REQUESTED", bg: "#5f6b85" };
+function MenuRow({
+  accent,
+  badge,
+  icon,
+  label,
+  onPress,
+  subtitle,
+}: {
+  accent: string;
+  badge?: string | null;
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+  subtitle?: string;
+}) {
+  return (
+    <Pressable style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]} onPress={onPress}>
+      <View style={[styles.menuIconWrap, { backgroundColor: accent }]}>{icon}</View>
+      <View style={styles.menuCopy}>
+        <Text style={styles.menuLabel}>{label}</Text>
+        {subtitle ? <Text style={styles.menuSub}>{subtitle}</Text> : null}
+      </View>
+      {badge ? (
+        <View style={styles.menuBadge}>
+          <Text style={styles.menuBadgeText}>{badge}</Text>
+        </View>
+      ) : null}
+      <ChevronRight size={20} color="#7b83a7" />
+    </Pressable>
+  );
+}
+
+function Notice({ tone, text }: { tone: "error" | "ok"; text: string }) {
+  return (
+    <View style={[styles.notice, tone === "error" ? styles.noticeError : styles.noticeOk]}>
+      <Text style={[styles.noticeText, tone === "error" ? styles.noticeTextError : styles.noticeTextOk]}>{text}</Text>
+    </View>
+  );
 }
 
 export default function LandlordProfileScreen() {
-  const { user, role, signOut } = useAuth();
+  const { user, signOut } = useAuth();
+  const { unreadCount } = useNotificationInbox();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [requestingVer, setRequestingVer] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
-  const [verification, setVerification] = useState<VerificationRow | null>(null);
-
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const currentRole = String(profile?.role ?? role ?? "landlord");
-  const verStatus = (verification?.status ?? "none") as VerificationRow["status"];
-  const verBadge = verificationBadge(verStatus);
-
   const displayEmail = profile?.email ?? user?.email ?? "-";
-  const memberSince = profile?.created_at ?? null;
+  const avatarUrl = profile?.avatar_url ?? null;
 
   const derivedName = useMemo(() => {
     const joined =
@@ -82,18 +113,6 @@ export default function LandlordProfileScreen() {
       `${profile?.first_name ?? ""} ${profile?.last_name ?? profile?.surname ?? ""}`.trim();
     return (joined ?? "").trim() || "Landlord";
   }, [profile]);
-
-  const loadVerification = async (userId: string) => {
-    const { data, error } = await supabase
-      .from("landlord_verifications")
-      .select("id, status, requested_at, verified_at, expires_at, rejection_reason")
-      .eq("landlord_id", userId)
-      .order("requested_at", { ascending: false })
-      .limit(1);
-
-    if (error) throw new Error(error.message);
-    setVerification((data?.[0] as VerificationRow) ?? null);
-  };
 
   useEffect(() => {
     if (!user) return;
@@ -105,10 +124,10 @@ export default function LandlordProfileScreen() {
         setMsg(null);
 
         const attempts = [
-          "id,full_name,email,phone,role,created_at",
-          "id,first_name,last_name,email,phone,role,created_at",
-          "id,first_name,surname,email,phone,role,created_at",
-          "id,full_name,phone,role,created_at",
+          "id,full_name,email,phone,role,created_at,avatar_url",
+          "id,first_name,last_name,email,phone,role,created_at,avatar_url",
+          "id,first_name,surname,email,phone,role,created_at,avatar_url",
+          "id,full_name,phone,role,created_at,avatar_url",
         ];
 
         let profileData: ProfileRow | null = null;
@@ -137,14 +156,6 @@ export default function LandlordProfileScreen() {
           `${profileData.first_name ?? ""} ${profileData.last_name ?? profileData.surname ?? ""}`.trim();
         setFullName((initialName ?? "").trim());
         setPhone((profileData.phone ?? "").trim());
-
-        try {
-          await loadVerification(user.id);
-        } catch (e: any) {
-          setErr((prev) => prev ?? e?.message ?? "Could not load verification.");
-          setVerification(null);
-        }
-
         setLoading(false);
       } catch (e: any) {
         setErr(e?.message ?? "Something went wrong");
@@ -152,7 +163,7 @@ export default function LandlordProfileScreen() {
       }
     };
 
-    load();
+    void load();
   }, [user?.id]);
 
   const handleSave = async () => {
@@ -185,7 +196,6 @@ export default function LandlordProfileScreen() {
       .eq("id", user.id);
 
     if (fullNameUpdate.error) {
-      // Schema fallback for installs that don't have full_name.
       const parts = cleanName.split(/\s+/).filter(Boolean);
       const first = parts.shift() ?? cleanName;
       const rest = parts.join(" ") || null;
@@ -206,40 +216,22 @@ export default function LandlordProfileScreen() {
     setProfile((prev) => ({ ...(prev ?? {}), full_name: cleanName, phone: cleanPhone || null }));
     setMsg("Profile updated successfully.");
     setSaving(false);
+    setEditorOpen(false);
   };
 
-  const requestVerification = async () => {
-    if (!user) return;
-    setRequestingVer(true);
-    setErr(null);
-    setMsg(null);
+  const openQuickActions = () => {
+    Alert.alert("Quick actions", "Choose what to open.", [
+      { text: "My listings", onPress: () => router.push("/(landlord)/(tabs)/listings") },
+      { text: "Enquiries", onPress: () => router.push("/(landlord)/(tabs)/enquiries") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
 
-    if (verStatus === "pending") {
-      setMsg("Your verification is already pending.");
-      setRequestingVer(false);
-      return;
-    }
-    if (verStatus === "verified") {
-      setMsg("You are already verified.");
-      setRequestingVer(false);
-      return;
-    }
-
-    const { error } = await supabase.from("landlord_verifications").insert({
-      landlord_id: user.id,
-      status: "pending",
-      requested_at: new Date().toISOString(),
-    });
-
-    if (error) {
-      setErr(error.message);
-      setRequestingVer(false);
-      return;
-    }
-
-    await loadVerification(user.id);
-    setMsg("Verification request sent.");
-    setRequestingVer(false);
+  const openSecurity = () => {
+    Alert.alert(
+      "Account security",
+      "Password and email access are managed through your login account. Use Settings here to update your landlord contact details.",
+    );
   };
 
   const logout = () => {
@@ -259,227 +251,431 @@ export default function LandlordProfileScreen() {
     ]);
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbLeft]} />
+        <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbRight]} />
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#ff0f64" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.root}>
-      <TopNav title="Landlord profile" />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.h1}>Landlord profile</Text>
-              <Text style={styles.sub}>Manage your landlord identity and verification.</Text>
+      <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbLeft]} />
+      <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbRight]} />
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.headerRow}>
+          <Text style={styles.h1}>Profile</Text>
+          <Pressable style={styles.menuBtn} onPress={openQuickActions}>
+            <Ellipsis size={22} color="#646d92" />
+          </Pressable>
+        </View>
+
+        <View style={styles.profileHero}>
+          <View style={styles.avatarShell}>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Text style={styles.avatarFallbackText}>{initials(derivedName)}</Text>
+              </View>
+            )}
+            <View style={styles.avatarBadge}>
+              <House size={16} color="#fff" />
             </View>
-            <Pressable style={styles.logoutBtn} onPress={logout}>
-              <Text style={styles.logoutText}>Log out</Text>
-            </Pressable>
           </View>
 
-          {loading ? (
-            <View style={{ gap: 10, marginTop: 12 }}>
-              <View style={styles.skeleton} />
-              <View style={styles.skeleton} />
-              <View style={[styles.skeleton, { height: 80 }]} />
-            </View>
-          ) : (
-            <>
-              {err ? <Notice tone="error" text={err} /> : null}
-              {msg ? <Notice tone="ok" text={msg} /> : null}
-
-              <View style={styles.statusRow}>
-                <Text style={[styles.badge, { backgroundColor: verBadge.bg }]}>{verBadge.label}</Text>
-                <Text style={[styles.badge, { backgroundColor: "#0e2756" }]}>FREE ACCESS</Text>
-                <Text style={styles.badgeSoft}>Role: {currentRole}</Text>
-              </View>
-
-              <View style={styles.section}>
-                <Text style={styles.label}>Account email</Text>
-                <View style={styles.readBox}><Text style={styles.readText}>{displayEmail}</Text></View>
-              </View>
-
-              <View style={styles.section}>
-                <Text style={styles.label}>Full name</Text>
-                <TextInput
-                  value={fullName}
-                  onChangeText={setFullName}
-                  placeholder="e.g. Your name"
-                  placeholderTextColor="#9aa3bd"
-                  style={styles.input}
-                />
-              </View>
-
-              <View style={styles.section}>
-                <Text style={styles.label}>Phone (WhatsApp)</Text>
-                <TextInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="e.g. +265991234567"
-                  placeholderTextColor="#9aa3bd"
-                  keyboardType="phone-pad"
-                  style={styles.input}
-                />
-                <Text style={styles.helper}>Use +265 format so students can contact you easily.</Text>
-              </View>
-
-              <View style={styles.grid2}>
-                <InfoTile title="Member since" value={fmtDate(memberSince)} />
-                <InfoTile
-                  title="Access"
-                  value="Free for all landlords"
-                  sub="Unlimited create, edit, and photos"
-                />
-              </View>
-
-              <View style={styles.verCard}>
-                <Text style={styles.verTitle}>Verification</Text>
-                <Text style={styles.verSub}>Verified landlords can rank higher and build student trust.</Text>
-
-                <View style={styles.grid3}>
-                  <InfoTile title="Status" value={verStatus} compact />
-                  <InfoTile title="Requested" value={fmtDate(verification?.requested_at ?? null)} compact />
-                  <InfoTile title="Expires" value={fmtDate(verification?.expires_at ?? null)} compact />
-                </View>
-
-                {verification?.rejection_reason ? (
-                  <View style={styles.rejectBox}>
-                    <Text style={styles.rejectText}>Rejection reason: {verification.rejection_reason}</Text>
-                  </View>
-                ) : null}
-
-                <View style={styles.verActions}>
-                  <Pressable style={styles.softBtn} onPress={requestVerification} disabled={requestingVer}>
-                    <Text style={styles.softBtnText}>{requestingVer ? "Requesting..." : "Request verification"}</Text>
-                  </Pressable>
-                  <Text style={styles.helper}>After requesting, we will review your documents.</Text>
-                </View>
-              </View>
-
-              <View style={styles.actionsWrap}>
-                <Pressable style={[styles.primaryBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
-                  <Text style={styles.primaryBtnText}>{saving ? "Saving..." : "Save changes"}</Text>
-                </Pressable>
-
-                <View style={styles.quickActions}>
-                  <QuickAction label="My listings" onPress={() => router.push("/(landlord)/(tabs)/listings")} />
-                  <QuickAction label="Enquiries" onPress={() => router.push("/(landlord)/(tabs)/enquiries")} />
-                  <QuickAction label="Create listing" onPress={() => router.push("/(landlord)/(tabs)/create")} />
-                </View>
-              </View>
-            </>
-          )}
+          <View style={styles.profileCopy}>
+            <Text numberOfLines={1} style={styles.name}>
+              {derivedName}
+            </Text>
+            <Text numberOfLines={1} style={styles.email}>
+              {displayEmail}
+            </Text>
+          </View>
         </View>
+
+        {err ? <Notice tone="error" text={err} /> : null}
+        {msg ? <Notice tone="ok" text={msg} /> : null}
+
+        <View style={styles.menuList}>
+          <MenuRow
+            accent="#ffe9f3"
+            icon={<CreditCard size={20} color="#ff0f64" />}
+            label="Payments & Payouts"
+            onPress={() => router.push("/(landlord)/subscription")}
+            subtitle="Access and payout setup"
+          />
+
+          <MenuRow
+            accent="#eef1ff"
+            badge={unreadCount ? (unreadCount > 99 ? "99+" : String(unreadCount)) : null}
+            icon={<Bell size={20} color="#3354b8" />}
+            label="Notifications"
+            onPress={() => router.push("/(landlord)/notifications")}
+            subtitle="Alerts and landlord updates"
+          />
+
+          <MenuRow
+            accent="#e8f7f4"
+            icon={<Shield size={20} color="#0f5f7c" />}
+            label="Account Security"
+            onPress={openSecurity}
+            subtitle="Login and account protection"
+          />
+
+          <MenuRow
+            accent="#eef1ff"
+            icon={<Settings size={20} color="#4b5eaa" />}
+            label="Settings"
+            onPress={() => setEditorOpen((current) => !current)}
+            subtitle={editorOpen ? "Hide profile editor" : "Edit profile and landlord tools"}
+          />
+        </View>
+
+        {editorOpen ? (
+          <View style={styles.editorCard}>
+            <Text style={styles.editorTitle}>Profile settings</Text>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Full name</Text>
+              <TextInput
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="e.g. Your name"
+                placeholderTextColor="#9aa3bd"
+                style={styles.input}
+              />
+            </View>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Phone (WhatsApp)</Text>
+              <TextInput
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="e.g. +265991234567"
+                placeholderTextColor="#9aa3bd"
+                keyboardType="phone-pad"
+                style={styles.input}
+              />
+            </View>
+
+            <Pressable style={[styles.saveBtn, saving && styles.saveBtnDisabled]} onPress={handleSave} disabled={saving}>
+              <Text style={styles.saveBtnText}>{saving ? "Saving..." : "Save changes"}</Text>
+            </Pressable>
+
+            <View style={styles.quickActionRow}>
+              <Pressable style={styles.quickChip} onPress={() => router.push("/(landlord)/(tabs)/listings")}>
+                <Text style={styles.quickChipText}>My listings</Text>
+              </Pressable>
+              <Pressable style={styles.quickChip} onPress={() => router.push("/(landlord)/(tabs)/enquiries")}>
+                <Text style={styles.quickChipText}>Enquiries</Text>
+              </Pressable>
+              <Pressable style={styles.quickChip} onPress={() => router.push("/(landlord)/(tabs)/create")}>
+                <Text style={styles.quickChipText}>Create listing</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        <Pressable style={styles.logoutPill} onPress={logout}>
+          <LogOut size={16} color="#ff0f64" />
+          <Text style={styles.logoutPillText}>Log Out</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function QuickAction({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <Pressable style={styles.quickBtn} onPress={onPress}>
-      <Text style={styles.quickBtnText}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function InfoTile({
-  title,
-  value,
-  sub,
-  compact,
-}: {
-  title: string;
-  value: string;
-  sub?: string;
-  compact?: boolean;
-}) {
-  return (
-    <View style={[styles.infoTile, compact && styles.infoTileCompact]}>
-      <Text style={styles.infoLabel}>{title}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
-      {sub ? <Text style={styles.infoSub}>{sub}</Text> : null}
-    </View>
-  );
-}
-
-function Notice({ tone, text }: { tone: "error" | "ok"; text: string }) {
-  const box = tone === "error" ? styles.errBox : styles.okBox;
-  const txt = tone === "error" ? styles.errText : styles.okText;
-  return (
-    <View style={box}>
-      <Text style={txt}>{text}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f6f7fb" },
-  content: { padding: 16, paddingBottom: 30 },
-  heroCard: { backgroundColor: "#fff", borderRadius: 20, padding: 14, gap: 12 },
-  heroTop: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
-  h1: { color: "#0e2756", fontWeight: "900", fontSize: 22 },
-  sub: { color: "#5f6b85", fontWeight: "700", fontSize: 12, marginTop: 4 },
-  logoutBtn: { backgroundColor: "#0e2756", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10 },
-  logoutText: { color: "#fff", fontWeight: "900", fontSize: 12 },
-  skeleton: { height: 48, borderRadius: 14, backgroundColor: "#dde6ff" },
-  statusRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
-  badge: {
-    color: "#fff",
+  root: {
+    flex: 1,
+    backgroundColor: "#f8f5ff",
+  },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backgroundOrb: {
+    position: "absolute",
+    borderRadius: 999,
+    opacity: 0.56,
+  },
+  backgroundOrbLeft: {
+    width: 220,
+    height: 220,
+    left: -100,
+    top: 40,
+    backgroundColor: "#efeaff",
+    shadowColor: "#b79bff",
+    shadowOpacity: 0.2,
+    shadowRadius: 40,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  backgroundOrbRight: {
+    width: 260,
+    height: 260,
+    right: -120,
+    bottom: 140,
+    backgroundColor: "#ffe4ef",
+    shadowColor: "#ff6ea8",
+    shadowOpacity: 0.16,
+    shadowRadius: 48,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  content: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 150,
+    gap: 16,
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  h1: {
+    color: "#1f2f68",
+    fontSize: 28,
     fontWeight: "900",
-    fontSize: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    overflow: "hidden",
+    letterSpacing: -0.8,
   },
-  badgeSoft: {
-    color: "#5f6b85",
-    fontWeight: "800",
-    fontSize: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    overflow: "hidden",
-    backgroundColor: "#f6f7fb",
+  menuBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.95)",
     borderWidth: 1,
-    borderColor: "#e1e4ef",
+    borderColor: "#ece8fa",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  section: { gap: 6 },
-  label: { color: "#5f6b85", fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
-  readBox: { backgroundColor: "#f6f7fb", borderRadius: 14, borderWidth: 1, borderColor: "#e1e4ef", paddingHorizontal: 12, paddingVertical: 12 },
-  readText: { color: "#0e2756", fontWeight: "700" },
-  input: {
-    backgroundColor: "#f6f7fb",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#e1e4ef",
-    paddingHorizontal: 12,
+  profileHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  avatarShell: {
+    position: "relative",
+  },
+  avatar: {
+    width: 118,
+    height: 118,
+    borderRadius: 36,
+    backgroundColor: "#ebedf5",
+  },
+  avatarFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dfe7ff",
+  },
+  avatarFallbackText: {
+    color: "#22408a",
+    fontSize: 30,
+    fontWeight: "900",
+  },
+  avatarBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#ff0f64",
+    borderWidth: 4,
+    borderColor: "#f8f5ff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  name: {
+    color: "#1f2f68",
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+  },
+  email: {
+    color: "#7a82a4",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  notice: {
+    borderRadius: 18,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    color: "#0e2756",
+    borderWidth: 1,
+  },
+  noticeError: {
+    backgroundColor: "#fff1f7",
+    borderColor: "#ffd2e5",
+  },
+  noticeOk: {
+    backgroundColor: "#f0fff6",
+    borderColor: "#c7f5d8",
+  },
+  noticeText: {
+    fontWeight: "800",
+  },
+  noticeTextError: {
+    color: "#b0003a",
+  },
+  noticeTextOk: {
+    color: "#0b6b2f",
+  },
+  menuList: {
+    gap: 14,
+  },
+  menuRow: {
+    minHeight: 88,
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: "#ebe7fb",
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    shadowColor: "#c9c0ea",
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  menuRowPressed: {
+    opacity: 0.9,
+  },
+  menuIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  menuLabel: {
+    color: "#1f2f68",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  menuSub: {
+    color: "#7c84a7",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  menuBadge: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#ff0f64",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  menuBadgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  editorCard: {
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: "#ebe7fb",
+    padding: 18,
+    gap: 14,
+    shadowColor: "#c9c0ea",
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  editorTitle: {
+    color: "#1f2f68",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  fieldWrap: {
+    gap: 6,
+  },
+  fieldLabel: {
+    color: "#5f6d9a",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  input: {
+    backgroundColor: "#f8f7ff",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e2def1",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    color: "#1f2f68",
     fontWeight: "700",
   },
-  helper: { color: "#5f6b85", fontSize: 11, fontWeight: "600" },
-  grid2: { gap: 10 },
-  grid3: { gap: 10, marginTop: 10 },
-  infoTile: { backgroundColor: "#f6f7fb", borderRadius: 14, borderWidth: 1, borderColor: "#e1e4ef", paddingHorizontal: 12, paddingVertical: 12 },
-  infoTileCompact: { backgroundColor: "#fff", borderColor: "#eef1fb" },
-  infoLabel: { color: "#5f6b85", fontSize: 10, fontWeight: "900", textTransform: "uppercase" },
-  infoValue: { color: "#0e2756", fontWeight: "800", marginTop: 3 },
-  infoSub: { color: "#5f6b85", fontSize: 11, marginTop: 3, fontWeight: "600" },
-  verCard: { backgroundColor: "#f6f7fb", borderRadius: 16, borderWidth: 1, borderColor: "#e1e4ef", padding: 12, gap: 8 },
-  verTitle: { color: "#0e2756", fontWeight: "900", fontSize: 15 },
-  verSub: { color: "#5f6b85", fontWeight: "600", fontSize: 12 },
-  rejectBox: { borderWidth: 1, borderColor: "#ffd4e3", backgroundColor: "#fff0f6", borderRadius: 14, padding: 10, marginTop: 2 },
-  rejectText: { color: "#b0003a", fontWeight: "700" },
-  verActions: { gap: 8, marginTop: 2 },
-  softBtn: { backgroundColor: "#fff", borderRadius: 14, paddingVertical: 11, alignItems: "center", borderWidth: 1, borderColor: "#e1e4ef" },
-  softBtnText: { color: "#0e2756", fontWeight: "900", fontSize: 12 },
-  actionsWrap: { gap: 10 },
-  primaryBtn: { backgroundColor: "#ff0f64", borderRadius: 14, paddingVertical: 13, alignItems: "center" },
-  primaryBtnText: { color: "#fff", fontWeight: "900" },
-  quickActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  quickBtn: { backgroundColor: "#fff", borderRadius: 14, paddingVertical: 11, paddingHorizontal: 12, borderWidth: 1, borderColor: "#e1e4ef" },
-  quickBtnText: { color: "#0e2756", fontWeight: "800", fontSize: 12 },
-  errBox: { borderWidth: 1, borderColor: "#ffd4e3", backgroundColor: "#fff0f6", borderRadius: 14, padding: 10, marginTop: 4 },
-  errText: { color: "#b0003a", fontWeight: "800" },
-  okBox: { borderWidth: 1, borderColor: "#c7f5d8", backgroundColor: "#f0fff6", borderRadius: 14, padding: 10, marginTop: 4 },
-  okText: { color: "#0b6b2f", fontWeight: "800" },
+  saveBtn: {
+    backgroundColor: "#ff0f64",
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  saveBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  quickActionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  quickChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#e2def1",
+    backgroundColor: "#fbfbff",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  quickChipText: {
+    color: "#1f2f68",
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  logoutPill: {
+    alignSelf: "center",
+    minHeight: 50,
+    borderRadius: 999,
+    backgroundColor: "#fff0f6",
+    borderWidth: 1,
+    borderColor: "#ffd2e5",
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  logoutPillText: {
+    color: "#ff0f64",
+    fontSize: 15,
+    fontWeight: "900",
+  },
 });
