@@ -580,8 +580,12 @@ function matchesQuery(query: string, ...values: unknown[]) {
   return values.some((value) => String(value ?? "").toLowerCase().includes(normalized));
 }
 
-function settledValue<T>(result: PromiseSettledResult<T>, fallback: T) {
-  return result.status === "fulfilled" ? result.value : fallback;
+async function loadAdminSource<T>(promise: PromiseLike<T>, fallback: T): Promise<T> {
+  try {
+    return await promise;
+  } catch {
+    return fallback;
+  }
 }
 
 export default function AdminPortalPage() {
@@ -635,41 +639,44 @@ export default function AdminPortalPage() {
     setRefreshing(true);
     try {
       const [
-        orderResult,
-        paymentResult,
-        userResult,
-        vendorResult,
-        catalogResult,
-        housingResult,
-        supportResult,
-        reportResult,
-        applicationResult,
+        nextOrders,
+        nextPayments,
+        nextUsers,
+        nextVendors,
+        nextCatalog,
+        nextHousing,
+        nextSupportTickets,
+        nextTrustReports,
+        nextRoleApplications,
         driverResult,
-      ] = await Promise.allSettled([
-        listAdminOrders({ userId: user.id, accessToken, limit: 200 }),
-        listAdminPayments({ userId: user.id, accessToken, limit: 200 }),
-        listAdminUsers({ userId: user.id, accessToken, limit: 240 }),
-        listAdminVendors({ userId: user.id, accessToken, limit: 240 }),
-        listAdminCatalogItems({ userId: user.id, accessToken, limit: 260 }),
-        listAdminHousingListings({ userId: user.id, accessToken, limit: 260 }),
-        listAdminSupportTickets({ userId: user.id, accessToken, limit: 200 }),
-        listTrustSafetyReportsForAdmin(),
-        listRoleApplicationsForAdmin(),
-        supabase.from("profiles").select("id,full_name,first_name,last_name,email,role").in("role", ["agent", "admin"]).limit(120),
+      ] = await Promise.all([
+        loadAdminSource(listAdminOrders({ userId: user.id, accessToken, limit: 200 }), []),
+        loadAdminSource(listAdminPayments({ userId: user.id, accessToken, limit: 200 }), []),
+        loadAdminSource(listAdminUsers({ userId: user.id, accessToken, limit: 240 }), []),
+        loadAdminSource(listAdminVendors({ userId: user.id, accessToken, limit: 240 }), []),
+        loadAdminSource(listAdminCatalogItems({ userId: user.id, accessToken, limit: 260 }), []),
+        loadAdminSource(listAdminHousingListings({ userId: user.id, accessToken, limit: 260 }), []),
+        loadAdminSource(listAdminSupportTickets({ userId: user.id, accessToken, limit: 200 }), []),
+        loadAdminSource(listTrustSafetyReportsForAdmin(), []),
+        loadAdminSource(listRoleApplicationsForAdmin(), []),
+        loadAdminSource(
+          supabase.from("profiles").select("id,full_name,first_name,last_name,email,role").in("role", ["agent", "admin"]).limit(120),
+          { data: [], error: null, count: null, status: 200, statusText: "OK" },
+        ),
       ]);
 
-      setOrders(settledValue(orderResult, []));
-      setPayments(settledValue(paymentResult, []));
-      setUsers(settledValue(userResult, []));
-      setVendors(settledValue(vendorResult, []));
-      setCatalog(settledValue(catalogResult, []));
-      setHousing(settledValue(housingResult, []));
-      setSupportTickets(settledValue(supportResult, []));
-      setTrustReports(settledValue(reportResult, []));
-      setRoleApplications(settledValue(applicationResult, []));
+      setOrders(nextOrders);
+      setPayments(nextPayments);
+      setUsers(nextUsers);
+      setVendors(nextVendors);
+      setCatalog(nextCatalog);
+      setHousing(nextHousing);
+      setSupportTickets(nextSupportTickets);
+      setTrustReports(nextTrustReports);
+      setRoleApplications(nextRoleApplications);
 
       const driverRows =
-        driverResult.status === "fulfilled" && !driverResult.value.error ? driverResult.value.data ?? [] : [];
+        !driverResult.error ? driverResult.data ?? [] : [];
       setDrivers(
         driverRows.map((row: any) => ({
           id: String(row.id),
@@ -677,18 +684,7 @@ export default function AdminPortalPage() {
         })),
       );
 
-      const failed = [
-        orderResult,
-        paymentResult,
-        userResult,
-        vendorResult,
-        catalogResult,
-        housingResult,
-        supportResult,
-        reportResult,
-        applicationResult,
-      ].filter((result) => result.status === "rejected").length;
-      setMessage(failed ? `${failed} admin source${failed === 1 ? "" : "s"} could not load.` : null);
+      setMessage(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Admin data could not be loaded.");
     } finally {
