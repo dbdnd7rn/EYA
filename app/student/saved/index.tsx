@@ -1,4 +1,4 @@
-﻿import React, { useEffect } from "react";
+import React, { useEffect } from "react";
 import { useRouter } from "expo-router";
 
 export default function StudentSavedAlias() {

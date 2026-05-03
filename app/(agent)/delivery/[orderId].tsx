@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Modal, Pressable, SafeAreaView, ScrollView, S
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { ArrowLeft, Camera, CheckCircle2, ChevronRight, QrCode, ShieldCheck } from "lucide-react-native";
+import { useAgentWorkspace, type AgentJobCard } from "@/components/agent/useAgentWorkspace";
 import { formatCacheTime, getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { getOrderHandoffDetails, verifyOrderHandoff, type OrderHandoffDetails } from "@/lib/orderHandoff";
 import { goBackOrFallback } from "@/lib/navigation";
@@ -26,14 +27,23 @@ function parseQrToken(payload: string): string | null {
   return null;
 }
 
+function statusAction(job: AgentJobCard | null) {
+  if (!job) return null;
+  if (job.status === "assigned") return { label: "Mark picked up", nextStatus: "picked_up" as const };
+  if (job.status === "picked_up") return { label: "Mark arriving", nextStatus: "arriving" as const };
+  return null;
+}
+
 export default function AgentDeliveryVerificationPage() {
   const router = useRouter();
   const params = useLocalSearchParams<{ orderId?: string }>();
   const { user, session } = useAuth();
   const { isOnline } = useNetwork();
+  const { workspace, refresh, updateJobStatus, releaseJob } = useAgentWorkspace();
   const [permission, requestPermission] = useCameraPermissions();
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [pin, setPin] = useState("");
   const [handoff, setHandoff] = useState<OrderHandoffDetails | null>(null);
@@ -42,11 +52,15 @@ export default function AgentDeliveryVerificationPage() {
   const [cacheTime, setCacheTime] = useState<number | null>(null);
 
   const orderId = typeof params.orderId === "string" ? params.orderId : "";
+  const handoffCacheKey = orderId ? `agent_handoff_${orderId}` : null;
+  const job = [...workspace.activeJobs, ...workspace.completedJobs].find((row) => row.orderId === orderId) ?? null;
+  const nextAction = statusAction(job);
+  const canVerifyNow = Boolean(verifiedAt || job?.status === "arriving" || job?.status === "delivered");
+  const verificationLocked = verifying || !!verifiedAt || !canVerifyNow;
 
   useEffect(() => {
     let active = true;
     const run = async () => {
-      const cacheKey = orderId ? `agent_handoff_${orderId}` : null;
       if (!orderId) {
         setError("Missing order id.");
         setLoading(false);
@@ -56,8 +70,8 @@ export default function AgentDeliveryVerificationPage() {
       setLoading(true);
       setError(null);
       try {
-        if (!isOnline && cacheKey) {
-          const cached = await getCachedJson<OrderHandoffDetails>(cacheKey);
+        if (!isOnline && handoffCacheKey) {
+          const cached = await getCachedJson<OrderHandoffDetails>(handoffCacheKey);
           if (!active) return;
           if (cached?.data) {
             setHandoff(cached.data);
@@ -74,13 +88,13 @@ export default function AgentDeliveryVerificationPage() {
         if (!active) return;
         setHandoff(data);
         setVerifiedAt(data.handoff.verified_at);
-        if (cacheKey) {
-          await setCachedJson(cacheKey, data);
+        if (handoffCacheKey) {
+          await setCachedJson(handoffCacheKey, data);
           setCacheTime(Date.now());
         }
       } catch (e: any) {
         if (!active) return;
-        const cached = cacheKey ? await getCachedJson<OrderHandoffDetails>(cacheKey) : null;
+        const cached = handoffCacheKey ? await getCachedJson<OrderHandoffDetails>(handoffCacheKey) : null;
         if (cached?.data) {
           setHandoff(cached.data);
           setVerifiedAt(cached.data.handoff.verified_at);
@@ -98,10 +112,10 @@ export default function AgentDeliveryVerificationPage() {
     return () => {
       active = false;
     };
-  }, [isOnline, orderId, session?.access_token]);
+  }, [handoffCacheKey, isOnline, orderId, session?.access_token]);
 
   const lineSummary = useMemo(
-    () => handoff?.invoice.line_items.map((line) => `${line.quantity}x ${line.item_name_snapshot}`).join(" · ") ?? "",
+    () => handoff?.invoice.line_items.map((line) => `${line.quantity}x ${line.item_name_snapshot}`).join(", ") ?? "",
     [handoff],
   );
 
@@ -109,6 +123,10 @@ export default function AgentDeliveryVerificationPage() {
     if (!orderId) return;
     if (!isOnline) {
       Alert.alert("Internet required", "Handoff verification must sync online.");
+      return;
+    }
+    if (!canVerifyNow) {
+      Alert.alert("Arrival required", "Mark the delivery as arriving before verifying the customer handoff.");
       return;
     }
 
@@ -122,6 +140,28 @@ export default function AgentDeliveryVerificationPage() {
       });
 
       setVerifiedAt(result.verified_at);
+      setHandoff((current) =>
+        current
+          ? {
+              ...current,
+              handoff: {
+                ...current.handoff,
+                verified_at: result.verified_at,
+              },
+            }
+          : current,
+      );
+      if (handoffCacheKey && handoff) {
+        await setCachedJson(handoffCacheKey, {
+          ...handoff,
+          handoff: {
+            ...handoff.handoff,
+            verified_at: result.verified_at,
+          },
+        });
+        setCacheTime(Date.now());
+      }
+      await refresh();
       setScanOpen(false);
       Alert.alert("Verified", "Customer handoff verified. This delivery is now marked delivered.");
     } catch (e: any) {
@@ -149,6 +189,42 @@ export default function AgentDeliveryVerificationPage() {
       }
     }
     setScanOpen(true);
+  };
+
+  const advanceDelivery = async () => {
+    if (!job || !nextAction) return;
+    try {
+      setUpdatingStatus(true);
+      await updateJobStatus(orderId, nextAction.nextStatus);
+      Alert.alert("Delivery updated", `Delivery marked ${nextAction.label.toLowerCase().replace("mark ", "")}.`);
+    } catch (e: any) {
+      Alert.alert("Update failed", e?.message ?? "Could not update this delivery.");
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const releaseAssignedJob = async () => {
+    if (!job || job.status !== "assigned") return;
+    Alert.alert("Release delivery", "Return this delivery to the request queue?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Release",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setUpdatingStatus(true);
+            await releaseJob(orderId);
+            Alert.alert("Delivery released", "The request is back in the queue.");
+            router.replace("/(agent)/(tabs)/deliveries");
+          } catch (e: any) {
+            Alert.alert("Release failed", e?.message ?? "Could not release this delivery.");
+          } finally {
+            setUpdatingStatus(false);
+          }
+        },
+      },
+    ]);
   };
 
   if (loading) {
@@ -185,6 +261,37 @@ export default function AgentDeliveryVerificationPage() {
 
         {handoff ? (
           <>
+            {job ? (
+              <View style={styles.card}>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.sectionTitle}>Delivery Status</Text>
+                  <View style={styles.paidPill}>
+                    <Text style={styles.paidPillText}>{job.status.replaceAll("_", " ")}</Text>
+                  </View>
+                </View>
+                <Text style={styles.invoiceMeta}>{job.vendorName}</Text>
+                <Text style={styles.invoiceMeta}>{job.dropoffLabel}</Text>
+                <Text style={styles.invoiceMeta}>{job.itemSummary}</Text>
+
+                {nextAction ? (
+                  <Pressable style={[styles.primaryBtn, updatingStatus && styles.btnDisabled]} onPress={() => void advanceDelivery()} disabled={updatingStatus}>
+                    <ShieldCheck size={16} color="#ffffff" />
+                    <Text style={styles.primaryBtnText}>{updatingStatus ? "Updating..." : nextAction.label}</Text>
+                  </Pressable>
+                ) : null}
+
+                {job.status === "assigned" ? (
+                  <Pressable style={[styles.secondaryBtn, updatingStatus && styles.btnDisabled]} onPress={() => void releaseAssignedJob()} disabled={updatingStatus}>
+                    <Text style={styles.secondaryBtnText}>Release delivery</Text>
+                  </Pressable>
+                ) : null}
+
+                {job.status === "arriving" && !verifiedAt ? (
+                  <Text style={styles.verifiedText}>Arrived at destination. Verify the handoff below to complete delivery.</Text>
+                ) : null}
+              </View>
+            ) : null}
+
             <View style={styles.card}>
               <View style={styles.rowBetween}>
                 <Text style={styles.sectionTitle}>Invoice</Text>
@@ -217,12 +324,16 @@ export default function AgentDeliveryVerificationPage() {
                 placeholder="Enter 6-digit PIN"
                 placeholderTextColor="#98a3ba"
                 style={styles.input}
-                editable={!verifying && !verifiedAt}
+                editable={!verificationLocked}
               />
 
-              <Pressable style={[styles.primaryBtn, (verifying || !!verifiedAt) && styles.btnDisabled]} onPress={() => void submitPin()} disabled={verifying || !!verifiedAt}>
+              {!canVerifyNow && !verifiedAt ? <Text style={styles.helperText}>Mark the delivery as arriving before you verify the customer handoff.</Text> : null}
+
+              <Pressable style={[styles.primaryBtn, verificationLocked && styles.btnDisabled]} onPress={() => void submitPin()} disabled={verificationLocked}>
                 <ShieldCheck size={16} color="#ffffff" />
-                <Text style={styles.primaryBtnText}>{verifying ? "Verifying..." : verifiedAt ? "Already verified" : "Verify PIN"}</Text>
+                <Text style={styles.primaryBtnText}>
+                  {verifying ? "Verifying..." : verifiedAt ? "Already verified" : canVerifyNow ? "Verify PIN" : "Mark arriving first"}
+                </Text>
               </Pressable>
 
               <View style={styles.orRow}>
@@ -231,9 +342,9 @@ export default function AgentDeliveryVerificationPage() {
                 <View style={styles.orLine} />
               </View>
 
-              <Pressable style={[styles.secondaryBtn, (verifying || !!verifiedAt) && styles.btnDisabled]} onPress={() => void startScan()} disabled={verifying || !!verifiedAt}>
+              <Pressable style={[styles.secondaryBtn, verificationLocked && styles.btnDisabled]} onPress={() => void startScan()} disabled={verificationLocked}>
                 <QrCode size={16} color="#102a54" />
-                <Text style={styles.secondaryBtnText}>{verifiedAt ? "Already verified" : "Scan customer QR"}</Text>
+                <Text style={styles.secondaryBtnText}>{verifiedAt ? "Already verified" : canVerifyNow ? "Scan customer QR" : "Mark arriving first"}</Text>
                 <ChevronRight size={18} color="#102a54" />
               </Pressable>
 
@@ -326,6 +437,7 @@ const styles = StyleSheet.create({
   invoiceMeta: { color: "#6d7a99", fontWeight: "700", fontSize: 14, lineHeight: 20 },
   invoiceTotal: { color: "#102a54", fontWeight: "900", fontSize: 20, marginTop: 4 },
   label: { color: "#596885", fontWeight: "800", fontSize: 12, textTransform: "uppercase" },
+  helperText: { color: "#6d7a99", fontWeight: "700", fontSize: 13, lineHeight: 19 },
   input: {
     borderRadius: 18,
     borderWidth: 1,

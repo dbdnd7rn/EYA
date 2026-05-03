@@ -3,7 +3,8 @@ import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "rea
 import { useRouter } from "expo-router";
 import { ArrowLeft, BellRing, ClipboardList, CreditCard, LifeBuoy, MessageCircle, ShieldAlert, Truck } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
-import { AppNotificationRole, AppNotificationRow, listNotificationsForUser, markAllNotificationsRead, notificationHrefForRole } from "@/lib/appNotifications";
+import { AppNotificationRole, AppNotificationRow, listNotificationsForUser, markAllNotificationsRead, notificationTargetForRole } from "@/lib/appNotifications";
+import { goBackOrFallback } from "@/lib/navigation";
 import { formatCacheTime, getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
@@ -23,6 +24,14 @@ function iconForType(type?: string | null) {
   if (normalized.includes("delivery")) return Truck;
   if (normalized.includes("payment") || normalized.includes("wallet")) return CreditCard;
   return ClipboardList;
+}
+
+function fallbackRouteForRole(role: AppNotificationRole) {
+  if (role === "student") return "/(student)/(tabs)/orders";
+  if (role === "vendor") return "/(market)/(tabs)/orders";
+  if (role === "agent") return "/(agent)/(tabs)/deliveries";
+  if (role === "landlord") return "/(landlord)/(tabs)/dashboard";
+  return "/admin";
 }
 
 export default function NotificationCenterScreen({
@@ -81,7 +90,7 @@ export default function NotificationCenterScreen({
       <SoftPageGlow variant="account" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Pressable style={styles.circleBtn} onPress={() => router.back()}>
+          <Pressable style={styles.circleBtn} onPress={() => goBackOrFallback(router, fallbackRouteForRole(role) as any)}>
             <ArrowLeft size={20} color="#0e2756" />
           </Pressable>
           <Text style={styles.title}>{title}</Text>
@@ -95,7 +104,7 @@ export default function NotificationCenterScreen({
         {rows.map((row) => {
           const Icon = iconForType(row.type);
           return (
-            <Pressable key={row.id} style={styles.card} onPress={() => router.push(notificationHrefForRole(role, row.type) as any)}>
+            <Pressable key={row.id} style={styles.card} onPress={() => router.push(notificationTargetForRole(role, row.type, row.data) as any)}>
               <View style={styles.iconWrap}>
                 <Icon size={18} color="#0e2756" />
               </View>

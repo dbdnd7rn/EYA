@@ -35,14 +35,14 @@ async function request<T>(pathname: string, init: RequestInit & { accessToken: s
 export async function fetchWalletSummary(accessToken: string) {
   return request<{
     account: { user_id: string; balance_mwk: number; points: number };
-    activities: Array<{
+    activities: {
       id: string;
       label: string;
       amount_mwk: number;
       type: "topup" | "payment" | "reward";
       meta?: Record<string, unknown>;
       created_at: string;
-    }>;
+    }[];
   }>("/api/wallet/me", { method: "GET", accessToken });
 }
 

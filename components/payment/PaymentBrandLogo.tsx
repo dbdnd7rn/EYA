@@ -1,5 +1,5 @@
 import React from "react";
-import Svg, { Circle, Ellipse, Path, Rect, Text as SvgText } from "react-native-svg";
+import Svg, { G, Path, Rect, Text as SvgText } from "react-native-svg";
 
 type Brand = "airtel_money" | "mpamba";
 
@@ -20,17 +20,20 @@ export default function PaymentBrandLogo({
 
 function AirtelMoneyLogo({ size, active }: { size: number; active: boolean }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-      <Rect x="2" y="2" width="60" height="60" rx="18" fill={active ? "#FFFFFF" : "#FFF6F6"} />
+    <Svg width={size} height={size} viewBox="0 0 72 72" fill="none">
+      <Rect x="3.5" y="3.5" width="65" height="65" rx="20" fill="#ED1C24" stroke={active ? "#FFFFFF" : "#F86F75"} strokeWidth="2.2" />
       <Path
-        d="M20 21C25 12 39 8 46 14C51 18 47 31 35 39C30 42 25 43 22 40C18 36 18 28 20 21Z"
-        fill="#ED1C24"
+        d="M34.6 15.8C40.6 14.3 46.5 14.9 50.6 18.2C54.6 21.3 55.7 26.4 53.4 30.8C50.2 36.9 43.2 39.5 35.2 40.8C37.8 37.8 40.1 34.6 40.8 31.7C41.2 30.2 40.9 29 39.8 28.4C38.3 27.6 35.7 28.1 33.1 30C31.7 31 30.2 32.7 28.9 34.9C27 33.8 25.9 32.4 25.5 30.7C24.1 25.5 27.8 17.6 34.6 15.8Z"
+        fill="#FFFFFF"
       />
-      <Path d="M25 41C28 37 33 35 36 36C39 37 38 40 33 44C28 48 23 48 25 41Z" fill="#ED1C24" />
-      <SvgText x="32" y="50" textAnchor="middle" fontSize="11" fontWeight="800" fill="#ED1C24">
+      <Path
+        d="M28.6 42.1C30.5 40 32.6 38.9 34.6 39.2C36.4 39.4 37.1 40.8 36.1 42.7C34.5 45.8 30.8 48.5 26 50.1C24 50.8 22.3 51.1 20.9 51.1C20.1 51.1 19.4 50.6 19.2 49.8C18.8 48.4 19.3 46.9 20.5 45.9C22.2 44.4 24.8 43.1 28.6 42.1Z"
+        fill="#FFFFFF"
+      />
+      <SvgText x="36" y="54" textAnchor="middle" fontSize="13.8" fontWeight="900" fill="#FFFFFF">
         airtel
       </SvgText>
-      <SvgText x="32" y="59" textAnchor="middle" fontSize="7" fontWeight="800" fill="#ED1C24">
+      <SvgText x="36" y="63.2" textAnchor="middle" fontSize="6.9" fontWeight="500" letterSpacing="0.35" fill="#FFFFFF">
         money
       </SvgText>
     </Svg>
@@ -39,23 +42,21 @@ function AirtelMoneyLogo({ size, active }: { size: number; active: boolean }) {
 
 function MpambaLogo({ size, active }: { size: number; active: boolean }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-      <Rect x="2" y="2" width="60" height="60" rx="18" fill={active ? "#FFFFFF" : "#F5FBF3"} />
-      <Circle cx="32" cy="28" r="18" fill="#2F7D31" />
-      <Path d="M15 29C22 22 31 19 49 20C42 29 34 34 17 38L15 29Z" fill="#F0C31A" />
-      <Rect x="27" y="16" width="12" height="22" rx="2.5" fill="#FFFFFF" />
-      <Rect x="29" y="19" width="8" height="10" rx="1.6" fill="#7FB561" />
-      <Circle cx="31" cy="32.5" r="1.15" fill="#2F7D31" />
-      <Circle cx="35" cy="32.5" r="1.15" fill="#2F7D31" />
-      <Circle cx="31" cy="36" r="1.15" fill="#2F7D31" />
-      <Circle cx="35" cy="36" r="1.15" fill="#2F7D31" />
-      <Ellipse cx="32" cy="17.5" rx="5.4" ry="4.3" fill="#67B43F" />
-      <Path d="M12 41.5H52L47 49H17L12 41.5Z" fill="#F0C31A" />
-      <SvgText x="32" y="47" textAnchor="middle" fontSize="8" fontWeight="800" fill="#D62F2F">
-        Mpamba
+    <Svg width={size} height={size} viewBox="0 0 72 72" fill="none">
+      <Rect x="3.5" y="3.5" width="65" height="65" rx="20" fill="#FFFFFF" stroke={active ? "#2FA84F" : "#D4E8D8"} strokeWidth="2.2" />
+
+      <G transform="translate(17 9)">
+        <Path d="M0 12 16 6 18.8 21.2 3.2 27.1 0 12Z" fill="none" stroke="#2FA84F" strokeWidth="2.3" strokeLinejoin="round" />
+        <Path d="M14.2 5 31 2 33.8 16.8 17.2 20.1 14.2 5Z" fill="none" stroke="#2FA84F" strokeWidth="2.3" strokeLinejoin="round" />
+        <Path d="M18.3 13.2 23.2 11.9 24.8 31 19.6 32.1 18.3 13.2Z" fill="#2FA84F" />
+        <Path d="M14.8 11.8 27.8 9.3 31.3 12.1 17.9 14.8 14.8 11.8Z" fill="#2FA84F" />
+      </G>
+
+      <SvgText x="36" y="50.2" textAnchor="middle" fontSize="17.5" fontWeight="900" fill="#2FA84F">
+        tnm
       </SvgText>
-      <SvgText x="32" y="54.5" textAnchor="middle" fontSize="5.4" fontWeight="800" fill="#D62F2F">
-        TNM
+      <SvgText x="36" y="60.5" textAnchor="middle" fontSize="8.4" fontWeight="800" fill="#171717">
+        Mpamba
       </SvgText>
     </Svg>
   );

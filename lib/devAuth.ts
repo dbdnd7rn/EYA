@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { User } from "@supabase/supabase-js";
 import type { AppRole } from "@/lib/roleRouting";
 
-const DEV_AUTH_KEY = "pamaketi_dev_auth_v1";
+const DEV_AUTH_KEY = "eya_dev_auth_v1";
 
 type DevAuthRecord = {
   id: string;
@@ -18,24 +18,29 @@ type DevAccount = {
 
 const DEV_ACCOUNTS: DevAccount[] = [
   {
-    email: "student@pamaketi.dev",
+    email: "student@eya.dev",
     password: "Student123",
     role: "student",
   },
   {
-    email: "seller@pamaketi.dev",
+    email: "seller@eya.dev",
     password: "Seller123",
     role: "vendor",
   },
   {
-    email: "landlord@pamaketi.dev",
+    email: "landlord@eya.dev",
     password: "Landlord123",
     role: "landlord",
   },
   {
-    email: "agent@pamaketi.dev",
+    email: "agent@eya.dev",
     password: "Agent123",
     role: "agent",
+  },
+  {
+    email: "admin@eya.dev",
+    password: "Admin123",
+    role: "admin",
   },
 ];
 

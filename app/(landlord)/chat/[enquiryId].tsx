@@ -19,6 +19,7 @@ import { ArrowLeft, ImagePlus, Send } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import TopNav from "@/components/TopNav";
 import { encodeCallSignal, newCallId, parseCallSignal } from "@/lib/callSignals";
+import { notifyEnquiryParticipant, previewEnquiryText } from "@/lib/enquiryNotifications";
 import { goBackOrFallback } from "@/lib/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
@@ -28,6 +29,7 @@ type EnquiryRow = {
   status: "new" | "read" | "closed" | string;
   student_id: string;
   created_at: string | null;
+  message: string | null;
   listings: { title: string }[] | { title: string } | null;
 };
 
@@ -82,7 +84,7 @@ async function uploadChatImageExpo(asset: { uri: string; fileName?: string | nul
   const form = new FormData();
   form.append("file", { uri: asset.uri, name: meta.name, type: meta.type } as any);
   form.append("upload_preset", uploadPreset);
-  form.append("folder", "palevel/chat");
+  form.append("folder", "eya/chat");
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form });
   const json = await res.json();
@@ -142,6 +144,12 @@ export default function LandlordEnquiryChatClient() {
     () => fmtLastSeen(messages.length ? messages[messages.length - 1].created_at : enquiry?.created_at, nowTick),
     [messages, enquiry?.created_at, nowTick],
   );
+  const listingTitle = useMemo(() => {
+    if (!enquiry) return "Listing";
+    return Array.isArray((enquiry as any).listings)
+      ? (enquiry as any).listings[0]?.title ?? "Listing"
+      : (enquiry as any)?.listings?.title ?? "Listing";
+  }, [enquiry]);
 
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 1000 * 20);
@@ -161,6 +169,7 @@ export default function LandlordEnquiryChatClient() {
         status,
         student_id,
         created_at,
+        message,
         listings:listing_id ( title )
       `,
       )
@@ -257,6 +266,17 @@ export default function LandlordEnquiryChatClient() {
     await supabase.from("enquiries").update({ status: "replied" }).eq("id", enquiry.id).eq("landlord_id", landlordId);
     setEnquiry((prev) => (prev ? { ...prev, status: "replied" } : prev));
     setText("");
+    void notifyEnquiryParticipant({
+      recipientId: enquiry.student_id,
+      recipientRole: "student",
+      enquiryId: enquiry.id,
+      listingTitle,
+      title: "Landlord reply",
+      message: `${listingTitle}: ${previewEnquiryText(clean)}`,
+      extraData: {
+        senderRole: "landlord",
+      },
+    });
   };
 
   const pickAndSendImage = async () => {
@@ -301,6 +321,17 @@ export default function LandlordEnquiryChatClient() {
       }
       await supabase.from("enquiries").update({ status: "replied" }).eq("id", enquiry.id).eq("landlord_id", landlordId);
       setEnquiry((prev) => (prev ? { ...prev, status: "replied" } : prev));
+      void notifyEnquiryParticipant({
+        recipientId: enquiry.student_id,
+        recipientRole: "student",
+        enquiryId: enquiry.id,
+        listingTitle,
+        title: "Landlord reply",
+        message: `${listingTitle}: landlord sent a photo.`,
+        extraData: {
+          senderRole: "landlord",
+        },
+      });
     } catch (e: any) {
       const msg = String(e?.message ?? "Image upload failed.");
       if (msg.toLowerCase().includes("heic")) {
@@ -343,6 +374,24 @@ export default function LandlordEnquiryChatClient() {
     }
     await supabase.from("enquiries").update({ status: "replied" }).eq("id", enquiry.id).eq("landlord_id", landlordId);
     setEnquiry((prev) => (prev ? { ...prev, status: "replied" } : prev));
+    void notifyEnquiryParticipant({
+      recipientId: enquiry.student_id,
+      recipientRole: "student",
+      enquiryId: enquiry.id,
+      listingTitle,
+      title: kind === "invite" ? "Landlord is calling" : "Enquiry call update",
+      message:
+        kind === "invite"
+          ? `${listingTitle}: the landlord is calling you.`
+          : kind === "accept"
+            ? `${listingTitle}: the landlord accepted the call.`
+            : `${listingTitle}: the landlord declined the call.`,
+      priority: kind === "invite" ? "important" : "normal",
+      extraData: {
+        senderRole: "landlord",
+        callKind: kind,
+      },
+    });
     return true;
   };
 
@@ -378,13 +427,14 @@ export default function LandlordEnquiryChatClient() {
 
   if (!enquiry) return null;
 
-  const listingTitle = Array.isArray((enquiry as any).listings)
-    ? (enquiry as any).listings[0]?.title ?? "Listing"
-    : (enquiry as any)?.listings?.title ?? "Listing";
-
   return (
     <SafeAreaView style={styles.root}>
       <TopNav title="Enquiry chat" />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 12}
+      >
       <View style={styles.header}>
         <Pressable onPress={() => goBackOrFallback(router, "/(landlord)/(tabs)/enquiries")} style={styles.backBtn}>
           <ArrowLeft size={18} color="#0e2756" />
@@ -449,8 +499,26 @@ export default function LandlordEnquiryChatClient() {
         </View>
       ) : null}
 
-      <ScrollView ref={scrollRef as any} contentContainerStyle={styles.chat}>
-        {displayMessages.length === 0 ? (
+      <ScrollView
+        ref={scrollRef as any}
+        style={styles.chatScroll}
+        contentContainerStyle={styles.chat}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {displayMessages.length === 0 && enquiry.message?.trim() ? (
+          <View style={[styles.bubbleRow, { justifyContent: "flex-start" }]}>
+            <View style={[styles.bubble, styles.other]}>
+              <Text style={[styles.msg, { color: "#0e2756" }]}>{enquiry.message.trim()}</Text>
+              <Text style={styles.time}>
+                {enquiry.created_at ? new Date(enquiry.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Enquiry"}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {displayMessages.length === 0 && !enquiry.message?.trim() ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No messages yet.</Text>
           </View>
@@ -475,7 +543,6 @@ export default function LandlordEnquiryChatClient() {
         )}
       </ScrollView>
 
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.inputBar}>
           <Pressable style={styles.photoBtn} onPress={pickAndSendImage} disabled={sending || isClosed}>
             <ImagePlus size={16} color="#0e2756" />
@@ -489,6 +556,7 @@ export default function LandlordEnquiryChatClient() {
             placeholder={isClosed ? "Chat closed" : "Reply to student..."}
             placeholderTextColor="#9aa3bd"
             editable={!isClosed}
+            onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
           />
 
           <Pressable style={[styles.sendBtn, (!text.trim() || sending || isClosed) && { opacity: 0.6 }]} onPress={sendText} disabled={!text.trim() || sending || isClosed}>
@@ -502,6 +570,7 @@ export default function LandlordEnquiryChatClient() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
+  flex: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: { backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e7eaf6", padding: 12, flexDirection: "row", gap: 10, alignItems: "center" },
   backBtn: { width: 42, height: 42, borderRadius: 14, borderWidth: 1, borderColor: "#e7eaf6", backgroundColor: "#f6f7fb", alignItems: "center", justifyContent: "center" },
@@ -581,6 +650,7 @@ const styles = StyleSheet.create({
   errorWrap: { paddingHorizontal: 12, paddingTop: 10, backgroundColor: "#f6f7fb" },
   errorBox: { borderWidth: 1, borderColor: "#ffd4e3", backgroundColor: "#fff0f6", borderRadius: 14, padding: 10 },
   errorText: { color: "#b0003a", fontWeight: "800" },
+  chatScroll: { flex: 1 },
   chat: { padding: 14, gap: 10, paddingBottom: 20 },
   emptyCard: { backgroundColor: "#fff", borderRadius: 20, padding: 16, borderWidth: 1, borderColor: "#eef1fb" },
   emptyText: { color: "#5f6b85", fontWeight: "700" },

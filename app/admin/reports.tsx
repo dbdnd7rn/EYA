@@ -3,7 +3,6 @@ import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Tex
 import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { listTrustSafetyReportsForAdmin, updateTrustSafetyReportStatus, type TrustSafetyReportStatus } from "@/lib/trustSafety";
-import { supabase } from "@/lib/supabase";
 import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
 
 type ReportRow = {
@@ -22,41 +21,12 @@ const statuses: TrustSafetyReportStatus[] = ["open", "in_review", "resolved", "d
 
 export default function AdminReportsPage() {
   const router = useRouter();
-  const { user, role, loading, refreshRole } = useAuth();
+  const { user, loading } = useAuth();
   const { unreadCount } = useNotificationInbox();
-  const [checkingAccess, setCheckingAccess] = React.useState(true);
   const [fetching, setFetching] = React.useState(true);
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
   const [reports, setReports] = React.useState<ReportRow[]>([]);
-
-  React.useEffect(() => {
-    let active = true;
-
-    const check = async () => {
-      try {
-        if (loading) return;
-        if (!user) {
-          router.replace("/(auth)/login");
-          return;
-        }
-        if (!role) await refreshRole(user.id);
-        const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-        const currentRole = ((data as any)?.role ?? role) as string | null;
-        if (currentRole !== "admin") {
-          router.replace("/");
-          return;
-        }
-      } finally {
-        if (active) setCheckingAccess(false);
-      }
-    };
-
-    void check();
-    return () => {
-      active = false;
-    };
-  }, [loading, user, role, refreshRole, router]);
 
   const loadReports = React.useCallback(async () => {
     setFetching(true);
@@ -72,10 +42,12 @@ export default function AdminReportsPage() {
   }, []);
 
   React.useEffect(() => {
-    if (!checkingAccess && user) {
-      void loadReports();
+    if (!loading && user) {
+      void loadReports().catch(() => {
+        setFetching(false);
+      });
     }
-  }, [checkingAccess, user, loadReports]);
+  }, [loading, user, loadReports]);
 
   const save = async (report: ReportRow) => {
     setSavingId(report.id);
@@ -91,7 +63,7 @@ export default function AdminReportsPage() {
     }
   };
 
-  if (loading || checkingAccess) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator />

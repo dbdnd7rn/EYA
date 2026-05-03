@@ -180,7 +180,7 @@ export default function RoomsBrowseScreen() {
       if (isOnline) {
         const { data, error } = await supabase
           .from("listings")
-          .select("id, title, listing_type, campus, area, city, price_from, room_types, image_urls, occupancy_mode, students_per_room, created_at, visibility_rank")
+          .select("id, title, listing_type, campus, area, city, price_from, room_types, image_urls, occupancy_mode, students_per_room, created_at")
           .eq("is_active", true);
         if (error) throw error;
         const rows = (data ?? []) as ListingRow[];
@@ -367,7 +367,7 @@ export default function RoomsBrowseScreen() {
               <QuickChip
                 icon={<Scale size={16} color="#0f2450" />}
                 label="Compare"
-                onPress={() => router.push("/(palevel)/(tabs)/saved")}
+                onPress={() => router.push("/(eya)/(tabs)/saved")}
               />
             </ScrollView>
 
@@ -398,7 +398,7 @@ export default function RoomsBrowseScreen() {
             index={index}
             item={item}
             saved={savedSet.has(item.id)}
-            onPress={() => router.push({ pathname: "/(palevel)/room/[id]", params: { id: item.id } })}
+            onPress={() => router.push({ pathname: "/(eya)/room/[id]", params: { id: item.id } })}
             onToggleSaved={() => void toggleSaved(item)}
           />
         )}

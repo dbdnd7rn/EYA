@@ -30,6 +30,12 @@ function matchesCategory(item: MarketCard, selected: string) {
   return category.aliases.some((alias) => text.includes(alias));
 }
 
+function formatListedOn(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "recently";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export default function AllProductsScreen({ detailRoute }: Props) {
   const router = useRouter();
   const [query, setQuery] = React.useState("");
@@ -119,7 +125,7 @@ export default function AllProductsScreen({ detailRoute }: Props) {
               <Text style={styles.infoSub}>Discover unique products around you</Text>
             </View>
 
-            {loading ? <View style={styles.skeleton} /> : null}
+            {loading && items.length === 0 ? <View style={styles.skeleton} /> : null}
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
           </>
         }
@@ -128,6 +134,7 @@ export default function AllProductsScreen({ detailRoute }: Props) {
             <Image source={{ uri: item.image }} style={styles.cardImage} />
             <Text numberOfLines={2} style={styles.cardTitle}>{item.name}</Text>
             <Text style={styles.cardPrice}>{kwacha(item.price)}</Text>
+            <Text style={styles.cardListed}>Listed {formatListedOn(item.listedAt)}</Text>
             <View style={styles.cardMetaRow}>
               <View style={styles.vendorIcon}>
                 <Store size={14} color="#16315f" />
@@ -220,6 +227,7 @@ const styles = StyleSheet.create({
   cardImage: { width: "100%", height: 140, borderRadius: 18, backgroundColor: "#e9eef6" },
   cardTitle: { marginTop: 12, color: "#0f2450", fontSize: 16, fontWeight: "900", minHeight: 44 },
   cardPrice: { marginTop: 6, color: "#0f6d80", fontSize: 16, fontWeight: "900" },
+  cardListed: { marginTop: 4, color: "#6e7f9a", fontSize: 12, fontWeight: "700" },
   cardMetaRow: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 8 },
   vendorIcon: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#eef4ff", alignItems: "center", justifyContent: "center" },
   cardMetaText: { flex: 1, color: "#8b97ad", fontSize: 13, fontWeight: "900" },

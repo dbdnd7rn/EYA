@@ -40,7 +40,7 @@ type InterestStore = {
   savedShopIds: string[];
 };
 
-const STORAGE_KEY = "pamaketi_market_interest_v1";
+const STORAGE_KEY = "eya_market_interest_v1";
 
 const EMPTY_STORE: InterestStore = {
   requests: [],

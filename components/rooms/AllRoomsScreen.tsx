@@ -55,7 +55,7 @@ export default function AllRoomsScreen() {
         if (!isOnline) return;
         const { data, error } = await supabase
           .from("listings")
-          .select("id, title, listing_type, campus, area, city, price_from, room_types, image_urls, created_at, visibility_rank")
+          .select("id, title, listing_type, campus, area, city, price_from, room_types, image_urls, created_at")
           .eq("is_active", true);
         if (error) throw error;
         const rows = (data ?? []) as ListingRow[];
@@ -144,7 +144,7 @@ export default function AllRoomsScreen() {
         columnWrapperStyle={styles.gridRow}
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
-          <Pressable style={styles.card} onPress={() => router.push({ pathname: "/(palevel)/room/[id]", params: { id: item.id } })}>
+          <Pressable style={styles.card} onPress={() => router.push({ pathname: "/(eya)/room/[id]", params: { id: item.id } })}>
             <Image source={{ uri: coverImage(item) }} style={styles.cardImage} />
             <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
             <Text style={styles.cardPrice}>{formatPrice(item.price_from)}</Text>

@@ -1,4 +1,4 @@
-﻿import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type Envelope<T> = {
   v: number;
@@ -7,7 +7,7 @@ type Envelope<T> = {
 };
 
 const CACHE_VERSION = 1;
-const PREFIX = "pamaketi:cache:";
+const PREFIX = "eya:cache:";
 
 function key(name: string) {
   return `${PREFIX}${name}`;
@@ -15,11 +15,20 @@ function key(name: string) {
 
 export async function setCachedJson<T>(name: string, data: T) {
   const payload: Envelope<T> = { v: CACHE_VERSION, ts: Date.now(), data };
-  await AsyncStorage.setItem(key(name), JSON.stringify(payload));
+  try {
+    await AsyncStorage.setItem(key(name), JSON.stringify(payload));
+  } catch {
+    // Cache writes should never break app flows.
+  }
 }
 
 export async function getCachedJson<T>(name: string): Promise<{ data: T; ts: number } | null> {
-  const raw = await AsyncStorage.getItem(key(name));
+  let raw: string | null = null;
+  try {
+    raw = await AsyncStorage.getItem(key(name));
+  } catch {
+    return null;
+  }
   if (!raw) return null;
 
   try {
@@ -32,7 +41,11 @@ export async function getCachedJson<T>(name: string): Promise<{ data: T; ts: num
 }
 
 export async function removeCachedJson(name: string) {
-  await AsyncStorage.removeItem(key(name));
+  try {
+    await AsyncStorage.removeItem(key(name));
+  } catch {
+    // Ignore cache cleanup failures.
+  }
 }
 
 export function isCacheStale(ts: number | null | undefined, maxAgeMs: number) {

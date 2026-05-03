@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const ENHANCEMENT_KEY = "pamaketi_seller_enhancements_v1";
+const ENHANCEMENT_KEY = "eya_seller_enhancements_v1";
 
 export type InventoryHistoryEntry = {
   id: string;

@@ -12,14 +12,14 @@ export type CheckoutDraft = {
 export type WalletSnapshot = {
   balance: number;
   points: number;
-  activity: Array<{
+  activity: {
     id: string;
     label: string;
     mode: string | null;
     time: string;
     amount: number;
     type: "topup" | "payment" | "reward";
-  }>;
+  }[];
 };
 
 function checkoutDraftKey(userId: string | null | undefined) {

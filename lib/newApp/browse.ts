@@ -1,4 +1,10 @@
 import { supabaseNewApp } from "../supabaseNewApp";
+import {
+  buildDefaultFoodMenuConfig,
+  type FoodMenuConfig,
+  parseFoodDescription,
+  summarizeFoodMenu,
+} from "../foodMenu";
 import { getSellerProductMetaMap, getSellerShopMeta } from "../sellerEnhancements";
 import { getSellerStorefrontMeta } from "../sellerStorefront";
 import type { CatalogItemRow, VendorRow } from "./types";
@@ -16,6 +22,9 @@ export type MarketCard = {
   rating: number;
   image: string;
   description: string;
+  listedAt: string;
+  refreshedAt: string;
+  rankingScore: number;
 };
 
 export type FoodCard = {
@@ -33,6 +42,9 @@ export type FoodCard = {
   isOpen: boolean;
   image: string;
   description: string;
+  menuConfig: FoodMenuConfig | null;
+  menuSummary: string;
+  hasCustomization: boolean;
 };
 
 export type VendorCollection = {
@@ -51,7 +63,8 @@ export type VendorCollection = {
   contactPhone?: string | null;
   contactEmail?: string | null;
   whatsapp?: string | null;
-  items: Array<MarketCard | FoodCard>;
+  galleryImages: string[];
+  items: (MarketCard | FoodCard)[];
 };
 
 export function inferMarketCategory(item: Pick<MarketCard, "name" | "description">) {
@@ -71,113 +84,69 @@ export function inferFoodMealType(item: Pick<FoodCard, "meal" | "cuisine">) {
   return item.cuisine || "Popular";
 }
 
-const DEV_MARKET_CARDS: MarketCard[] = [
-  {
-    id: "dev-market-1",
-    vendorId: "dev-market-vendor-1",
-    name: "Desk lamp",
-    vendor: "Campus Tech Shop",
-    category: "Electronics",
-    area: "Chitawira",
-    campus: "MUST",
-    price: 18000,
-    deliveryFee: 2500,
-    rating: 4.6,
-    image: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=1200&q=80",
-    description: "Bright LED desk lamp suitable for study desks and hostel reading corners.",
-  },
-  {
-    id: "dev-market-2",
-    vendorId: "dev-market-vendor-2",
-    name: "Study chair",
-    vendor: "Student Comforts",
-    category: "Study",
-    area: "Namiwawa",
-    campus: "MUBAS",
-    price: 45000,
-    deliveryFee: 3000,
-    rating: 4.4,
-    image: "https://images.unsplash.com/photo-1580480055273-228ff5388ef8?auto=format&fit=crop&w=1200&q=80",
-    description: "Cushioned ergonomic chair with sturdy frame for long study sessions.",
-  },
-  {
-    id: "dev-market-3",
-    vendorId: "dev-market-vendor-3",
-    name: "Power bank",
-    vendor: "Uni Gadgets",
-    category: "Electronics",
-    area: "Zomba CBD",
-    campus: "UNIMA",
-    price: 32000,
-    deliveryFee: 2200,
-    rating: 4.8,
-    image: "https://images.unsplash.com/photo-1609081219090-a6d81d3085bf?auto=format&fit=crop&w=1200&q=80",
-    description: "Fast charging power bank with dual USB output, ideal for busy campus days.",
-  },
-  {
-    id: "dev-market-4",
-    vendorId: "dev-market-vendor-4",
-    name: "Bedding set",
-    vendor: "Hostel Essentials",
-    category: "Essentials",
-    area: "Soche",
-    campus: "MUST",
-    price: 28000,
-    deliveryFee: 2600,
-    rating: 4.5,
-    image: "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80",
-    description: "Complete bedding set with duvet cover, pillow cases, and fitted sheet.",
-  },
-];
+const LEGACY_MARKET_SEED_SIGNATURES = [
+  { name: "Study Chair", description: "Comfortable hostel study chair", price_mwk: 45000, stock_qty: 3 },
+  { name: "Desk Lamp", description: "Soft light for late reading", price_mwk: 18000, stock_qty: 8 },
+  { name: "Microwave", description: "Quick hostel kitchen essential", price_mwk: 5200, stock_qty: 2 },
+] as const;
 
 const DEV_FOOD_CARDS: FoodCard[] = [
   {
     id: "dev-food-1",
     vendorId: "dev-food-vendor-1",
-    name: "Campus Grill",
-    cuisine: "Fast food",
+    name: "Soche Canteen",
+    cuisine: "Local meals",
     area: "Soche East",
     campus: "MUST",
     etaMins: 25,
-    meal: "Chicken and chips",
-    mealPrice: 12000,
-    deliveryFee: 2500,
-    rating: 4.7,
+    meal: "Lunch plate",
+    mealPrice: 3500,
+    deliveryFee: 1800,
+    rating: 4.8,
     isOpen: true,
-    image: "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?auto=format&fit=crop&w=1200&q=80",
-    description: "Crispy chicken combos and quick meals popular with evening students.",
+    image: "https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=1200&q=80",
+    description: "Build your lunch with rice, nsima, spaghetti, or macaroni and add the protein you want.",
+    menuConfig: buildDefaultFoodMenuConfig(),
+    menuSummary: summarizeFoodMenu(buildDefaultFoodMenuConfig()),
+    hasCustomization: true,
   },
   {
     id: "dev-food-2",
     vendorId: "dev-food-vendor-2",
-    name: "Uni Bites",
-    cuisine: "Burgers",
+    name: "Poly Kitchen",
+    cuisine: "Student plates",
     area: "Namiwawa",
     campus: "MUBAS",
-    etaMins: 30,
-    meal: "Beef burger combo",
-    mealPrice: 15000,
-    deliveryFee: 3000,
-    rating: 4.4,
-    isOpen: false,
-    image: "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1200&q=80",
-    description: "Loaded burgers, chips, and sauces with value combo options.",
+    etaMins: 22,
+    meal: "Dinner special",
+    mealPrice: 4200,
+    deliveryFee: 2000,
+    rating: 4.5,
+    isOpen: true,
+    image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1200&q=80",
+    description: "Choose your starch, then add fish, beef, chicken, or sausage depending on your budget.",
+    menuConfig: buildDefaultFoodMenuConfig(),
+    menuSummary: summarizeFoodMenu(buildDefaultFoodMenuConfig()),
+    hasCustomization: true,
   },
   {
     id: "dev-food-3",
     vendorId: "dev-food-vendor-3",
-    name: "Zomba Fresh Meals",
-    cuisine: "Local",
+    name: "Hostel Bites",
+    cuisine: "Local meals",
     area: "Old Naisi",
     campus: "UNIMA",
     etaMins: 28,
-    meal: "Rice and fish",
-    mealPrice: 10000,
-    deliveryFee: 2200,
-    rating: 4.8,
+    meal: "Quick plate",
+    mealPrice: 3000,
+    deliveryFee: 1500,
+    rating: 4.6,
     isOpen: true,
-    image: "https://images.unsplash.com/photo-1498654896293-37aacf113fd9?auto=format&fit=crop&w=1200&q=80",
-    description: "Affordable local dishes with fresh ingredients and generous portions.",
+    image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1200&q=80",
+    description: "Affordable plates for study nights with flexible base meals and protein add-ons.",
+    menuConfig: buildDefaultFoodMenuConfig(),
+    menuSummary: summarizeFoodMenu(buildDefaultFoodMenuConfig()),
+    hasCustomization: true,
   },
 ];
 
@@ -188,6 +157,10 @@ type TrustRow = {
 
 const MARKET_PLACEHOLDER = "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=1200&q=80";
 const FOOD_PLACEHOLDER = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80";
+
+function uniqueImages(values: (string | null | undefined)[]) {
+  return Array.from(new Set(values.filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
+}
 
 function isUnavailableSchemaError(message: string) {
   const normalized = message.toLowerCase();
@@ -203,6 +176,43 @@ function isUnavailableSchemaError(message: string) {
 function normalizeRating(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) return 4.5;
   return Math.max(1, Math.min(5, Number(value)));
+}
+
+function hoursSince(iso: string) {
+  const value = new Date(iso).getTime();
+  if (!Number.isFinite(value)) return Number.POSITIVE_INFINITY;
+  return Math.max(0, (Date.now() - value) / (1000 * 60 * 60));
+}
+
+function freshnessScore(refreshedAt: string) {
+  const hours = hoursSince(refreshedAt);
+  if (!Number.isFinite(hours)) return 0;
+  const maxAgeHours = 24 * 30; // fade to 0 by 30 days
+  const normalized = Math.min(hours, maxAgeHours) / maxAgeHours;
+  return 1 - normalized;
+}
+
+function stockSignal(stockQty: number | null) {
+  if (stockQty == null) return 0.55;
+  if (stockQty <= 0) return 0;
+  return Math.min(1, stockQty / 20);
+}
+
+function marketRankingScore(input: { refreshedAt: string; rating: number; stockQty: number | null }) {
+  const freshness = freshnessScore(input.refreshedAt);
+  const trust = normalizeRating(input.rating) / 5;
+  const stock = stockSignal(input.stockQty);
+  return freshness * 0.62 + trust * 0.25 + stock * 0.13;
+}
+
+function isLegacySeededMarketItem(item: CatalogItemRow) {
+  if (item.channel !== "market") return false;
+  return LEGACY_MARKET_SEED_SIGNATURES.some((seed) =>
+    item.name === seed.name
+    && (item.description ?? null) === seed.description
+    && Number(item.price_mwk) === seed.price_mwk
+    && Number(item.stock_qty ?? 0) === seed.stock_qty,
+  );
 }
 
 function inferCuisine(vendor: VendorRow | undefined) {
@@ -276,10 +286,13 @@ async function fetchChannelRows(channel: "market" | "food"): Promise<{
 
 export async function listMarketCards(): Promise<MarketCard[]> {
   const { items, vendorsById, ratingsByVendorId } = await fetchChannelRows("market");
-  const productMeta = await getSellerProductMetaMap(items.map((item) => item.id));
-  const liveCards = items.map((item) => {
+  const visibleItems = items.filter((item) => !isLegacySeededMarketItem(item));
+  const productMeta = await getSellerProductMetaMap(visibleItems.map((item) => item.id));
+  const rows = visibleItems.map((item) => {
     const vendor = vendorsById.get(item.vendor_id);
+    const rating = ratingsByVendorId.get(item.vendor_id) ?? 4.5;
     const category = productMeta[item.id]?.category?.trim() || inferMarketCategory({ name: item.name, description: item.description ?? "" });
+    const refreshedAt = item.updated_at || item.created_at;
     return {
       id: item.id,
       vendorId: item.vendor_id,
@@ -290,13 +303,25 @@ export async function listMarketCards(): Promise<MarketCard[]> {
       campus: vendor?.campus ?? "Campus",
       price: Number(item.price_mwk) || 0,
       deliveryFee: 2500,
-      rating: ratingsByVendorId.get(item.vendor_id) ?? 4.5,
+      rating,
       image: item.image_url ?? MARKET_PLACEHOLDER,
       description: item.description ?? "Available now from trusted campus vendors.",
+      listedAt: item.created_at,
+      refreshedAt,
+      rankingScore: marketRankingScore({
+        refreshedAt,
+        rating,
+        stockQty: item.stock_qty ?? null,
+      }),
     };
   });
 
-  return liveCards.length ? liveCards : DEV_MARKET_CARDS;
+  return rows.sort(
+    (a, b) =>
+      b.rankingScore - a.rankingScore ||
+      new Date(b.refreshedAt).getTime() - new Date(a.refreshedAt).getTime() ||
+      new Date(b.listedAt).getTime() - new Date(a.listedAt).getTime(),
+  );
 }
 
 export async function getMarketCardById(itemId: string): Promise<MarketCard | null> {
@@ -308,6 +333,7 @@ export async function listFoodCards(): Promise<FoodCard[]> {
   const { items, vendorsById, ratingsByVendorId } = await fetchChannelRows("food");
   const liveCards = items.map((item) => {
     const vendor = vendorsById.get(item.vendor_id);
+    const parsed = parseFoodDescription(item.description);
     return {
       id: item.id,
       vendorId: item.vendor_id,
@@ -322,7 +348,10 @@ export async function listFoodCards(): Promise<FoodCard[]> {
       rating: ratingsByVendorId.get(item.vendor_id) ?? 4.5,
       isOpen: vendor?.is_active ?? true,
       image: item.image_url ?? FOOD_PLACEHOLDER,
-      description: item.description ?? "Fresh meals delivered near your campus.",
+      description: parsed.description || "Fresh meals delivered near your campus.",
+      menuConfig: parsed.menuConfig,
+      menuSummary: summarizeFoodMenu(parsed.menuConfig),
+      hasCustomization: Boolean(parsed.menuConfig?.sections?.length),
     };
   });
 
@@ -369,6 +398,11 @@ export async function getMarketShopByVendorId(vendorId: string): Promise<VendorC
     contactPhone: shopMeta?.contactPhone ?? null,
     contactEmail: shopMeta?.contactEmail ?? null,
     whatsapp: shopMeta?.whatsapp ?? null,
+    galleryImages: uniqueImages([
+      storefront?.bannerUrl,
+      storefront?.avatarUrl,
+      ...items.map((item) => item.image),
+    ]),
     items,
   };
 }
@@ -391,6 +425,12 @@ export async function getFoodRestaurantByVendorId(vendorId: string): Promise<Ven
   const shopMeta = await getSellerShopMeta(vendorId);
   const avatarImage = storefront?.avatarUrl ?? items[1]?.image ?? focus.image;
   const bannerImage = storefront?.bannerUrl ?? items[2]?.image ?? focus.image;
+  const galleryImages = uniqueImages([
+    storefront?.bannerUrl,
+    ...(storefront?.galleryUrls ?? []),
+    storefront?.avatarUrl,
+    ...items.map((item) => item.image),
+  ]);
 
   return {
     id: vendorId,
@@ -408,6 +448,7 @@ export async function getFoodRestaurantByVendorId(vendorId: string): Promise<Ven
     contactPhone: shopMeta?.contactPhone ?? null,
     contactEmail: shopMeta?.contactEmail ?? null,
     whatsapp: shopMeta?.whatsapp ?? null,
+    galleryImages,
     items,
   };
 }

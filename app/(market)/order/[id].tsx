@@ -40,7 +40,7 @@ function formatDeliveryStatus(status: string | null | undefined) {
 export default function SellerOrderDetailsPage() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
-  const { workspace, setOrderStatus } = useSellerWorkspace();
+  const { workspace, setOrderStatus } = useSellerWorkspace("food");
 
   const order = useMemo(() => workspace.orders.find((row) => row.id === params.id), [params.id, workspace.orders]);
   const items = order ? workspace.orderItemsByOrderId[order.id] ?? [] : [];

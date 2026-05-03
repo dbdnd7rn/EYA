@@ -2,15 +2,35 @@ import "../global.css";
 import React from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack } from "expo-router";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput } from "react-native";
 import { AuthProvider } from "../providers/AuthProvider";
 import { NetworkProvider } from "@/providers/NetworkProvider";
 import SavedRoomsQueueSyncProvider from "@/providers/SavedRoomsQueueSyncProvider";
 import MutationOutboxSyncProvider from "@/providers/MutationOutboxSyncProvider";
 import { NotificationInboxProvider } from "@/providers/NotificationInboxProvider";
-import PaLevelLaunchAnimation from "@/components/PaLevelLaunchAnimation";
+import EyaLaunchAnimation from "@/components/EyaLaunchAnimation";
 import AppRuntimeProvider from "@/providers/AppRuntimeProvider";
 
-const LAUNCH_ANIMATION_SEEN_KEY = "pamaketi_launch_animation_seen_v1";
+const LAUNCH_ANIMATION_SEEN_KEY = "eya_launch_animation_seen_v1";
+
+type ComponentWithDefaults = {
+  defaultProps?: Record<string, unknown>;
+};
+
+const scrollViewDefaults = ScrollView as unknown as ComponentWithDefaults;
+scrollViewDefaults.defaultProps = {
+  ...scrollViewDefaults.defaultProps,
+  automaticallyAdjustKeyboardInsets: true,
+  keyboardShouldPersistTaps: "handled",
+};
+
+const textInputDefaults = TextInput as unknown as ComponentWithDefaults;
+textInputDefaults.defaultProps = {
+  ...textInputDefaults.defaultProps,
+  cursorColor: "#1e40af",
+  placeholderTextColor: "#94a3b8",
+  selectionColor: "#93c5fd",
+};
 
 export default function RootLayout() {
   const [showLaunchAnimation, setShowLaunchAnimation] = React.useState(false);
@@ -41,16 +61,21 @@ export default function RootLayout() {
           <NotificationInboxProvider>
             <SavedRoomsQueueSyncProvider>
               <MutationOutboxSyncProvider>
-                <>
+                <KeyboardAvoidingView
+                  behavior={Platform.select({ ios: "padding", android: "height" })}
+                  enabled={Platform.OS !== "web"}
+                  keyboardVerticalOffset={0}
+                  style={styles.keyboardRoot}
+                >
                   <Stack
                     screenOptions={{
                       headerShown: false,
                     }}
                   />
                   {showLaunchAnimation ? (
-                    <PaLevelLaunchAnimation onComplete={handleLaunchComplete} />
+                    <EyaLaunchAnimation onComplete={handleLaunchComplete} />
                   ) : null}
-                </>
+                </KeyboardAvoidingView>
               </MutationOutboxSyncProvider>
             </SavedRoomsQueueSyncProvider>
           </NotificationInboxProvider>
@@ -59,3 +84,9 @@ export default function RootLayout() {
     </NetworkProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  keyboardRoot: {
+    flex: 1,
+  },
+});

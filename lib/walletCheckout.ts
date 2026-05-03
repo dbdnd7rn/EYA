@@ -23,7 +23,14 @@ export async function checkoutWithWallet(
       delivery_mode: "pickup" | "doorstep";
       delivery_fee_mwk?: number;
       service_fee_mwk?: number;
-      lines: Array<{ item_id: string; quantity: number }>;
+      lines: {
+        item_id: string;
+        quantity: number;
+        food_customization?: {
+          selection_map?: Record<string, string[]>;
+          summary?: string;
+        };
+      }[];
     };
   },
 ) {

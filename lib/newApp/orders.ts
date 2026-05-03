@@ -1,5 +1,6 @@
 import { supabaseNewApp } from "../supabaseNewApp";
 import { createInAppNotification } from "@/lib/appNotifications";
+import { buildFoodSelectionSummary, parseFoodDescription } from "@/lib/foodMenu";
 import type {
   CatalogItemRow,
   CreateOrderInput,
@@ -42,6 +43,11 @@ export async function createOrderWithItems(input: CreateOrderInput): Promise<Ord
 
   const subtotal = input.lines.reduce((sum, line) => {
     const item = catalogById.get(line.item_id)!;
+    if (input.channel === "food") {
+      const parsed = parseFoodDescription(item.description);
+      const summary = buildFoodSelectionSummary(item.name, Number(item.price_mwk), parsed.menuConfig, line.food_customization?.selection_map);
+      return sum + summary.unitPrice * line.quantity;
+    }
     return sum + Number(item.price_mwk) * line.quantity;
   }, 0);
 
@@ -76,11 +82,15 @@ export async function createOrderWithItems(input: CreateOrderInput): Promise<Ord
 
   const linePayload = input.lines.map((line) => {
     const item = catalogById.get(line.item_id)!;
-    const unitPrice = Number(item.price_mwk);
+    const parsed = input.channel === "food" ? parseFoodDescription(item.description) : null;
+    const foodSummary = input.channel === "food"
+      ? buildFoodSelectionSummary(item.name, Number(item.price_mwk), parsed?.menuConfig, line.food_customization?.selection_map)
+      : null;
+    const unitPrice = foodSummary?.unitPrice ?? Number(item.price_mwk);
     return {
       order_id: order.id,
       item_id: line.item_id,
-      item_name_snapshot: item.name,
+      item_name_snapshot: foodSummary?.itemTitle ?? item.name,
       quantity: line.quantity,
       unit_price_mwk: unitPrice,
       line_total_mwk: unitPrice * line.quantity,

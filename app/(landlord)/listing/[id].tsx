@@ -94,12 +94,12 @@ const FREE_MAX_PHOTOS = 50;
 const ROOM_TYPE_OPTIONS = ["Single room", "Double room", "Self-contained", "Shared room"] as const;
 const RULE_OPTIONS = ["No smoking", "No loud music", "No pets", "Visitors allowed", "Gate closes at night"] as const;
 
-const AMENITY_GROUPS: Array<{
+const AMENITY_GROUPS: {
   title: string;
   mode: "multi" | "single";
   exclusiveKeys?: AmenityKey[];
   items: { key: AmenityKey; label: string }[];
-}> = [
+}[] = [
   { title: "Essentials", mode: "multi", items: [
     { key: "wifi", label: "Wi-Fi" }, { key: "backup_power", label: "Backup power" }, { key: "borehole", label: "Borehole" },
     { key: "water_tank", label: "Water tank" }, { key: "geyser", label: "Geyser" }, { key: "ceiling", label: "Ceiling" },
@@ -142,7 +142,7 @@ function splitCsv(text: string) {
 async function uploadListingImageExpo(localUri: string) {
   const cloudName = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const uploadPreset = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-  const folder = process.env.EXPO_PUBLIC_CLOUDINARY_ASSET_FOLDER || "palevel/listings";
+  const folder = process.env.EXPO_PUBLIC_CLOUDINARY_ASSET_FOLDER || "eya/listings";
   if (!cloudName || !uploadPreset) throw new Error("Cloudinary env vars missing.");
 
   const form = new FormData();
@@ -617,10 +617,21 @@ function ChoiceChip({ label, active, onPress }: { label: string; active: boolean
   return <Pressable onPress={onPress} style={[styles.choiceChip, active && styles.choiceChipOn]}><Text style={[styles.choiceChipText, active && styles.choiceChipTextOn]}>{label}</Text></Pressable>;
 }
 
-function TickChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function LegacyTickChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={[styles.tickChip, active && styles.tickChipOn]}>
       <View style={[styles.tickBox, active && styles.tickBoxOn]}><Text style={[styles.tickMark, active && styles.tickMarkOn]}>{active ? "✓" : ""}</Text></View>
+      <Text style={[styles.tickChipText, active && styles.tickChipTextOn]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function TickChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.tickChip, active && styles.tickChipOn]}>
+      <View style={[styles.tickBox, active && styles.tickBoxOn]}>
+        <Text style={[styles.tickMark, active && styles.tickMarkOn]}>{active ? "x" : ""}</Text>
+      </View>
       <Text style={[styles.tickChipText, active && styles.tickChipTextOn]}>{label}</Text>
     </Pressable>
   );

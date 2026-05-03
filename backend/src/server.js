@@ -1,8 +1,9 @@
 import cors from "cors";
 import express from "express";
-import { config, getCancelUrl, getSuccessUrl, requireCoreConfig } from "./config.js";
+import { URL, URLSearchParams } from "node:url";
+import { config, getCancelUrl, getSuccessUrl, isConfiguredAdminEmail, requireCoreConfig } from "./config.js";
 import QRCode from "qrcode";
-import { createCampusMarketWalletCheckout, finalizePaymentByReference, findPaymentByAnyReference, findPaymentByReference, getOrderHandoffByOrderId, getPaymentByRelatedOrderId, markHandoffVerified, recordPaymentInitiation } from "./fulfillment.js";
+import { createCampusMarketCashCheckout, createCampusMarketWalletCheckout, finalizePaymentByReference, findPaymentByAnyReference, findPaymentByReference, getOrderHandoffByOrderId, getPaymentByRelatedOrderId, markHandoffVerified, recordPaymentInitiation } from "./fulfillment.js";
 import { createDirectCharge, verifyDirectCharge, verifyTransaction, verifyWebhookSignature } from "./paychangu.js";
 import { notifyDeliveryStatusChanged, notifyDriverAssigned, notifySupportTicketUpdated, sendPushNotificationsToUsers } from "./push.js";
 import { supabase, supabaseNewApp } from "./supabase.js";
@@ -45,7 +46,7 @@ const DELIVERY_STATUSES = new Set(["searching", "assigned", "picked_up", "arrivi
 
 async function getProfileById(userId) {
   if (!userId) return null;
-  const { data, error } = await supabase.from("profiles").select("id,role,full_name").eq("id", userId).maybeSingle();
+  const { data, error } = await supabase.from("profiles").select("id,role,full_name,email").eq("id", userId).maybeSingle();
   if (error) throw new Error(error.message);
   return data;
 }
@@ -73,7 +74,41 @@ async function requireAdmin(req) {
   if (!userId) throw new Error("Missing admin identity header.");
   const profile = await getProfileById(String(userId));
   if (!profile || profile.role !== "admin") throw new Error("Admin access required.");
+  if (!isConfiguredAdminEmail(profile.email)) throw new Error("This account is not allowed to use admin controls.");
   return profile;
+}
+
+function normalizeManagedRole(value) {
+  const role = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (role === "student" || role === "landlord" || role === "agent" || role === "vendor" || role === "admin") return role;
+  return null;
+}
+
+function normalizeNotificationAudience(value) {
+  const role = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (role === "all") return "all";
+  return normalizeManagedRole(role);
+}
+
+async function listBroadcastRecipientIds(audience) {
+  const pageSize = 1000;
+  const ids = new Set();
+
+  for (let from = 0; ; from += pageSize) {
+    let query = supabase.from("profiles").select("id,role").range(from, from + pageSize - 1);
+    if (audience !== "all") query = query.eq("role", audience);
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+
+    for (const row of data || []) {
+      if (row?.id) ids.add(row.id);
+    }
+
+    if (!data || data.length < pageSize) break;
+  }
+
+  return [...ids];
 }
 
 async function getDeliveryByOrderId(orderId) {
@@ -222,6 +257,116 @@ async function assertDeliveryActor(req, orderId) {
   }
 
   return { actorId, profile, detail };
+}
+
+async function listDeliveryRequestSummaries() {
+  const { data: deliveries, error: deliveryError } = await supabaseNewApp
+    .from("deliveries")
+    .select("id,order_id,driver_id,status,eta_minutes,created_at,updated_at")
+    .is("driver_id", null)
+    .eq("status", "searching")
+    .order("created_at", { ascending: true });
+  if (deliveryError) throw new Error(deliveryError.message);
+
+  const deliveryRows = deliveries || [];
+  if (!deliveryRows.length) return [];
+
+  const orderIds = deliveryRows.map((row) => row.order_id);
+  const { data: orders, error: orderError } = await supabaseNewApp
+    .from("orders")
+    .select("id,vendor_id,channel,status,delivery_mode,dropoff_notes,delivery_fee_mwk,total_mwk,payment_status,created_at,updated_at")
+    .in("id", orderIds)
+    .eq("payment_status", "paid");
+  if (orderError) throw new Error(orderError.message);
+
+  const orderRows = orders || [];
+  if (!orderRows.length) return [];
+
+  const paidOrderIds = new Set(orderRows.map((row) => row.id));
+  const vendorIds = [...new Set(orderRows.map((row) => row.vendor_id).filter(Boolean))];
+
+  const [{ data: vendors, error: vendorError }, { data: items, error: itemError }] = await Promise.all([
+    vendorIds.length
+      ? supabaseNewApp.from("vendors").select("id,name,campus,area").in("id", vendorIds)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? supabaseNewApp
+          .from("order_items")
+          .select("order_id,item_name_snapshot,quantity")
+          .in("order_id", orderIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (vendorError) throw new Error(vendorError.message);
+  if (itemError) throw new Error(itemError.message);
+
+  const vendorById = new Map((vendors || []).map((row) => [row.id, row]));
+  const orderById = new Map(orderRows.map((row) => [row.id, row]));
+  const itemsByOrderId = new Map();
+
+  (items || []).forEach((row) => {
+    const current = itemsByOrderId.get(row.order_id) || [];
+    current.push(row);
+    itemsByOrderId.set(row.order_id, current);
+  });
+
+  return deliveryRows
+    .filter((row) => paidOrderIds.has(row.order_id))
+    .map((delivery) => {
+      const order = orderById.get(delivery.order_id);
+      const vendor = vendorById.get(order?.vendor_id);
+      const lineItems = itemsByOrderId.get(delivery.order_id) || [];
+      const title = lineItems[0]?.item_name_snapshot || vendor?.name || "Campus delivery";
+      const item_summary = lineItems.length
+        ? lineItems.map((line) => `${line.quantity}x ${line.item_name_snapshot}`).join(", ")
+        : "Order items unavailable";
+
+      return {
+        id: delivery.id,
+        order_id: delivery.order_id,
+        driver_id: delivery.driver_id,
+        status: delivery.status,
+        eta_minutes: delivery.eta_minutes,
+        created_at: delivery.created_at,
+        updated_at: delivery.updated_at,
+        title,
+        item_summary,
+        vendor: vendor
+          ? {
+              id: vendor.id,
+              name: vendor.name,
+              campus: vendor.campus,
+              area: vendor.area,
+            }
+          : null,
+        order: order
+          ? {
+              id: order.id,
+              channel: order.channel,
+              status: order.status,
+              delivery_mode: order.delivery_mode,
+              dropoff_notes: order.dropoff_notes,
+              delivery_fee_mwk: Number(order.delivery_fee_mwk || 0),
+              total_mwk: Number(order.total_mwk || 0),
+              created_at: order.created_at,
+              updated_at: order.updated_at,
+            }
+          : null,
+      };
+    });
+}
+
+function canSelfAssignDelivery(profile, detail, actorId, driverId) {
+  return (
+    profile?.role === "agent"
+    && actorId
+    && driverId
+    && actorId === driverId
+    && detail?.order
+    && String(detail.order.payment_status || "").toLowerCase() === "paid"
+    && !detail.delivery?.driver_id
+    && String(detail.delivery?.status || "").toLowerCase() === "searching"
+  );
 }
 
 function canViewHandoff(detail, userId, role) {
@@ -488,7 +633,7 @@ app.post("/api/wallet/send", async (req, res) => {
 
     const resolvedRecipientName = recipientName || recipient.full_name || recipient.phone || "Recipient";
     const senderLabel = `Money sent to ${resolvedRecipientName}`;
-    const receiverLabel = `Money received from ${profile?.full_name || user.email || "Pamaketi user"}`;
+    const receiverLabel = `Money received from ${profile?.full_name || user.email || "EYA user"}`;
 
     const [{ account: nextSender, activity: senderActivity }, { account: nextReceiver, activity: receiverActivity }] = await Promise.all([
       appendWalletActivityAndSync({
@@ -549,7 +694,7 @@ app.post("/api/wallet/request", async (req, res) => {
     if (recipientError) throw new Error(recipientError.message);
     if (!recipient?.id) return sendError(res, 404, "Recipient not found.");
 
-    const fromLabel = profile?.full_name || user.email || "Pamaketi user";
+    const fromLabel = profile?.full_name || user.email || "EYA user";
     await sendPushNotificationsToUsers([recipient.id], {
       title: "Money request",
       body: `${fromLabel} requested MWK ${amount.toLocaleString("en-MW")} from you.`,
@@ -570,7 +715,7 @@ app.post("/api/wallet/request", async (req, res) => {
   }
 });
 
-  app.post("/api/wallet/checkout", async (req, res) => {
+app.post("/api/wallet/checkout", async (req, res) => {
     try {
       const { user } = await requireAuthenticatedUser(req);
     const purpose = typeof req.body?.purpose === "string" ? req.body.purpose.trim() : "";
@@ -610,8 +755,50 @@ app.post("/api/wallet/request", async (req, res) => {
           ? 400
           : 500;
       return sendError(res, status, message);
+  }
+});
+
+app.post("/api/checkout/cash", async (req, res) => {
+  try {
+    const { user } = await requireAuthenticatedUser(req);
+    const purpose = typeof req.body?.purpose === "string" ? req.body.purpose.trim() : "";
+    const orderDraft = asObject(req.body?.order);
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "Cash order payment";
+    const description = typeof req.body?.description === "string" ? req.body.description.trim() : "Cash on delivery order";
+
+    if (purpose !== "campus_market_order") {
+      return sendError(res, 400, "Cash checkout currently supports campus market orders only.");
     }
-  });
+    if (!orderDraft.vendor_id || !orderDraft.channel || !Array.isArray(orderDraft.lines) || !orderDraft.lines.length) {
+      return sendError(res, 400, "Cash checkout is missing order details.");
+    }
+
+    const result = await createCampusMarketCashCheckout({
+      userId: user.id,
+      email: user.email || null,
+      orderDraft,
+      title,
+      description,
+    });
+
+    return res.json({
+      status: "success",
+      payment_status: "paid",
+      method: "cash",
+      order_id: result.orderId,
+      payment_id: result.payment.id,
+      reference: result.payment.reference,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not complete cash checkout.";
+    const status = /bearer token|authorization|required|authenticated|invalid jwt|missing access token/i.test(message)
+      ? 401
+      : /missing order details|invalid|not found|support/i.test(message)
+        ? 400
+        : 500;
+    return sendError(res, status, message);
+  }
+});
 
 app.post("/api/paychangu/initiate", async (req, res) => {
   const input = normalizeInitiateBody(req.body);
@@ -707,9 +894,9 @@ app.post("/api/paychangu/reconcile", async (req, res) => {
           first_name: user.user_metadata?.first_name || null,
           last_name: user.user_metadata?.last_name || null,
           tx_ref: reference,
-          title: "Pamaketi wallet top-up",
+          title: "EYA wallet top-up",
           description: `Recovered wallet top-up ${reference}`,
-          project: "pa-level",
+          project: "eya",
           meta: {
             purpose: "wallet_topup",
             user_id: user.id,
@@ -1111,6 +1298,602 @@ app.post("/api/admin/support-tickets/:id/respond", async (req, res) => {
   }
 });
 
+app.get("/api/admin/vendors", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const limit = Math.min(Math.max(Number(req.query.limit || 80), 1), 300);
+    const queryText = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const activeOnlyRaw = typeof req.query.active_only === "string" ? req.query.active_only.trim().toLowerCase() : "";
+    const activeOnly = activeOnlyRaw === "true" ? true : activeOnlyRaw === "false" ? false : null;
+
+    let query = supabaseNewApp
+      .from("vendors")
+      .select("id,owner_id,name,description,supports_market,supports_food,campus,area,city,latitude,longitude,is_active,created_at,updated_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (queryText) query = query.ilike("name", `%${queryText}%`);
+    if (activeOnly !== null) query = query.eq("is_active", activeOnly);
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", vendors: data || [] });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not load vendors.");
+  }
+});
+
+app.post("/api/admin/vendors", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const ownerId = typeof req.body?.owner_id === "string" ? req.body.owner_id.trim() : "";
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    if (!ownerId) return sendError(res, 400, "Owner user id is required.");
+    if (!name) return sendError(res, 400, "Vendor name is required.");
+
+    const owner = await getProfileById(ownerId);
+    if (!owner) return sendError(res, 400, "Owner account not found.");
+
+    const payload = {
+      owner_id: ownerId,
+      name,
+      description: typeof req.body?.description === "string" ? req.body.description.trim() || null : null,
+      supports_market: typeof req.body?.supports_market === "boolean" ? req.body.supports_market : true,
+      supports_food: typeof req.body?.supports_food === "boolean" ? req.body.supports_food : false,
+      campus: typeof req.body?.campus === "string" ? req.body.campus.trim() || null : null,
+      area: typeof req.body?.area === "string" ? req.body.area.trim() || null : null,
+      city: typeof req.body?.city === "string" ? req.body.city.trim() || null : null,
+      is_active: typeof req.body?.is_active === "boolean" ? req.body.is_active : true,
+    };
+
+    const { data, error } = await supabaseNewApp
+      .from("vendors")
+      .insert(payload)
+      .select("id,owner_id,name,description,supports_market,supports_food,campus,area,city,latitude,longitude,is_active,created_at,updated_at")
+      .single();
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", vendor: data });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not create vendor.");
+  }
+});
+
+app.post("/api/admin/vendors/:vendorId", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const vendorId = String(req.params.vendorId || "").trim();
+    if (!vendorId) return sendError(res, 400, "Vendor id is required.");
+
+    const payload = {};
+    if (typeof req.body?.is_active === "boolean") payload.is_active = req.body.is_active;
+    if (typeof req.body?.supports_market === "boolean") payload.supports_market = req.body.supports_market;
+    if (typeof req.body?.supports_food === "boolean") payload.supports_food = req.body.supports_food;
+    if (typeof req.body?.name === "string" && req.body.name.trim()) payload.name = req.body.name.trim();
+    if (typeof req.body?.description === "string") payload.description = req.body.description.trim() || null;
+    if (req.body?.description === null) payload.description = null;
+    if (typeof req.body?.campus === "string") payload.campus = req.body.campus.trim() || null;
+    if (req.body?.campus === null) payload.campus = null;
+    if (typeof req.body?.area === "string") payload.area = req.body.area.trim() || null;
+    if (req.body?.area === null) payload.area = null;
+    if (typeof req.body?.city === "string") payload.city = req.body.city.trim() || null;
+    if (req.body?.city === null) payload.city = null;
+
+    if (!Object.keys(payload).length) {
+      return sendError(res, 400, "No valid vendor fields provided.");
+    }
+
+    const { data, error } = await supabaseNewApp
+      .from("vendors")
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq("id", vendorId)
+      .select("id,owner_id,name,description,supports_market,supports_food,campus,area,city,latitude,longitude,is_active,created_at,updated_at")
+      .single();
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", vendor: data });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not update vendor.");
+  }
+});
+
+app.get("/api/admin/catalog-items", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const limit = Math.min(Math.max(Number(req.query.limit || 120), 1), 400);
+    const queryText = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const activeOnlyRaw = typeof req.query.active_only === "string" ? req.query.active_only.trim().toLowerCase() : "";
+    const activeOnly = activeOnlyRaw === "true" ? true : activeOnlyRaw === "false" ? false : null;
+    const channel = typeof req.query.channel === "string" ? req.query.channel.trim() : "";
+
+    let query = supabaseNewApp
+      .from("catalog_items")
+      .select("id,vendor_id,channel,name,description,price_mwk,stock_qty,image_url,is_active,created_at,updated_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (queryText) query = query.ilike("name", `%${queryText}%`);
+    if (activeOnly !== null) query = query.eq("is_active", activeOnly);
+    if (channel === "market" || channel === "food") query = query.eq("channel", channel);
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", items: data || [] });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not load catalog items.");
+  }
+});
+
+app.post("/api/admin/catalog-items", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const vendorId = typeof req.body?.vendor_id === "string" ? req.body.vendor_id.trim() : "";
+    const channel = typeof req.body?.channel === "string" ? req.body.channel.trim() : "";
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const price = Number(req.body?.price_mwk);
+    if (!vendorId) return sendError(res, 400, "Vendor id is required.");
+    if (channel !== "market" && channel !== "food") return sendError(res, 400, "Channel must be market or food.");
+    if (!name) return sendError(res, 400, "Item name is required.");
+    if (!Number.isFinite(price) || price < 0) return sendError(res, 400, "price_mwk must be a valid amount.");
+
+    const vendor = await getVendorById(vendorId);
+    if (!vendor) return sendError(res, 400, "Vendor not found.");
+
+    let stockQty = null;
+    if (req.body?.stock_qty !== undefined && req.body?.stock_qty !== null && req.body?.stock_qty !== "") {
+      const parsedStock = Number(req.body.stock_qty);
+      if (!Number.isFinite(parsedStock)) return sendError(res, 400, "stock_qty must be numeric.");
+      stockQty = parsedStock;
+    }
+
+    const payload = {
+      vendor_id: vendorId,
+      channel,
+      name,
+      description: typeof req.body?.description === "string" ? req.body.description.trim() || null : null,
+      price_mwk: price,
+      stock_qty: stockQty,
+      image_url: typeof req.body?.image_url === "string" ? req.body.image_url.trim() || null : null,
+      is_active: typeof req.body?.is_active === "boolean" ? req.body.is_active : true,
+    };
+
+    const { data, error } = await supabaseNewApp
+      .from("catalog_items")
+      .insert(payload)
+      .select("id,vendor_id,channel,name,description,price_mwk,stock_qty,image_url,is_active,created_at,updated_at")
+      .single();
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", item: data });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not create catalog item.");
+  }
+});
+
+app.post("/api/admin/catalog-items/:itemId", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const itemId = String(req.params.itemId || "").trim();
+    if (!itemId) return sendError(res, 400, "Item id is required.");
+
+    const payload = {};
+    if (typeof req.body?.is_active === "boolean") payload.is_active = req.body.is_active;
+    if (typeof req.body?.name === "string" && req.body.name.trim()) payload.name = req.body.name.trim();
+    if (typeof req.body?.description === "string") payload.description = req.body.description.trim() || null;
+    if (req.body?.description === null) payload.description = null;
+    if (typeof req.body?.image_url === "string") payload.image_url = req.body.image_url.trim() || null;
+    if (req.body?.image_url === null) payload.image_url = null;
+    if (req.body?.stock_qty === null) payload.stock_qty = null;
+    if (req.body?.stock_qty !== undefined && req.body?.stock_qty !== null) {
+      const stockQty = Number(req.body.stock_qty);
+      if (!Number.isFinite(stockQty)) return sendError(res, 400, "stock_qty must be numeric.");
+      payload.stock_qty = stockQty;
+    }
+    if (req.body?.price_mwk !== undefined) {
+      const price = Number(req.body.price_mwk);
+      if (!Number.isFinite(price) || price < 0) return sendError(res, 400, "price_mwk must be a valid amount.");
+      payload.price_mwk = price;
+    }
+
+    if (!Object.keys(payload).length) {
+      return sendError(res, 400, "No valid listing fields provided.");
+    }
+
+    const { data, error } = await supabaseNewApp
+      .from("catalog_items")
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq("id", itemId)
+      .select("id,vendor_id,channel,name,description,price_mwk,stock_qty,image_url,is_active,created_at,updated_at")
+      .single();
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", item: data });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not update catalog item.");
+  }
+});
+
+app.get("/api/admin/housing-listings", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const limit = Math.min(Math.max(Number(req.query.limit || 120), 1), 300);
+    const queryText = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const activeOnlyRaw = typeof req.query.active_only === "string" ? req.query.active_only.trim().toLowerCase() : "";
+    const activeOnly = activeOnlyRaw === "true" ? true : activeOnlyRaw === "false" ? false : null;
+
+    let query = supabase
+      .from("listings")
+      .select("id,landlord_id,title,listing_type,campus,area,city,price_from,description,contact_phone,is_active,image_urls,created_at,updated_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (activeOnly !== null) query = query.eq("is_active", activeOnly);
+    if (queryText) query = query.or(`title.ilike.%${queryText}%,campus.ilike.%${queryText}%,area.ilike.%${queryText}%,city.ilike.%${queryText}%`);
+
+    const { data: listings, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const landlordIds = [...new Set((listings || []).map((row) => row.landlord_id).filter(Boolean))];
+    const { data: landlords, error: landlordError } = landlordIds.length
+      ? await supabase.from("profiles").select("id,full_name,email,phone").in("id", landlordIds)
+      : { data: [], error: null };
+    if (landlordError) throw new Error(landlordError.message);
+
+    const landlordById = new Map((landlords || []).map((row) => [row.id, row]));
+    const rows = (listings || []).map((row) => ({
+      ...row,
+      landlord: landlordById.get(row.landlord_id) || null,
+    }));
+
+    return res.json({ status: "success", listings: rows });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not load housing listings.");
+  }
+});
+
+app.post("/api/admin/housing-listings", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const landlordId = typeof req.body?.landlord_id === "string" ? req.body.landlord_id.trim() : "";
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+    const listingType = typeof req.body?.listing_type === "string" ? req.body.listing_type.trim() : "";
+    const contactPhone = typeof req.body?.contact_phone === "string" ? req.body.contact_phone.trim() : "";
+    if (!landlordId) return sendError(res, 400, "Landlord user id is required.");
+    if (!title) return sendError(res, 400, "Title is required.");
+    if (listingType !== "hostel" && listingType !== "bedsitter") return sendError(res, 400, "Listing type must be hostel or bedsitter.");
+    if (!contactPhone) return sendError(res, 400, "Contact phone is required.");
+
+    const landlord = await getProfileById(landlordId);
+    if (!landlord) return sendError(res, 400, "Landlord account not found.");
+
+    let priceFrom = null;
+    if (req.body?.price_from !== undefined && req.body?.price_from !== null && req.body?.price_from !== "") {
+      const parsedPrice = Number(req.body.price_from);
+      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) return sendError(res, 400, "price_from must be a valid amount.");
+      priceFrom = parsedPrice;
+    }
+
+    const payload = {
+      landlord_id: landlordId,
+      title,
+      listing_type: listingType,
+      campus: typeof req.body?.campus === "string" ? req.body.campus.trim() || null : null,
+      area: typeof req.body?.area === "string" ? req.body.area.trim() || null : null,
+      city: typeof req.body?.city === "string" ? req.body.city.trim() || null : null,
+      price_from: priceFrom,
+      description: typeof req.body?.description === "string" ? req.body.description.trim() || null : null,
+      contact_phone: contactPhone,
+      contact_method: "whatsapp",
+      image_urls: [],
+      is_active: typeof req.body?.is_active === "boolean" ? req.body.is_active : true,
+    };
+
+    const { data, error } = await supabase
+      .from("listings")
+      .insert(payload)
+      .select("id,landlord_id,title,listing_type,campus,area,city,price_from,description,contact_phone,is_active,image_urls,created_at,updated_at")
+      .single();
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", listing: data });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not create housing listing.");
+  }
+});
+
+app.post("/api/admin/housing-listings/:listingId", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const listingId = String(req.params.listingId || "").trim();
+    if (!listingId) return sendError(res, 400, "Listing id is required.");
+
+    const payload = {};
+    if (typeof req.body?.is_active === "boolean") payload.is_active = req.body.is_active;
+    if (typeof req.body?.title === "string" && req.body.title.trim()) payload.title = req.body.title.trim();
+    if (typeof req.body?.description === "string") payload.description = req.body.description.trim() || null;
+    if (req.body?.description === null) payload.description = null;
+    if (typeof req.body?.campus === "string") payload.campus = req.body.campus.trim() || null;
+    if (req.body?.campus === null) payload.campus = null;
+    if (typeof req.body?.area === "string") payload.area = req.body.area.trim() || null;
+    if (req.body?.area === null) payload.area = null;
+    if (typeof req.body?.city === "string") payload.city = req.body.city.trim() || null;
+    if (req.body?.city === null) payload.city = null;
+    if (typeof req.body?.contact_phone === "string") payload.contact_phone = req.body.contact_phone.trim() || null;
+    if (req.body?.contact_phone === null) payload.contact_phone = null;
+    if (req.body?.price_from !== undefined) {
+      if (req.body.price_from === null || req.body.price_from === "") payload.price_from = null;
+      else {
+        const price = Number(req.body.price_from);
+        if (!Number.isFinite(price) || price < 0) return sendError(res, 400, "price_from must be a valid amount.");
+        payload.price_from = price;
+      }
+    }
+
+    if (!Object.keys(payload).length) {
+      return sendError(res, 400, "No valid housing fields provided.");
+    }
+
+    const { data, error } = await supabase
+      .from("listings")
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq("id", listingId)
+      .select("id,landlord_id,title,listing_type,campus,area,city,price_from,description,contact_phone,is_active,image_urls,created_at,updated_at")
+      .single();
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", listing: data });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not update housing listing.");
+  }
+});
+
+app.delete("/api/admin/housing-listings/:listingId", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const listingId = String(req.params.listingId || "").trim();
+    if (!listingId) return sendError(res, 400, "Listing id is required.");
+
+    const { error } = await supabase.from("listings").delete().eq("id", listingId);
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", listing_id: listingId });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not delete housing listing.");
+  }
+});
+
+app.get("/api/admin/users", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const limit = Math.min(Math.max(Number(req.query.limit || 120), 1), 400);
+    const queryText = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const role = normalizeManagedRole(req.query.role);
+
+    let query = supabase
+      .from("profiles")
+      .select("id,full_name,first_name,last_name,email,phone,role,onboarded,campus,area,created_at,updated_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (role) query = query.eq("role", role);
+    if (queryText) {
+      query = query.or(`full_name.ilike.%${queryText}%,email.ilike.%${queryText}%,phone.ilike.%${queryText}%,campus.ilike.%${queryText}%,area.ilike.%${queryText}%`);
+    }
+
+    const { data: profiles, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const userIds = (profiles || []).map((row) => row.id).filter(Boolean);
+    const [listingCountsRes, vendorCountsRes, orderCountsRes] = await Promise.all([
+      userIds.length
+        ? supabase.from("listings").select("landlord_id").in("landlord_id", userIds)
+        : Promise.resolve({ data: [], error: null }),
+      userIds.length
+        ? supabaseNewApp.from("vendors").select("owner_id").in("owner_id", userIds)
+        : Promise.resolve({ data: [], error: null }),
+      userIds.length
+        ? supabaseNewApp.from("orders").select("customer_id").in("customer_id", userIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (listingCountsRes.error) throw new Error(listingCountsRes.error.message);
+    if (vendorCountsRes.error) throw new Error(vendorCountsRes.error.message);
+    if (orderCountsRes.error) throw new Error(orderCountsRes.error.message);
+
+    const countBy = (rows, key) =>
+      (rows || []).reduce((acc, row) => {
+        const id = row?.[key];
+        if (!id) return acc;
+        acc[id] = (acc[id] || 0) + 1;
+        return acc;
+      }, {});
+
+    const listingCountByUser = countBy(listingCountsRes.data, "landlord_id");
+    const vendorCountByUser = countBy(vendorCountsRes.data, "owner_id");
+    const orderCountByUser = countBy(orderCountsRes.data, "customer_id");
+
+    const rows = (profiles || []).map((row) => ({
+      ...row,
+      listing_count: Number(listingCountByUser[row.id] || 0),
+      vendor_count: Number(vendorCountByUser[row.id] || 0),
+      order_count: Number(orderCountByUser[row.id] || 0),
+    }));
+
+    return res.json({ status: "success", users: rows });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not load users.");
+  }
+});
+
+app.post("/api/admin/users/invite", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const fullName = typeof req.body?.full_name === "string" ? req.body.full_name.trim() : "";
+    const role = normalizeManagedRole(req.body?.role || "admin");
+    if (!email || !email.includes("@")) return sendError(res, 400, "A valid email is required.");
+    if (!role) return sendError(res, 400, "Invalid role.");
+    if (role === "admin" && !isConfiguredAdminEmail(email)) {
+      return sendError(res, 400, "This email is not allowlisted for admin access.");
+    }
+
+    const redirectTo = config.publicBaseUrl ? `${config.publicBaseUrl}/auth/callback` : undefined;
+    const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
+      data: {
+        full_name: fullName || null,
+        role,
+      },
+      ...(redirectTo ? { redirectTo } : {}),
+    });
+    if (inviteError) throw new Error(inviteError.message);
+
+    const invitedUser = inviteData?.user;
+    if (!invitedUser?.id) return sendError(res, 500, "Invite was sent but user profile could not be resolved.");
+
+    const profilePayload = {
+      id: invitedUser.id,
+      email,
+      full_name: fullName || invitedUser.user_metadata?.full_name || null,
+      role,
+      onboarded: false,
+      updated_at: new Date().toISOString(),
+    };
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .upsert(profilePayload, { onConflict: "id" })
+      .select("id,full_name,email,role")
+      .single();
+    if (profileError) throw new Error(profileError.message);
+
+    return res.json({ status: "success", user: profile });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not invite user.");
+  }
+});
+
+app.post("/api/admin/users/:userId", async (req, res) => {
+  try {
+    const admin = await requireAdmin(req);
+    const userId = String(req.params.userId || "").trim();
+    if (!userId) return sendError(res, 400, "User id is required.");
+    if (userId === admin.id && req.body?.role && String(req.body.role).trim().toLowerCase() !== "admin") {
+      return sendError(res, 400, "Admin cannot remove their own admin role here.");
+    }
+
+    const payload = {};
+    if (typeof req.body?.full_name === "string") payload.full_name = req.body.full_name.trim() || null;
+    if (typeof req.body?.phone === "string") payload.phone = req.body.phone.trim() || null;
+    if (typeof req.body?.campus === "string") payload.campus = req.body.campus.trim() || null;
+    if (typeof req.body?.area === "string") payload.area = req.body.area.trim() || null;
+    if (typeof req.body?.onboarded === "boolean") payload.onboarded = req.body.onboarded;
+
+    const role = normalizeManagedRole(req.body?.role);
+    if (req.body?.role !== undefined) {
+      if (!role) return sendError(res, 400, "Invalid role.");
+      if (role === "admin") {
+        const { data: targetProfile, error: targetError } = await supabase.from("profiles").select("email").eq("id", userId).maybeSingle();
+        if (targetError) throw new Error(targetError.message);
+        if (!isConfiguredAdminEmail(targetProfile?.email)) {
+          return sendError(res, 400, "This email is not allowlisted for admin access.");
+        }
+      }
+      payload.role = role;
+    }
+
+    if (!Object.keys(payload).length) {
+      return sendError(res, 400, "No valid user fields provided.");
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq("id", userId)
+      .select("id,full_name,first_name,last_name,email,phone,role,onboarded,campus,area,created_at,updated_at")
+      .single();
+    if (error) throw new Error(error.message);
+
+    return res.json({ status: "success", user: data });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not update user.");
+  }
+});
+
+app.delete("/api/admin/users/:userId", async (req, res) => {
+  try {
+    const admin = await requireAdmin(req);
+    const userId = String(req.params.userId || "").trim();
+    if (!userId) return sendError(res, 400, "User id is required.");
+    if (userId === admin.id) return sendError(res, 400, "Admin cannot delete their own account here.");
+
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", user_id: userId });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not delete user.");
+  }
+});
+
+app.delete("/api/admin/vendors/:vendorId", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const vendorId = String(req.params.vendorId || "").trim();
+    if (!vendorId) return sendError(res, 400, "Vendor id is required.");
+
+    const { data: linkedOrders, error: orderError } = await supabaseNewApp.from("orders").select("id").eq("vendor_id", vendorId).limit(1);
+    if (orderError) throw new Error(orderError.message);
+    if ((linkedOrders || []).length) return sendError(res, 409, "Vendor has linked orders. Hide it instead of deleting.");
+
+    const { error } = await supabaseNewApp.from("vendors").delete().eq("id", vendorId);
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", vendor_id: vendorId });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not delete vendor.");
+  }
+});
+
+app.delete("/api/admin/catalog-items/:itemId", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const itemId = String(req.params.itemId || "").trim();
+    if (!itemId) return sendError(res, 400, "Item id is required.");
+
+    const { data: linkedOrders, error: orderError } = await supabaseNewApp.from("order_items").select("id").eq("item_id", itemId).limit(1);
+    if (orderError) throw new Error(orderError.message);
+    if ((linkedOrders || []).length) return sendError(res, 409, "Listing has linked orders. Hide it instead of deleting.");
+
+    const { error } = await supabaseNewApp.from("catalog_items").delete().eq("id", itemId);
+    if (error) throw new Error(error.message);
+    return res.json({ status: "success", item_id: itemId });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not delete catalog item.");
+  }
+});
+
+app.post("/api/admin/broadcast", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+    const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    const audience = normalizeNotificationAudience(req.body?.audience_role || "all");
+    const priority = req.body?.priority === "important" ? "important" : "normal";
+    const type = typeof req.body?.type === "string" && req.body.type.trim() ? req.body.type.trim() : "system";
+    if (!title) return sendError(res, 400, "Notification title is required.");
+    if (!message) return sendError(res, 400, "Notification message is required.");
+    if (!audience) return sendError(res, 400, "Invalid notification audience.");
+
+    const userIds = await listBroadcastRecipientIds(audience);
+    if (userIds.length) {
+      await sendPushNotificationsToUsers(userIds, {
+        title,
+        body: message,
+        type,
+        priority,
+        data: {
+          audienceRole: audience,
+          broadcast: true,
+        },
+      });
+    }
+
+    return res.json({ status: "success", sent_to: userIds.length, audience_role: audience });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not send broadcast.");
+  }
+});
+
 app.get("/api/deliveries/unassigned", async (req, res) => {
   try {
     const actorId = actorIdFromHeaders(req);
@@ -1120,14 +1903,8 @@ app.get("/api/deliveries/unassigned", async (req, res) => {
       return sendError(res, 403, "Dispatch access required.");
     }
 
-    const { data, error } = await supabaseNewApp
-      .from("deliveries")
-      .select("id,order_id,status,eta_minutes,created_at,updated_at,orders!inner(payment_status)")
-      .is("driver_id", null)
-      .eq("orders.payment_status", "paid")
-      .order("created_at", { ascending: true });
-    if (error) throw new Error(error.message);
-    return res.json({ status: "success", deliveries: data || [] });
+    const deliveries = await listDeliveryRequestSummaries();
+    return res.json({ status: "success", deliveries });
   } catch (error) {
     return sendError(res, 403, error instanceof Error ? error.message : "Could not load unassigned deliveries.");
   }
@@ -1136,11 +1913,16 @@ app.get("/api/deliveries/unassigned", async (req, res) => {
 app.post("/api/deliveries/:orderId/assign", async (req, res) => {
   try {
     const orderId = String(req.params.orderId || "").trim();
-    const driverId = typeof req.body?.driver_id === "string" ? req.body.driver_id.trim() : "";
+    const actorId = actorIdFromHeaders(req);
+    if (!actorId) return sendError(res, 401, "Missing actor identity header.");
+    const requestedDriverId = typeof req.body?.driver_id === "string" ? req.body.driver_id.trim() : "";
+    const driverId = requestedDriverId || actorId || "";
     if (!orderId) return sendError(res, 400, "Order id is required.");
     if (!driverId) return sendError(res, 400, "driver_id is required.");
 
-    const { actorId, detail, profile } = await assertDeliveryActor(req, orderId);
+    const [profile, detail] = await Promise.all([getProfileById(actorId), getOrderDetailPayload(orderId)]);
+    if (!detail) return sendError(res, 404, "Order not found.");
+
     const driver = await getProfileById(driverId);
     if (!driver || (driver.role !== "agent" && driver.role !== "admin")) {
       return sendError(res, 400, "Driver account not found or not eligible.");
@@ -1149,24 +1931,61 @@ app.post("/api/deliveries/:orderId/assign", async (req, res) => {
       return sendError(res, 409, "Driver assignment is allowed only after backend payment confirmation.");
     }
 
-    const { data, error } = await supabaseNewApp
-      .from("deliveries")
-      .upsert(
-        {
-          order_id: orderId,
+    const isAdmin = profile?.role === "admin";
+    const isVendorOwner = detail.vendor?.owner_id === actorId;
+    const selfAssigningAgent = canSelfAssignDelivery(profile, detail, actorId, driverId);
+
+    if (!isAdmin && !isVendorOwner && !selfAssigningAgent) {
+      return sendError(res, 403, "Not allowed to assign this delivery.");
+    }
+
+    let assignedDelivery = null;
+
+    if (selfAssigningAgent) {
+      const { data, error } = await supabaseNewApp
+        .from("deliveries")
+        .update({
           driver_id: driverId,
           status: "assigned",
           updated_at: new Date().toISOString(),
-        },
-        { onConflict: "order_id" },
-      )
-      .select("*")
-      .single();
-    if (error) throw new Error(error.message);
+        })
+        .eq("order_id", orderId)
+        .is("driver_id", null)
+        .eq("status", "searching")
+        .select("*");
+      if (error) throw new Error(error.message);
+      assignedDelivery = Array.isArray(data) ? data[0] : data;
+    } else {
+      const { data, error } = await supabaseNewApp
+        .from("deliveries")
+        .upsert(
+          {
+            order_id: orderId,
+            driver_id: driverId,
+            status: "assigned",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "order_id" },
+        )
+        .select("*")
+        .single();
+      if (error) throw new Error(error.message);
+      assignedDelivery = data;
+    }
+
+    if (!assignedDelivery?.id) {
+      return sendError(res, 409, "This delivery was already claimed by another rider.");
+    }
 
     await notifyDriverAssigned(orderId, driverId);
     await notifyDeliveryStatusChanged(orderId, "assigned");
-    return res.json({ status: "success", delivery: data, actor_id: actorId, actor_role: profile?.role, vendor_id: detail.order.vendor_id });
+    return res.json({
+      status: "success",
+      delivery: assignedDelivery,
+      actor_id: actorId,
+      actor_role: profile?.role,
+      vendor_id: detail.order.vendor_id,
+    });
   } catch (error) {
     return sendError(res, 403, error instanceof Error ? error.message : "Could not assign delivery.");
   }

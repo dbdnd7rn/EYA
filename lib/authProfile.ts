@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { normalizeAppRole, type AppRole } from "@/lib/roleRouting";
+import { isConfiguredAdminEmail } from "@/lib/env";
 
 function toNullableString(value: unknown) {
   const text = String(value ?? "").trim();
@@ -48,12 +49,23 @@ export async function ensureProfileRole(
 ): Promise<AppRole> {
   if (!user) return null;
 
-  const authRole = getRoleFromAuthUser(user) ?? normalizeAppRole(fallbackRole);
+  const requestedRole = getRoleFromAuthUser(user) ?? normalizeAppRole(fallbackRole);
   const { data, error } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
 
   const dbRole = error ? null : normalizeAppRole(data?.role);
-  if (dbRole && (!authRole || dbRole === authRole)) return dbRole;
-  if (!authRole && dbRole) return dbRole;
+  const canUseAdmin = isConfiguredAdminEmail(user.email);
+  const safeDbRole = dbRole === "admin" ? (canUseAdmin ? "admin" : null) : dbRole ? "student" : null;
+  const authRole =
+    requestedRole === "admin" && canUseAdmin
+      ? "admin"
+      : requestedRole
+        ? "student"
+        : safeDbRole === "admin"
+          ? "admin"
+          : "student";
+
+  if (safeDbRole && (!authRole || safeDbRole === authRole)) return safeDbRole;
+  if (!authRole && safeDbRole) return safeDbRole;
   if (!authRole) return null;
 
   const payload = buildProfilePayload(user, authRole);

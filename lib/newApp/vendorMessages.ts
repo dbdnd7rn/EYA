@@ -9,7 +9,7 @@ function throwIfError(error: { message: string } | null) {
   if (error) throw new Error(error.message);
 }
 
-const DEV_VENDOR_CHAT_KEY = "pamaketi_dev_vendor_messages_v1";
+const DEV_VENDOR_CHAT_KEY = "eya_dev_vendor_messages_v1";
 
 type DevVendorChatStore = {
   conversations: VendorConversationRow[];
@@ -57,6 +57,23 @@ export async function listVendorConversationsForOwner(ownerId: string): Promise<
     .from("vendor_conversations")
     .select("id, vendor_id, customer_id, channel, catalog_item_id, subject, last_message_at, created_at, updated_at")
     .in("vendor_id", vendorIds)
+    .order("last_message_at", { ascending: false });
+  throwIfError(error);
+  return (data ?? []) as VendorConversationRow[];
+}
+
+export async function listVendorConversationsForCustomer(customerId: string): Promise<VendorConversationRow[]> {
+  if (ENV.DEV_AUTH_MODE) {
+    const store = await readStore();
+    return store.conversations
+      .filter((row) => row.customer_id === customerId)
+      .sort((a, b) => +new Date(b.last_message_at) - +new Date(a.last_message_at));
+  }
+
+  const { data, error } = await supabaseNewApp
+    .from("vendor_conversations")
+    .select("id, vendor_id, customer_id, channel, catalog_item_id, subject, last_message_at, created_at, updated_at")
+    .eq("customer_id", customerId)
     .order("last_message_at", { ascending: false });
   throwIfError(error);
   return (data ?? []) as VendorConversationRow[];

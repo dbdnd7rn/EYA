@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
+import { ENV } from "@/lib/env";
 import { supabase } from "@/lib/supabase";
 
 type PlanRow = {
@@ -72,9 +73,8 @@ function parseGoals(text: string): Record<string, number> {
 
 export default function AdminPricingPage() {
   const router = useRouter();
-  const { user, role, loading, refreshRole } = useAuth();
+  const { user, loading } = useAuth();
 
-  const [checkingAccess, setCheckingAccess] = useState(true);
   const [fetching, setFetching] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -84,36 +84,19 @@ export default function AdminPricingPage() {
   const [caseStudies, setCaseStudies] = useState<CaseStudyRow[]>([]);
   const [faqs, setFaqs] = useState<FaqRow[]>([]);
 
-  useEffect(() => {
-    let active = true;
-    const check = async () => {
-      try {
-        if (loading) return;
-        if (!user) {
-          router.replace("/(auth)/login");
-          return;
-        }
-        if (!role) await refreshRole(user.id);
-        const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-        const currentRole = ((data as any)?.role ?? role) as string | null;
-        if (currentRole !== "admin") {
-          router.replace("/");
-          return;
-        }
-      } finally {
-        if (active) setCheckingAccess(false);
-      }
-    };
-    void check();
-    return () => {
-      active = false;
-    };
-  }, [loading, user, role, refreshRole, router]);
-
   const loadAll = async () => {
     setFetching(true);
     setMessage(null);
     try {
+      if (ENV.DEV_AUTH_MODE) {
+        setPlans([]);
+        setTestimonials([]);
+        setCaseStudies([]);
+        setFaqs([]);
+        setMessage("Dev admin mode: pricing tables are not loaded from Supabase.");
+        return;
+      }
+
       const [plansRes, testimonialsRes, caseStudiesRes, faqsRes] = await Promise.all([
         supabase
           .from("pricing_plans")
@@ -187,17 +170,24 @@ export default function AdminPricingPage() {
   };
 
   useEffect(() => {
-    if (!checkingAccess && user) {
-      void loadAll();
+    if (!loading && user) {
+      void loadAll().catch(() => {
+        setFetching(false);
+      });
     }
-  }, [checkingAccess, user]);
+  }, [loading, user]);
 
-  const canRender = useMemo(() => !loading && !checkingAccess, [loading, checkingAccess]);
+  const canRender = useMemo(() => !loading, [loading]);
 
   const savePlan = async (row: PlanRow) => {
     setSaving(row.localId);
     setMessage(null);
     try {
+      if (ENV.DEV_AUTH_MODE) {
+        setMessage("Dev admin mode: pricing changes are not saved to Supabase.");
+        return;
+      }
+
       const payload = {
         tier: row.tier,
         audiences: row.audiencesText
@@ -235,6 +225,11 @@ export default function AdminPricingPage() {
     setSaving(row.localId);
     setMessage(null);
     try {
+      if (ENV.DEV_AUTH_MODE) {
+        setMessage("Dev admin mode: pricing changes are not saved to Supabase.");
+        return;
+      }
+
       const payload = {
         quote: row.quote,
         byline: row.byline,
@@ -258,6 +253,11 @@ export default function AdminPricingPage() {
     setSaving(row.localId);
     setMessage(null);
     try {
+      if (ENV.DEV_AUTH_MODE) {
+        setMessage("Dev admin mode: pricing changes are not saved to Supabase.");
+        return;
+      }
+
       const payload = {
         title: row.title,
         metric: row.metric,
@@ -282,6 +282,11 @@ export default function AdminPricingPage() {
     setSaving(row.localId);
     setMessage(null);
     try {
+      if (ENV.DEV_AUTH_MODE) {
+        setMessage("Dev admin mode: pricing changes are not saved to Supabase.");
+        return;
+      }
+
       const payload = {
         question: row.question,
         answer: row.answer,

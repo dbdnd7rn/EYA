@@ -5,7 +5,7 @@ import { useAuth } from "@/providers/AuthProvider";
 
 export default function SellerSetupCard({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { setActiveRole } = useAuth();
 
   return (
     <View style={[styles.card, compact && styles.compactCard]}>
@@ -20,11 +20,11 @@ export default function SellerSetupCard({ compact = false }: { compact?: boolean
         <Pressable
           style={styles.secondaryBtn}
           onPress={async () => {
-            await signOut();
-            router.replace("/(auth)/login");
+            await setActiveRole("student");
+            router.replace("/(student)/(tabs)/account");
           }}
         >
-          <Text style={styles.secondaryBtnText}>Logout</Text>
+          <Text style={styles.secondaryBtnText}>User section</Text>
         </Pressable>
       </View>
     </View>

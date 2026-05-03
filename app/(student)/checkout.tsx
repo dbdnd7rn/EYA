@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -25,6 +25,7 @@ import { clearCheckoutDraft, getCheckoutDraft, saveCheckoutDraft } from "@/lib/p
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
 import { initializePayChanguCheckout, type DirectChargeSession, type SupportedPaymentMethod, verifyPayChanguTxRef } from "@/lib/payments";
+import { checkoutWithCash } from "@/lib/cashCheckout";
 import { checkoutWithWallet } from "@/lib/walletCheckout";
 
 type CheckoutMode = "stay" | "market" | "food";
@@ -81,6 +82,20 @@ function pendingPaymentLabel(payment: PendingPayment | null) {
   return "Payment";
 }
 
+function parseSelectionMap(raw: string | string[] | undefined) {
+  const source = Array.isArray(raw) ? raw[0] : raw;
+  if (!source) return null;
+  try {
+    const parsed = JSON.parse(source);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return Object.fromEntries(
+      Object.entries(parsed).map(([key, value]) => [key, Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : []]),
+    ) as Record<string, string[]>;
+  } catch {
+    return null;
+  }
+}
+
 export default function CheckoutScreen() {
   const router = useRouter();
   const { user, session } = useAuth();
@@ -96,6 +111,9 @@ export default function CheckoutScreen() {
     channel?: string;
     delivery_mode?: string;
     quantity?: string;
+    food_selection?: string;
+    food_summary?: string;
+    food_base_title?: string;
   }>();
   const [payMethod, setPayMethod] = useState<CheckoutPaymentMethod>("mpamba");
   const [mobileNumber, setMobileNumber] = useState("");
@@ -136,6 +154,9 @@ export default function CheckoutScreen() {
   const requiresPhone = isMobileMoneyMethod;
   const itemId = typeof params.item_id === "string" ? params.item_id : null;
   const vendorId = typeof params.vendor_id === "string" ? params.vendor_id : null;
+  const foodSelection = useMemo(() => parseSelectionMap(params.food_selection), [params.food_selection]);
+  const foodSummary = typeof params.food_summary === "string" ? params.food_summary.trim() : "";
+  const foodBaseTitle = typeof params.food_base_title === "string" ? params.food_base_title.trim() : "";
   const channel = params.channel === "market" || params.channel === "food" ? params.channel : mode === "food" ? "food" : "market";
   const deliveryMode = params.delivery_mode === "pickup" || params.delivery_mode === "doorstep"
     ? params.delivery_mode
@@ -152,6 +173,21 @@ export default function CheckoutScreen() {
       (pendingPayment?.paymentAccountDetails && Object.keys(pendingPayment.paymentAccountDetails).length),
   );
   const showBankFallbackState = pendingPayment?.method === "bank_transfer" && !hasBankTransferDetails;
+  const orderLine =
+    mode === "food" && itemId
+      ? {
+          item_id: itemId,
+          quantity,
+          ...(foodSelection || foodSummary
+            ? {
+                food_customization: {
+                  ...(foodSelection ? { selection_map: foodSelection } : {}),
+                  ...(foodSummary ? { summary: foodSummary } : {}),
+                },
+              }
+            : {}),
+        }
+      : null;
 
   useEffect(() => {
     let active = true;
@@ -282,8 +318,60 @@ export default function CheckoutScreen() {
     }
 
     if (payMethod === "cash") {
-      Alert.alert("Cash selected", "Your order was placed with cash on delivery.");
-      router.replace("/(student)/(tabs)/orders");
+      if (!isOnline) {
+        await saveCheckoutDraft(user?.id, {
+          scope: draftScope,
+          payMethod,
+          mobileNumber,
+          couponCode,
+          quantity,
+          savedAt: Date.now(),
+        });
+        Alert.alert("Offline", "Cash checkout still needs internet so we can create the food order and notify the restaurant.");
+        return;
+      }
+      if (!session?.access_token) {
+        Alert.alert("Login required", "Please log in again to place a cash order.");
+        return;
+      }
+      if (mode !== "food" || !itemId || !vendorId || !orderLine) {
+        Alert.alert("Cash unavailable", "Cash on delivery is currently supported for food orders only.");
+        return;
+      }
+
+      try {
+        setSubmitting(true);
+        const result = await checkoutWithCash(session.access_token, {
+          title: `EYA ${mode.toUpperCase()} checkout`,
+          description: `${mode} cash checkout - ${title}`,
+          purpose: "campus_market_order",
+          order: {
+            vendor_id: vendorId,
+            channel,
+            delivery_mode: deliveryMode,
+            delivery_fee_mwk: delivery,
+            service_fee_mwk: serviceFee,
+            lines: [orderLine],
+          },
+        });
+        await clearCheckoutDraft(user?.id);
+        router.replace({
+          pathname: "/pay/success",
+          params: {
+            tx_ref: result.reference,
+            order_id: result.order_id,
+            mode,
+            title,
+            total: String(total),
+            delivery: String(delivery),
+            method: "cash",
+          },
+        });
+      } catch (e: any) {
+        Alert.alert("Cash checkout failed", e?.message ?? "Could not place your cash order.");
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
@@ -304,7 +392,7 @@ export default function CheckoutScreen() {
         Alert.alert("Login required", "Please log in again to use wallet balance.");
         return;
       }
-      if (mode !== "food" || !itemId || !vendorId) {
+      if (mode !== "food" || !itemId || !vendorId || !orderLine) {
         Alert.alert("Wallet unavailable", "Wallet payments are currently supported for food orders only.");
         return;
       }
@@ -321,7 +409,7 @@ export default function CheckoutScreen() {
             delivery_mode: deliveryMode,
             delivery_fee_mwk: delivery,
             service_fee_mwk: serviceFee,
-            lines: [{ item_id: itemId, quantity }],
+            lines: [orderLine],
           },
         });
         await clearCheckoutDraft(user?.id);
@@ -400,7 +488,7 @@ export default function CheckoutScreen() {
                   delivery_mode: deliveryMode,
                   delivery_fee_mwk: delivery,
                   service_fee_mwk: serviceFee,
-                  lines: [{ item_id: itemId, quantity }],
+                  lines: [orderLine],
                 }
               : undefined,
         },
@@ -467,9 +555,11 @@ export default function CheckoutScreen() {
             <View style={styles.productMeta}>
               <Text style={styles.itemTitle}>{title}</Text>
               <View style={styles.verifiedRow}>
-                <Text style={styles.marketMeta}>1 item - Seller verified</Text>
+                <Text style={styles.marketMeta}>{mode === "food" ? "1 meal - Restaurant verified" : "1 item - Seller verified"}</Text>
                 <BadgeCheck size={18} color="#177b84" />
               </View>
+              {foodBaseTitle ? <Text style={styles.customMealBase}>Base listing: {foodBaseTitle}</Text> : null}
+              {foodSummary ? <Text style={styles.customMealSummary}>{foodSummary}</Text> : null}
 
               <View style={styles.breakdownTable}>
                 <View style={styles.breakdownLeft}>
@@ -612,7 +702,7 @@ export default function CheckoutScreen() {
             />
             <MethodTile
               label="Cash on Delivery"
-              subtitle="Pay when your order arrives"
+              subtitle="Place the food order now and pay at handoff"
               active={payMethod === "cash"}
               icon={<Banknote size={22} color={payMethod === "cash" ? "#f5f8ff" : "#3a7a96"} />}
               onPress={() => setPayMethod("cash")}
@@ -624,7 +714,9 @@ export default function CheckoutScreen() {
             <Text style={styles.noteText}>
               {isMobileMoneyMethod
                 ? "Mobile money opens a simple payment step inside the app before we start the charge."
-                : "Online methods stay in-app. Start the charge here, then confirm the payment status after approval."}
+                : payMethod === "cash"
+                  ? "Cash on delivery creates the food order immediately and keeps tracking active for restaurant handoff."
+                  : "Online methods stay in-app. Start the charge here, then confirm the payment status after approval."}
             </Text>
           </View>
           {!isOnline ? (
@@ -1071,6 +1163,8 @@ const styles = StyleSheet.create({
   itemTitle: { color: "#13285f", fontWeight: "900", fontSize: 28, letterSpacing: -0.7 },
   verifiedRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   marketMeta: { color: "#45527b", fontWeight: "600", fontSize: 15 },
+  customMealBase: { color: "#6a7592", fontWeight: "700", fontSize: 13 },
+  customMealSummary: { color: "#0e6a74", fontWeight: "800", fontSize: 13, lineHeight: 19 },
   cartAside: { gap: 14, alignItems: "flex-start" },
   itemPrice: { color: "#13285f", fontWeight: "900", fontSize: 26, letterSpacing: -0.7 },
   qtyPill: {

@@ -13,6 +13,7 @@ import {
   Star,
   Store,
 } from "lucide-react-native";
+import { buildFoodSelectionSummary, getDefaultFoodSelections, type FoodMenuSelectionMap } from "@/lib/foodMenu";
 import { goBackOrFallback } from "@/lib/navigation";
 import { kwacha } from "@/lib/currency";
 import { getFoodCardById, type FoodCard } from "@/lib/newApp/browse";
@@ -23,13 +24,13 @@ type Props = {
 
 function buildSellerPrompt(item: FoodCard) {
   if (!item.mealPrice || item.mealPrice <= 0) {
-    return `Hi, is "${item.name}" available right now, and how much is it?`;
+    return `Hi, is "${item.meal}" available right now, and how much is it?`;
   }
-  return `Hi, is "${item.name}" available right now?`;
+  return `Hi, is "${item.meal}" available right now?`;
 }
 
 function buildSellerSubject(item: FoodCard) {
-  return `About: ${item.name}`;
+  return `About: ${item.meal}`;
 }
 
 export default function FoodDetailScreen({ fallbackRoute }: Props) {
@@ -39,6 +40,7 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
   const [item, setItem] = React.useState<FoodCard | null>(null);
   const [deliver, setDeliver] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
+  const [selectionMap, setSelectionMap] = React.useState<FoodMenuSelectionMap>({});
 
   React.useEffect(() => {
     let active = true;
@@ -56,6 +58,11 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
       active = false;
     };
   }, [params.id]);
+
+  React.useEffect(() => {
+    if (!item) return;
+    setSelectionMap(getDefaultFoodSelections(item.menuConfig));
+  }, [item]);
 
   if (loading) {
     return (
@@ -83,7 +90,22 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
     );
   }
 
-  const total = item.mealPrice + (deliver ? item.deliveryFee : 0);
+  const selectionSummary = buildFoodSelectionSummary(item.meal, item.mealPrice, item.menuConfig, selectionMap);
+  const total = selectionSummary.unitPrice + (deliver ? item.deliveryFee : 0);
+  const missingRequiredChoices = selectionSummary.missingRequiredSectionIds.length > 0;
+
+  const toggleOption = (sectionId: string, optionId: string, selection: "single" | "multiple") => {
+    setSelectionMap((current) => {
+      const existing = Array.isArray(current[sectionId]) ? current[sectionId] : [];
+      if (selection === "single") {
+        return { ...current, [sectionId]: [optionId] };
+      }
+      const next = existing.includes(optionId)
+        ? existing.filter((value) => value !== optionId)
+        : [...existing, optionId];
+      return { ...current, [sectionId]: next };
+    });
+  };
 
   return (
     <SafeAreaView style={styles.root}>
@@ -104,8 +126,8 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
             </View>
           </View>
           <View style={styles.heroBottom}>
-            <Text style={styles.heroTitle}>{item.name}</Text>
-            <Text style={styles.heroMeal}>{item.meal}</Text>
+            <Text style={styles.heroTitle}>{item.meal}</Text>
+            <Text style={styles.heroMeal}>{item.name} · {item.cuisine}</Text>
             <View style={styles.heroMeta}>
               <MetaPill icon={<Star size={12} color="#f1b634" fill="#f1b634" />} label={item.rating.toFixed(1)} />
               <MetaPill icon={<Clock3 size={12} color="#ffffff" />} label={`${item.etaMins} mins`} />
@@ -117,7 +139,7 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
         <View style={styles.summaryCard}>
           <View style={styles.summaryTop}>
             <View>
-              <Text style={styles.priceLabel}>Meal price</Text>
+              <Text style={styles.priceLabel}>{item.hasCustomization ? "Starting price" : "Meal price"}</Text>
               <Text style={styles.priceValue}>{kwacha(item.mealPrice)}</Text>
             </View>
             <View style={styles.deliveryBubble}>
@@ -127,6 +149,53 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
           </View>
 
           <Text style={styles.description}>{item.description}</Text>
+          {item.menuSummary ? <Text style={styles.menuSummary}>{item.menuSummary}</Text> : null}
+
+          {item.menuConfig?.sections?.length ? (
+            <View style={styles.customizerCard}>
+              <Text style={styles.customizerTitle}>Build your plate</Text>
+              <Text style={styles.customizerSub}>Choose your preferred base meal and add any extras before checkout.</Text>
+
+              {item.menuConfig.sections.map((section) => {
+                const selectedIds = selectionMap[section.id] ?? [];
+                return (
+                  <View key={section.id} style={styles.customizerSection}>
+                    <View style={styles.customizerHead}>
+                      <Text style={styles.customizerSectionTitle}>{section.title}</Text>
+                      <Text style={styles.customizerSectionMeta}>
+                        {section.required ? "Required" : "Optional"} · {section.selection === "single" ? "Pick one" : "Pick any"}
+                      </Text>
+                    </View>
+                    <View style={styles.optionGrid}>
+                      {section.options.map((option) => {
+                        const selected = selectedIds.includes(option.id);
+                        return (
+                          <Pressable
+                            key={option.id}
+                            style={[styles.mealOptionCard, selected && styles.mealOptionCardActive]}
+                            onPress={() => toggleOption(section.id, option.id, section.selection)}
+                          >
+                            <Text style={[styles.mealOptionTitle, selected && styles.mealOptionTitleActive]}>{option.name}</Text>
+                            <Text style={[styles.mealOptionPrice, selected && styles.mealOptionPriceActive]}>
+                              {option.priceDelta > 0 ? `+ ${kwacha(option.priceDelta)}` : "Included"}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })}
+
+              <View style={styles.currentPlateCard}>
+                <Text style={styles.currentPlateLabel}>Current plate</Text>
+                <Text style={styles.currentPlateTitle}>{selectionSummary.itemTitle}</Text>
+                <Text style={styles.currentPlateText}>
+                  {selectionSummary.selectedOptionNames.length ? selectionSummary.selectedOptionNames.join(" · ") : "Plain meal"}
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           <View style={styles.infoGrid}>
             <InfoCard icon={<ShieldCheck size={18} color="#0f6d80" />} title="Restaurant verified" text="Trusted campus vendor with active delivery support." />
@@ -192,27 +261,32 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
           <Text style={styles.footerTotal}>{kwacha(total)}</Text>
         </View>
         <Pressable
-          style={[styles.cta, !item.isOpen && styles.ctaDisabled]}
-          disabled={!item.isOpen}
+          style={[styles.cta, (!item.isOpen || missingRequiredChoices) && styles.ctaDisabled]}
+          disabled={!item.isOpen || missingRequiredChoices}
           onPress={() =>
             item.isOpen &&
             router.push({
               pathname: "/(student)/checkout",
               params: {
                 mode: "food",
-                title: item.name,
-                base: String(item.mealPrice),
+                title: selectionSummary.itemTitle,
+                base: String(selectionSummary.unitPrice),
                 delivery: String(deliver ? item.deliveryFee : 0),
                 item_id: item.id,
                 vendor_id: item.vendorId,
                 channel: "food",
                 delivery_mode: deliver ? "doorstep" : "pickup",
+                food_selection: JSON.stringify(selectionMap),
+                food_summary: selectionSummary.summaryText,
+                food_base_title: item.meal,
               },
             })
           }
         >
-          <Text style={styles.ctaText}>{item.isOpen ? "Proceed to checkout" : "Currently closed"}</Text>
-          {item.isOpen ? <ChevronRight size={20} color="#ffffff" /> : null}
+          <Text style={styles.ctaText}>
+            {!item.isOpen ? "Currently closed" : missingRequiredChoices ? "Complete your plate" : "Proceed to checkout"}
+          </Text>
+          {item.isOpen && !missingRequiredChoices ? <ChevronRight size={20} color="#ffffff" /> : null}
         </Pressable>
       </View>
     </SafeAreaView>
@@ -330,6 +404,45 @@ const styles = StyleSheet.create({
   deliveryBubbleTitle: { color: "#d8e7ff", fontWeight: "700", fontSize: 11 },
   deliveryBubbleValue: { color: "#ffffff", fontWeight: "900", fontSize: 18, marginTop: 2 },
   description: { color: "#58707e", fontWeight: "600", fontSize: 14, lineHeight: 22 },
+  menuSummary: { color: "#0f6d80", fontWeight: "800", fontSize: 13, lineHeight: 20 },
+  customizerCard: {
+    borderRadius: 24,
+    backgroundColor: "#f7fbfc",
+    borderWidth: 1,
+    borderColor: "#dbe6eb",
+    padding: 14,
+    gap: 14,
+  },
+  customizerTitle: { color: "#16315f", fontWeight: "900", fontSize: 18 },
+  customizerSub: { color: "#5b7380", fontWeight: "600", fontSize: 13, lineHeight: 19 },
+  customizerSection: { gap: 10 },
+  customizerHead: { gap: 4 },
+  customizerSectionTitle: { color: "#16315f", fontWeight: "900", fontSize: 15 },
+  customizerSectionMeta: { color: "#6d8592", fontWeight: "700", fontSize: 12 },
+  optionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  mealOptionCard: {
+    width: "48%",
+    borderRadius: 18,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#dbe6eb",
+    padding: 12,
+    gap: 4,
+  },
+  mealOptionCardActive: { backgroundColor: "#16315f", borderColor: "#16315f" },
+  mealOptionTitle: { color: "#16315f", fontWeight: "900", fontSize: 14 },
+  mealOptionTitleActive: { color: "#ffffff" },
+  mealOptionPrice: { color: "#5b7380", fontWeight: "700", fontSize: 12 },
+  mealOptionPriceActive: { color: "#dbe8ff" },
+  currentPlateCard: {
+    borderRadius: 18,
+    backgroundColor: "#16315f",
+    padding: 14,
+    gap: 4,
+  },
+  currentPlateLabel: { color: "#c5d8ff", fontWeight: "800", fontSize: 11, textTransform: "uppercase" },
+  currentPlateTitle: { color: "#ffffff", fontWeight: "900", fontSize: 16 },
+  currentPlateText: { color: "#d6e7f2", fontWeight: "700", fontSize: 12, lineHeight: 18 },
   infoGrid: { gap: 10 },
   infoCard: {
     borderRadius: 22,

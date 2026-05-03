@@ -1,6 +1,6 @@
 # PayChangu Backend
 
-Standalone backend for the `Pa-Level` mobile app PayChangu checkout flow.
+Standalone backend for the `EYA` mobile app PayChangu checkout flow.
 
 ## Routes
 

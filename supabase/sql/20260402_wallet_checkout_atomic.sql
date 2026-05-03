@@ -291,7 +291,7 @@ begin
     p_user_id,
     'wallet_order_payment',
     v_order_id,
-    'pa-level',
+    'eya',
     'wallet',
     null,
     v_payment_reference,

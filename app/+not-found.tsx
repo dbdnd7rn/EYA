@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";

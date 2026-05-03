@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { ArrowRight, Eye, EyeOff, HandCoins, Landmark, Send, ShieldCheck, ShoppingBag, Smartphone } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -11,6 +11,7 @@ import { getWalletSnapshot, saveWalletSnapshot, type WalletSnapshot } from "@/li
 import { initializePayChanguCheckout, type DirectChargeSession, type SupportedPaymentMethod, verifyPayChanguTxRef } from "@/lib/payments";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 type ActivityType = "topup" | "payment" | "reward";
 
@@ -116,6 +117,7 @@ function topupInstruction(topup: PendingTopup | null) {
 
 export default function WalletScreen() {
   const { user, session } = useAuth();
+  const { theme } = useStudentTheme();
   const { isOnline } = useNetwork();
 
   const [showBalance, setShowBalance] = useState(false);
@@ -424,35 +426,35 @@ export default function WalletScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
         <View style={styles.skeletonWrap}>
-          <View style={[styles.skeletonCard, { height: 174 }]} />
-          <View style={[styles.skeletonCard, { height: 76 }]} />
-          <View style={[styles.skeletonCard, { height: 260 }]} />
-          <View style={[styles.skeletonCard, { height: 220 }]} />
+          <View style={[styles.skeletonCard, { height: 174, backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { height: 76, backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { height: 260, backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { height: 220, backgroundColor: theme.surfaceMuted }]} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root}>
-      <SoftPageGlow topColor="rgba(155, 195, 255, 0.18)" middleColor="rgba(213, 199, 255, 0.14)" bottomColor="rgba(255, 218, 196, 0.18)" />
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.balanceCard}>
+        <View style={[styles.balanceCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.balanceGlowBlue} />
           <View style={styles.balanceGlowPeach} />
           <View style={styles.balanceWave} />
 
           <View style={styles.balanceTop}>
             <View>
-              <Text style={styles.balanceLabel}>Wallet Balance</Text>
+              <Text style={[styles.balanceLabel, { color: theme.textMuted }]}>Wallet Balance</Text>
               <View style={styles.balanceRow}>
-                <Text style={styles.balanceAmount}>
+                <Text style={[styles.balanceAmount, { color: theme.text }]}>
                   {showBalance ? formatCurrency(state.balance) : "MWK ******"}
                 </Text>
-                <Pressable onPress={() => setShowBalance((v) => !v)} style={styles.balanceEye}>
-                  {showBalance ? <EyeOff size={16} color="#6b7693" /> : <Eye size={16} color="#6b7693" />}
+                <Pressable onPress={() => setShowBalance((v) => !v)} style={[styles.balanceEye, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+                  {showBalance ? <EyeOff size={16} color={theme.textMuted} /> : <Eye size={16} color={theme.textMuted} />}
                 </Pressable>
               </View>
             </View>
@@ -464,7 +466,7 @@ export default function WalletScreen() {
 
           <View style={styles.heroActions}>
             <Pressable
-              style={[styles.topUpBtn, (startingPayment || verifyingPayment) && styles.actionDisabled]}
+              style={[styles.topUpBtn, { backgroundColor: theme.accent }, (startingPayment || verifyingPayment) && styles.actionDisabled]}
               onPress={() => void startWalletTopup(selectedAmount)}
               disabled={startingPayment || verifyingPayment}
             >
@@ -475,23 +477,23 @@ export default function WalletScreen() {
           </View>
         </View>
 
-        <View style={styles.quickTopUpCard}>
-          <Text style={styles.sectionTitle}>Quick Top Up</Text>
+        <View style={[styles.quickTopUpCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Quick Top Up</Text>
 
-          <View style={styles.phoneRow}>
+          <View style={[styles.phoneRow, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }]}>
             <View style={styles.phoneLeft}>
-              <Send size={19} color="#8a96b4" />
+              <Send size={19} color={theme.textSoft} />
               <TextInput
                 value={mobileNumber}
                 onChangeText={setMobileNumber}
                 placeholder="+265 99 123 4567"
-                placeholderTextColor="#9ea7bc"
+                placeholderTextColor={theme.textSoft}
                 keyboardType="phone-pad"
-                style={styles.phoneInput}
+                style={[styles.phoneInput, { color: theme.text }]}
               />
             </View>
             <View style={styles.phoneRight}>
-              {topupMethod === "bank_transfer" ? <Landmark size={20} color="#8690a9" /> : <Smartphone size={20} color="#8690a9" />}
+              {topupMethod === "bank_transfer" ? <Landmark size={20} color={theme.textSoft} /> : <Smartphone size={20} color={theme.textSoft} />}
             </View>
           </View>
 
@@ -499,27 +501,27 @@ export default function WalletScreen() {
             {QUICK_AMOUNTS.map((amount) => {
               const active = amount === selectedAmount;
               return (
-                <Pressable key={amount} style={[styles.amountChip, active && styles.amountChipActive]} onPress={() => setTopupAmount(String(amount))}>
-                  <Text style={[styles.amountChipText, active && styles.amountChipTextActive]}>{formatCurrency(amount)}</Text>
+                <Pressable key={amount} style={[styles.amountChip, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }, active && styles.amountChipActive, active && { backgroundColor: theme.accent, borderColor: theme.accent }]} onPress={() => setTopupAmount(String(amount))}>
+                  <Text style={[styles.amountChipText, { color: theme.text }, active && styles.amountChipTextActive]}>{formatCurrency(amount)}</Text>
                 </Pressable>
               );
             })}
           </View>
 
-          <View style={styles.customAmountCard}>
-            <Text style={styles.customAmountLabel}>Custom amount</Text>
-            <View style={styles.customAmountInputShell}>
-              <Text style={styles.customAmountPrefix}>MWK</Text>
+          <View style={[styles.customAmountCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }]}>
+            <Text style={[styles.customAmountLabel, { color: theme.textMuted }]}>Custom amount</Text>
+            <View style={[styles.customAmountInputShell, { borderColor: theme.border }]}>
+              <Text style={[styles.customAmountPrefix, { color: theme.textSoft }]}>MWK</Text>
               <TextInput
                 value={topupAmount}
                 onChangeText={(value) => setTopupAmount(sanitizeAmountInput(value))}
                 placeholder="Enter amount"
-                placeholderTextColor="#9ea7bc"
+                placeholderTextColor={theme.textSoft}
                 keyboardType="number-pad"
-                style={styles.customAmountInput}
+                style={[styles.customAmountInput, { color: theme.text }]}
               />
             </View>
-            <Text style={styles.customAmountHint}>Preset buttons are shortcuts. You can enter any amount you want.</Text>
+            <Text style={[styles.customAmountHint, { color: theme.textSoft }]}>Preset buttons are shortcuts. You can enter any amount you want.</Text>
           </View>
 
           <View style={styles.methodSwitch}>
@@ -539,7 +541,7 @@ export default function WalletScreen() {
           </View>
 
           <Pressable
-            style={[styles.fullTopUpBtn, (startingPayment || verifyingPayment) && styles.actionDisabled]}
+            style={[styles.fullTopUpBtn, { backgroundColor: theme.accent }, (startingPayment || verifyingPayment) && styles.actionDisabled]}
             onPress={() => void startWalletTopup(selectedAmount)}
             disabled={startingPayment || verifyingPayment}
           >
@@ -554,6 +556,7 @@ export default function WalletScreen() {
           <Animated.View
             style={[
               styles.noticeCard,
+              { backgroundColor: theme.isDark ? "#21314c" : "#eef5ff", borderColor: theme.border },
               {
                 opacity: noticeAnim,
                 transform: [
@@ -573,10 +576,10 @@ export default function WalletScreen() {
               },
             ]}
           >
-            <Text style={styles.noticeText}>{msg}</Text>
+            <Text style={[styles.noticeText, { color: theme.text }]}>{msg}</Text>
             {(pendingTopup?.txRef || lastTopupReference) ? (
               <Pressable
-                style={[styles.retrySyncBtn, reconcilingPayment && styles.actionDisabled]}
+                style={[styles.retrySyncBtn, { backgroundColor: theme.accent }, reconcilingPayment && styles.actionDisabled]}
                 onPress={() => void retryWalletSync()}
                 disabled={reconcilingPayment}
               >
@@ -588,13 +591,13 @@ export default function WalletScreen() {
         ) : null}
 
         <View style={styles.historySection}>
-          <Text style={styles.historyTitle}>Transaction History</Text>
+          <Text style={[styles.historyTitle, { color: theme.text }]}>Transaction History</Text>
 
-          <View style={styles.historyCard}>
+          <View style={[styles.historyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             {state.activity.length === 0 ? (
               <View style={styles.emptyCard}>
-                <Text style={styles.emptyTitle}>No wallet activity yet</Text>
-                <Text style={styles.emptySub}>Your top-ups and wallet purchases will appear here.</Text>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>No wallet activity yet</Text>
+                <Text style={[styles.emptySub, { color: theme.textMuted }]}>Your top-ups and wallet purchases will appear here.</Text>
               </View>
             ) : (
               state.activity.map((row, index) => (
@@ -614,21 +617,21 @@ export default function WalletScreen() {
           </View>
         </View>
 
-        <Text style={styles.syncText}>{user?.id ? (syncing ? "Syncing wallet..." : "Wallet synced across devices") : "Local wallet mode"}</Text>
-        {cacheTime ? <Text style={styles.cacheMeta}>Wallet cache: {formatCacheTime(cacheTime)}</Text> : null}
+        <Text style={[styles.syncText, { color: theme.textMuted }]}>{user?.id ? (syncing ? "Syncing wallet..." : "Wallet synced across devices") : "Local wallet mode"}</Text>
+        {cacheTime ? <Text style={[styles.cacheMeta, { color: theme.textSoft }]}>Wallet cache: {formatCacheTime(cacheTime)}</Text> : null}
       </ScrollView>
 
       <Modal visible={!!pendingTopup} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeCheckout}>
-        <SafeAreaView style={styles.checkoutRoot}>
-          <View style={styles.checkoutHeader}>
+        <SafeAreaView style={[styles.checkoutRoot, { backgroundColor: theme.backgroundAlt }]}>
+          <View style={[styles.checkoutHeader, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View>
-              <Text style={styles.checkoutTitle}>Complete wallet top-up</Text>
-              <Text style={styles.checkoutSub}>
+              <Text style={[styles.checkoutTitle, { color: theme.text }]}>Complete wallet top-up</Text>
+              <Text style={[styles.checkoutSub, { color: theme.textMuted }]}>
                 {pendingTopup ? formatCurrency(pendingTopup.amount) : "Processing payment"}
               </Text>
             </View>
-            <Pressable style={styles.checkoutCloseBtn} onPress={closeCheckout}>
-              <Text style={styles.checkoutCloseText}>Close</Text>
+            <Pressable style={[styles.checkoutCloseBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} onPress={closeCheckout}>
+              <Text style={[styles.checkoutCloseText, { color: theme.text }]}>Close</Text>
             </Pressable>
           </View>
 
@@ -730,10 +733,19 @@ function MethodPill({
   icon?: React.ReactNode;
   onPress: () => void;
 }) {
+  const { theme } = useStudentTheme();
   return (
-    <Pressable style={[styles.methodPill, active && styles.methodPillActive]} onPress={onPress}>
+    <Pressable
+      style={[
+        styles.methodPill,
+        { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft },
+        active && styles.methodPillActive,
+        active && { backgroundColor: theme.accent, borderColor: theme.accent },
+      ]}
+      onPress={onPress}
+    >
       {icon ? <View style={styles.methodPillIcon}>{icon}</View> : null}
-      <Text style={[styles.methodPillText, active && styles.methodPillTextActive]}>{label}</Text>
+      <Text style={[styles.methodPillText, { color: theme.text }, active && styles.methodPillTextActive]}>{label}</Text>
     </Pressable>
   );
 }
@@ -757,14 +769,15 @@ function HistoryRow({
   time: string;
   total: number;
 }) {
+  const { theme } = useStudentTheme();
   const positive = amount >= 0;
   const neutral = label.toLowerCase().startsWith("request sent");
   return (
-    <View style={[styles.historyRow, index < total - 1 && styles.historyRowBorder]}>
+    <View style={[styles.historyRow, index < total - 1 && styles.historyRowBorder, index < total - 1 && { borderBottomColor: theme.borderSoft }]}>
       <View style={[styles.historyIconWrap, { backgroundColor: tint }]}>{icon}</View>
       <View style={styles.historyCopy}>
-        <Text numberOfLines={1} style={styles.historyLabel}>{label}</Text>
-        <Text style={styles.historyMeta}>{mode ? `${mode} • ${time}` : time}</Text>
+        <Text numberOfLines={1} style={[styles.historyLabel, { color: theme.text }]}>{label}</Text>
+        <Text style={[styles.historyMeta, { color: theme.textMuted }]}>{mode ? `${mode} • ${time}` : time}</Text>
       </View>
       <Text
         style={[

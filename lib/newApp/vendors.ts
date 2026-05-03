@@ -7,7 +7,7 @@ function throwIfError(error: { message: string } | null) {
   if (error) throw new Error(error.message);
 }
 
-const DEV_VENDORS_KEY = "pamaketi_dev_vendors_v1";
+const DEV_VENDORS_KEY = "eya_dev_vendors_v1";
 
 async function getDevVendors(): Promise<VendorRow[]> {
   const raw = await AsyncStorage.getItem(DEV_VENDORS_KEY);

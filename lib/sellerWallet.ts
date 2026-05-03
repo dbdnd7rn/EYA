@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const SELLER_WALLET_KEY = "pamaketi_seller_wallet_v1";
+const SELLER_WALLET_KEY = "eya_seller_wallet_v1";
 
 export type SellerWithdrawalRow = {
   id: string;

@@ -2,7 +2,7 @@ import React from "react";
 import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
-import { Bell, ChevronRight, Heart, MapPin, MessageCircle, PackageCheck, PencilLine, Search, ShoppingBag, Star, Trash2, Zap } from "lucide-react-native";
+import { ArrowLeft, Bell, ChevronRight, Heart, Home, MapPin, MessageCircle, PackageCheck, PencilLine, Search, ShoppingBag, Star, Trash2, Zap } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { listMarketCards, type MarketCard } from "@/lib/newApp/browse";
@@ -52,6 +52,12 @@ function initials(label?: string | null) {
   return `${first}${second}`.toUpperCase();
 }
 
+function formatListedOn(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "recently";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function deriveTopSellers(cards: MarketCard[]): SellerCard[] {
   const map = new Map<string, { vendorId: string; name: string; totalRating: number; count: number; image: string }>();
   for (const card of cards) {
@@ -88,7 +94,7 @@ export default function MarketplaceBrowseScreen({ detailRoute }: Props) {
   const router = useRouter();
   const isStudentBrowse = detailRoute === "/(student)/market/[id]";
   const { user } = useAuth();
-  const { workspace: sellerWorkspace, setProductActive, archiveProduct } = useSellerWorkspace();
+  const { workspace: sellerWorkspace, setProductActive, archiveProduct } = useSellerWorkspace("market", { autoCreateVendor: false });
   const locationContext = usePreferredLocationOptional();
   const preferredLocation = locationContext?.location ?? null;
   const promoRef = React.useRef<ScrollView | null>(null);
@@ -184,7 +190,17 @@ export default function MarketplaceBrowseScreen({ detailRoute }: Props) {
         const matchesCategory = selectedCategory === "all" || categories.find((c) => c.id === selectedCategory)?.aliases.some((alias) => item.category.toLowerCase().includes(alias));
         return matchesTerm && !!matchesCategory;
       })
-      .sort((a, b) => locationMatchScore(preferredLocation, { area: b.area, campus: b.campus }) - locationMatchScore(preferredLocation, { area: a.area, campus: a.campus }))
+      .sort((a, b) => {
+        const aLocation = locationMatchScore(preferredLocation, { area: a.area, campus: a.campus }) / 67;
+        const bLocation = locationMatchScore(preferredLocation, { area: b.area, campus: b.campus }) / 67;
+        const aRank = (a.rankingScore ?? 0) * 0.78 + aLocation * 0.22;
+        const bRank = (b.rankingScore ?? 0) * 0.78 + bLocation * 0.22;
+        return (
+          bRank - aRank
+          || new Date(b.refreshedAt).getTime() - new Date(a.refreshedAt).getTime()
+          || new Date(b.listedAt).getTime() - new Date(a.listedAt).getTime()
+        );
+      })
       .slice(0, 8);
   }, [items, preferredLocation, query, selectedCategory]);
 
@@ -209,6 +225,7 @@ export default function MarketplaceBrowseScreen({ detailRoute }: Props) {
   const messageRoute = isStudentBrowse ? "/(student)/(tabs)/messages" : "/(market)/buyers";
   const locationRoute = isStudentBrowse ? "/(student)/address" : "/(market)/shop-settings";
   const exploreAllRoute = isStudentBrowse ? "/(student)/market/all-products" : "/(market)/all-products";
+  const homeRoute = isStudentBrowse ? "/(student)/(tabs)/home" : "/(market)/(tabs)/dashboard";
   const showInlineSellerListings = false;
 
   const openSellerSetup = () => router.push(sellerWorkspace.hasVendor ? "/sell/products" : "/sell/setup");
@@ -242,7 +259,10 @@ export default function MarketplaceBrowseScreen({ detailRoute }: Props) {
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topSection}>
-          <Text style={styles.brandTag}>EYA market</Text>
+          <View style={styles.brandRow}>
+            <BackHomeButton onPress={() => router.replace(homeRoute as any)} />
+            <Text style={styles.brandTag}>EYA market</Text>
+          </View>
           <View style={styles.headerRow}>
             <Pressable style={styles.locationChip} onPress={() => router.push(locationRoute as any)}>
               {profileAvatarUrl ? (
@@ -392,6 +412,7 @@ export default function MarketplaceBrowseScreen({ detailRoute }: Props) {
                   <Text style={styles.cardTitle} numberOfLines={2}>{item.name}</Text>
                   <Text style={styles.cardPrice}>{kwacha(item.price)}</Text>
                   <Text style={styles.cardMeta}>{item.rating.toFixed(1)} • {estimate(item, index)}</Text>
+                  <Text style={styles.cardListed}>Listed {formatListedOn(item.listedAt)}</Text>
                   <Text style={styles.softPill}>{item.vendor}</Text>
                 </View>
               </Pressable>
@@ -429,6 +450,20 @@ function IconBtn({ icon, badge, onPress, accent = false }: { icon: React.ReactNo
   return <Pressable style={styles.iconBtn} onPress={onPress}>{icon}<View style={[styles.iconBadge, accent && { backgroundColor: "#0f8a8f" }]}><Text style={styles.iconBadgeText}>{badge}</Text></View></Pressable>;
 }
 
+function BackHomeButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel="Back to home" hitSlop={10} style={styles.backHomeBtn} onPress={onPress}>
+      <View style={styles.backHomeTrail} />
+      <View style={styles.backHomeCore}>
+        <ArrowLeft size={19} color="#ffffff" strokeWidth={3} />
+      </View>
+      <View style={styles.backHomeBadge}>
+        <Home size={12} color="#0f6d80" strokeWidth={3} />
+      </View>
+    </Pressable>
+  );
+}
+
 function InfoPill({ icon, label }: { icon: React.ReactNode; label: string }) {
   return <View style={styles.infoPill}>{icon}<Text style={styles.infoPillText}>{label}</Text></View>;
 }
@@ -449,7 +484,38 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 110, gap: 18 },
   skeleton: { margin: 16, height: 280, borderRadius: 28, backgroundColor: "#d8edf2" },
   topSection: { gap: 16 },
-  brandTag: { color: "#102a54", fontSize: 16, fontWeight: "900", paddingHorizontal: 2 },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 2 },
+  brandTag: { color: "#102a54", fontSize: 16, fontWeight: "900" },
+  backHomeBtn: { width: 54, height: 38, justifyContent: "center" },
+  backHomeTrail: { position: "absolute", left: 19, width: 30, height: 8, borderRadius: 999, backgroundColor: "#bfe6ec" },
+  backHomeCore: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#0f6d80",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#ffffff",
+    shadowColor: "#0b3d4f",
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+  },
+  backHomeBadge: {
+    position: "absolute",
+    right: 1,
+    bottom: 1,
+    width: 21,
+    height: 21,
+    borderRadius: 11,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#cde6ec",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14, paddingHorizontal: 2 },
   locationChip: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#dcecf1" },
@@ -547,6 +613,7 @@ const styles = StyleSheet.create({
   cardTitle: { color: "#0b3d4f", fontWeight: "900", fontSize: 16, minHeight: 42 },
   cardPrice: { color: "#0b3d4f", fontWeight: "900", fontSize: 18 },
   cardMeta: { color: "#4e7480", fontWeight: "800", fontSize: 12 },
+  cardListed: { color: "#6d8a95", fontWeight: "700", fontSize: 11 },
   softPill: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: "#edf3ff", color: "#102a54", fontWeight: "800", fontSize: 11, paddingHorizontal: 10, paddingVertical: 6, overflow: "hidden" },
   sellerCard: { borderRadius: 22, borderWidth: 1, borderColor: "#cfe3e9", backgroundColor: "#fcfeff", padding: 12, flexDirection: "row", gap: 12, alignItems: "center" },
   sellerImage: { width: 86, height: 86, borderRadius: 18, backgroundColor: "#dcecf1" },

@@ -161,6 +161,10 @@ export type CatalogItemUpdateInput = Partial<Omit<CatalogItemCreateInput, "vendo
 export type CreateOrderLineInput = {
   item_id: string;
   quantity: number;
+  food_customization?: {
+    selection_map?: Record<string, string[]>;
+    summary?: string;
+  } | null;
 };
 
 export type CreateOrderInput = {

@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { createAdminNotification, createInAppNotification } from "@/lib/appNotifications";
+import { ENV } from "@/lib/env";
 
 export type TrustSafetyReportStatus = "open" | "in_review" | "resolved" | "dismissed";
 
@@ -56,6 +57,8 @@ export async function listMyTrustSafetyReports(reporterId: string) {
 }
 
 export async function listTrustSafetyReportsForAdmin() {
+  if (ENV.DEV_AUTH_MODE) return [];
+
   const { data, error } = await supabase
     .from("trust_safety_reports")
     .select("id, reporter_id, category, subject_type, subject_id, status, details, created_at, admin_notes")
@@ -70,6 +73,8 @@ export async function updateTrustSafetyReportStatus(
   status: TrustSafetyReportStatus,
   adminNotes?: string | null,
 ) {
+  if (ENV.DEV_AUTH_MODE) return;
+
   const { data, error } = await supabase
     .from("trust_safety_reports")
     .update({

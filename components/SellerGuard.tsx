@@ -2,12 +2,12 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
-import { supabase } from "@/lib/supabase";
 import { normalizeAppRole } from "@/lib/roleRouting";
-import { ENV } from "@/lib/env";
+import { getWorkspaceHomeRoute } from "@/lib/workspaceAccess";
+import { hasApprovedWorkspaceRole } from "@/lib/roleApplications";
 
 export default function SellerGuard({ children }: { children: React.ReactNode }) {
-  const { user, role, loading: authLoading, refreshRole } = useAuth();
+  const { user, role, activeRole, loading: authLoading, refreshRole } = useAuth();
   const router = useRouter();
   const [checking, setChecking] = useState(true);
 
@@ -24,52 +24,26 @@ export default function SellerGuard({ children }: { children: React.ReactNode })
           return;
         }
 
-        if (!role) {
-          await refreshRole(user.id);
+        if (!role && !activeRole) {
+          await refreshRole(user);
         }
 
-        if (ENV.DEV_AUTH_MODE) {
-          const currentRole = normalizeAppRole(role);
-          if (currentRole === "student") {
-            router.replace("/(student)/(tabs)/home");
-            return;
-          }
-          if (currentRole === "landlord" || currentRole === "admin") {
-            router.replace("/(landlord)/(tabs)/dashboard");
-            return;
-          }
-          if (currentRole === "agent") {
-            router.replace("/(agent)/(tabs)/dashboard");
-            return;
-          }
-          if (currentRole !== "vendor") {
-            router.replace("/onboarding");
-            return;
-          }
+        const currentRole = normalizeAppRole(activeRole ?? role) ?? "student";
+        if (currentRole === "admin") {
+          router.replace(getWorkspaceHomeRoute("admin") as any);
           return;
         }
-
-        const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-        const currentRole = normalizeAppRole((data as any)?.role ?? role);
-
-        if (currentRole === "student") {
-          router.replace("/(student)/(tabs)/home");
-          return;
-        }
-        if (currentRole === "landlord" || currentRole === "admin") {
-          router.replace("/(landlord)/(tabs)/dashboard");
-          return;
-        }
-        if (currentRole === "agent") {
-          router.replace("/(agent)/(tabs)/dashboard");
-          return;
-        }
+        const approved = await hasApprovedWorkspaceRole(user.id, "vendor");
         if (currentRole !== "vendor") {
-          router.replace("/onboarding");
+          router.replace(getWorkspaceHomeRoute(currentRole) as any);
+          return;
+        }
+        if (!approved && normalizeAppRole(role) !== "vendor") {
+          router.replace("/onboarding" as any);
           return;
         }
       } catch {
-        router.replace("/onboarding");
+        router.replace(getWorkspaceHomeRoute("student") as any);
       } finally {
         if (alive) setChecking(false);
       }
@@ -79,7 +53,7 @@ export default function SellerGuard({ children }: { children: React.ReactNode })
     return () => {
       alive = false;
     };
-  }, [authLoading, user, role, refreshRole, router]);
+  }, [authLoading, user, role, activeRole, refreshRole, router]);
 
   if (authLoading || checking) {
     return (

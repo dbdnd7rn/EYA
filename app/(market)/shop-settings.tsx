@@ -8,22 +8,25 @@ import { useSellerWorkspace } from "@/components/seller/useSellerWorkspace";
 import { getSellerShopMeta, upsertSellerShopMeta } from "@/lib/sellerEnhancements";
 import { getSellerStorefrontMeta, setSellerStorefrontMeta } from "@/lib/sellerStorefront";
 import { uploadStorefrontImage } from "@/lib/storefrontUpload";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/providers/AuthProvider";
 
 export default function SellerShopSettingsPage() {
   const router = useRouter();
-  const { workspace, updateVendorProfile } = useSellerWorkspace();
+  const { user } = useAuth();
+  const { workspace, updateVendorProfile } = useSellerWorkspace("food");
   const vendor = workspace.vendor;
 
+  const [managerName, setManagerName] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [campus, setCampus] = useState("");
   const [area, setArea] = useState("");
   const [city, setCity] = useState("Blantyre");
-  const [supportsMarket, setSupportsMarket] = useState(true);
-  const [supportsFood, setSupportsFood] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [avatarUrl, setAvatarUrl] = useState("");
   const [bannerUrl, setBannerUrl] = useState("");
+  const [galleryUrls, setGalleryUrls] = useState<string[]>([]);
   const [openingHours, setOpeningHours] = useState("Mon - Sun • 8:00 AM - 8:00 PM");
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -31,19 +34,18 @@ export default function SellerShopSettingsPage() {
   const [soundAlertsEnabled, setSoundAlertsEnabled] = useState(true);
   const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState<"avatar" | "banner" | null>(null);
+  const [uploading, setUploading] = useState<"avatar" | "banner" | "gallery" | null>(null);
 
   useEffect(() => {
     if (!vendor) return;
+    setManagerName(workspace.profile.displayName ?? "");
     setName(vendor.name ?? "");
     setDescription(vendor.description ?? "");
     setCampus(vendor.campus ?? "");
     setArea(vendor.area ?? "");
     setCity(vendor.city ?? "Blantyre");
-    setSupportsMarket(vendor.supports_market);
-    setSupportsFood(vendor.supports_food);
     setIsActive(vendor.is_active);
-  }, [vendor]);
+  }, [vendor, workspace.profile.displayName]);
 
   useEffect(() => {
     let active = true;
@@ -54,9 +56,10 @@ export default function SellerShopSettingsPage() {
       if (!active) return;
       setAvatarUrl(meta?.avatarUrl ?? "");
       setBannerUrl(meta?.bannerUrl ?? "");
+      setGalleryUrls(meta?.galleryUrls ?? []);
       setOpeningHours(shopMeta?.openingHours ?? "Mon - Sun • 8:00 AM - 8:00 PM");
       setContactPhone(shopMeta?.contactPhone ?? "");
-      setContactEmail(shopMeta?.contactEmail ?? "");
+      setContactEmail(shopMeta?.contactEmail ?? user?.email ?? "");
       setWhatsapp(shopMeta?.whatsapp ?? "");
       setSoundAlertsEnabled(shopMeta?.soundAlertsEnabled ?? true);
       setPushNotificationsEnabled(shopMeta?.pushNotificationsEnabled ?? true);
@@ -65,9 +68,9 @@ export default function SellerShopSettingsPage() {
     return () => {
       active = false;
     };
-  }, [vendor?.id]);
+  }, [user?.email, vendor?.id]);
 
-  const pickStorefrontImage = async (kind: "avatar" | "banner") => {
+  const pickStorefrontImage = async (kind: "avatar" | "banner" | "gallery") => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert("Permission required", "Allow photo access to upload storefront images.");
@@ -90,10 +93,12 @@ export default function SellerShopSettingsPage() {
         vendorId: vendor.id,
         avatarUrl: kind === "avatar" ? url : avatarUrl || null,
         bannerUrl: kind === "banner" ? url : bannerUrl || null,
+        galleryUrls: kind === "gallery" ? [...galleryUrls, url] : galleryUrls,
       };
       await setSellerStorefrontMeta(nextMeta);
       if (kind === "avatar") setAvatarUrl(url);
-      else setBannerUrl(url);
+      else if (kind === "banner") setBannerUrl(url);
+      else setGalleryUrls((current) => [...current, url]);
     } catch (err: any) {
       Alert.alert("Upload failed", err?.message ?? "Could not upload storefront image.");
     } finally {
@@ -103,31 +108,53 @@ export default function SellerShopSettingsPage() {
 
   const submit = async () => {
     if (!vendor) return;
+    if (!managerName.trim()) {
+      Alert.alert("Manager name required", "Enter the restaurant manager or account name.");
+      return;
+    }
     if (!name.trim()) {
       Alert.alert("Shop name required", "Enter the seller or shop name.");
       return;
     }
-    if (!supportsMarket && !supportsFood) {
-      Alert.alert("Select a channel", "Your shop should support at least market or food.");
+    if (contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
+      Alert.alert("Valid email required", "Enter a valid business email address.");
       return;
     }
-
     setSaving(true);
     try {
+      const cleanManagerName = managerName.trim();
+      const cleanPhone = contactPhone.trim() || null;
+
+      const profileUpdate = await supabase
+        .from("profiles")
+        .update({ full_name: cleanManagerName, phone: cleanPhone } as never)
+        .eq("id", user?.id ?? "");
+
+      if (profileUpdate.error) {
+        const parts = cleanManagerName.split(/\s+/).filter(Boolean);
+        const first = parts.shift() ?? cleanManagerName;
+        const rest = parts.join(" ") || null;
+        const fallback = await supabase
+          .from("profiles")
+          .update({ first_name: first, last_name: rest, surname: rest, phone: cleanPhone } as never)
+          .eq("id", user?.id ?? "");
+        if (fallback.error) throw fallback.error;
+      }
+
       await updateVendorProfile({
         name,
         description: description.trim() || null,
         campus: campus.trim() || null,
         area: area.trim() || null,
         city: city.trim() || null,
-        supports_market: supportsMarket,
-        supports_food: supportsFood,
+        supports_market: false,
+        supports_food: true,
         is_active: isActive,
       });
-      await setSellerStorefrontMeta({ vendorId: vendor.id, avatarUrl: avatarUrl || null, bannerUrl: bannerUrl || null });
+      await setSellerStorefrontMeta({ vendorId: vendor.id, avatarUrl: avatarUrl || null, bannerUrl: bannerUrl || null, galleryUrls });
       await upsertSellerShopMeta(vendor.id, {
         openingHours: openingHours.trim() || null,
-        contactPhone: contactPhone.trim() || null,
+        contactPhone: cleanPhone,
         contactEmail: contactEmail.trim() || null,
         whatsapp: whatsapp.trim() || null,
         soundAlertsEnabled,
@@ -150,35 +177,64 @@ export default function SellerShopSettingsPage() {
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
             <ChevronLeft size={22} color="#102a54" />
           </Pressable>
-          <Text style={styles.title}>Shop Settings</Text>
+          <Text style={styles.title}>Restaurant Settings</Text>
           <Pressable style={styles.saveGhost} onPress={submit} disabled={saving || !vendor}>
             <Text style={styles.saveGhostText}>{saving ? "Saving..." : "Save"}</Text>
           </Pressable>
         </View>
 
         <View style={styles.card}>
-            <Text style={styles.cardTitle}>Manage your seller shop</Text>
-            <Text style={styles.cardSub}>Keep your shop details, location, and availability updated for customers.</Text>
+            <Text style={styles.cardTitle}>Manage your restaurant</Text>
+            <Text style={styles.cardSub}>Keep your kitchen details, location, and availability updated for students ordering from the food section.</Text>
 
             <View style={styles.mediaGrid}>
               <Pressable style={styles.mediaCard} onPress={() => void pickStorefrontImage("avatar")}>
                 {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.avatarPreview} /> : <View style={styles.mediaPlaceholder}><ImagePlus size={24} color="#102a54" /></View>}
-                <Text style={styles.mediaTitle}>Shop avatar</Text>
+                <Text style={styles.mediaTitle}>Restaurant avatar</Text>
                 <Text style={styles.mediaSub}>{uploading === "avatar" ? "Uploading..." : "Tap to upload"}</Text>
               </Pressable>
 
               <Pressable style={styles.mediaCard} onPress={() => void pickStorefrontImage("banner")}>
                 {bannerUrl ? <Image source={{ uri: bannerUrl }} style={styles.bannerPreview} /> : <View style={styles.mediaPlaceholderWide}><ImagePlus size={24} color="#102a54" /></View>}
-                <Text style={styles.mediaTitle}>Shop banner</Text>
+                <Text style={styles.mediaTitle}>Restaurant banner</Text>
                 <Text style={styles.mediaSub}>{uploading === "banner" ? "Uploading..." : "Tap to upload"}</Text>
               </Pressable>
             </View>
 
-            <TextInput value={name} onChangeText={setName} placeholder="Shop name" placeholderTextColor="#98a3bd" style={styles.input} />
+            <View style={styles.gallerySection}>
+              <Text style={styles.mediaTitle}>Restaurant gallery</Text>
+              <Text style={styles.mediaSub}>Upload many food and ambience photos. They will slide slowly on the student restaurant page.</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryRow}>
+                {galleryUrls.map((url, index) => (
+                  <View key={`${url}-${index}`} style={styles.galleryThumbWrap}>
+                    <Image source={{ uri: url }} style={styles.galleryThumb} />
+                    <Pressable
+                      style={styles.galleryRemoveBtn}
+                      onPress={async () => {
+                        if (!vendor?.id) return;
+                        const next = galleryUrls.filter((_, currentIndex) => currentIndex !== index);
+                        setGalleryUrls(next);
+                        await setSellerStorefrontMeta({ vendorId: vendor.id, avatarUrl: avatarUrl || null, bannerUrl: bannerUrl || null, galleryUrls: next });
+                      }}
+                    >
+                      <Text style={styles.galleryRemoveText}>x</Text>
+                    </Pressable>
+                  </View>
+                ))}
+                <Pressable style={styles.galleryAddCard} onPress={() => void pickStorefrontImage("gallery")}>
+                  <ImagePlus size={22} color="#102a54" />
+                  <Text style={styles.galleryAddTitle}>{uploading === "gallery" ? "Uploading..." : "Add photo"}</Text>
+                  <Text style={styles.galleryAddSub}>{galleryUrls.length} uploaded</Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+
+            <TextInput value={managerName} onChangeText={setManagerName} placeholder="Manager or account name" placeholderTextColor="#98a3bd" style={styles.input} />
+            <TextInput value={name} onChangeText={setName} placeholder="Restaurant name" placeholderTextColor="#98a3bd" style={styles.input} />
             <TextInput
               value={description}
               onChangeText={setDescription}
-              placeholder="Short shop description"
+              placeholder="Short restaurant description"
               placeholderTextColor="#98a3bd"
               style={[styles.input, styles.textArea]}
               multiline
@@ -193,15 +249,17 @@ export default function SellerShopSettingsPage() {
             <TextInput value={whatsapp} onChangeText={setWhatsapp} placeholder="WhatsApp number" placeholderTextColor="#98a3bd" style={styles.input} />
 
             <View style={styles.toggleCard}>
-              <ToggleRow label="Market listings" value={supportsMarket} onValueChange={setSupportsMarket} />
-              <ToggleRow label="Food listings" value={supportsFood} onValueChange={setSupportsFood} />
+              <View style={styles.channelLockRow}>
+                <Text style={styles.toggleLabel}>Role channel</Text>
+                <Text style={styles.channelLockText}>Food section only</Text>
+              </View>
               <ToggleRow label="Shop is active" value={isActive} onValueChange={setIsActive} />
               <ToggleRow label="Order sound alerts" value={soundAlertsEnabled} onValueChange={setSoundAlertsEnabled} />
               <ToggleRow label="Push notifications" value={pushNotificationsEnabled} onValueChange={setPushNotificationsEnabled} />
             </View>
 
             <Pressable style={[styles.submitBtn, saving && styles.submitBtnDisabled]} onPress={submit} disabled={saving}>
-              <Text style={styles.submitBtnText}>{saving ? "Saving..." : "Update shop"}</Text>
+              <Text style={styles.submitBtnText}>{saving ? "Saving..." : "Update restaurant"}</Text>
             </Pressable>
         </View>
       </ScrollView>
@@ -278,6 +336,36 @@ const styles = StyleSheet.create({
   bannerPreview: { width: "100%", height: 120, borderRadius: 18, backgroundColor: "#eef3ff" },
   mediaTitle: { color: "#102a54", fontWeight: "900", fontSize: 15 },
   mediaSub: { color: "#7a87a5", fontWeight: "700", fontSize: 13 },
+  gallerySection: { gap: 8 },
+  galleryRow: { gap: 10, paddingRight: 12 },
+  galleryThumbWrap: { position: "relative" },
+  galleryThumb: { width: 116, height: 116, borderRadius: 18, backgroundColor: "#eef3ff" },
+  galleryRemoveBtn: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(16,42,84,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  galleryRemoveText: { color: "#fff", fontSize: 12, fontWeight: "900" },
+  galleryAddCard: {
+    width: 116,
+    height: 116,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#dfe7f8",
+    backgroundColor: "#f8f9fe",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  galleryAddTitle: { color: "#102a54", fontSize: 13, fontWeight: "900" },
+  galleryAddSub: { color: "#7a87a5", fontSize: 11, fontWeight: "700" },
   input: {
     borderRadius: 18,
     backgroundColor: "#f8f9fe",
@@ -297,6 +385,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
   },
+  channelLockRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eceffc",
+  },
+  channelLockText: { color: "#102a54", fontWeight: "900", fontSize: 14 },
   toggleRow: {
     flexDirection: "row",
     justifyContent: "space-between",

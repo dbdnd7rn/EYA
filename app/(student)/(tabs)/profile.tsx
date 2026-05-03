@@ -1,4 +1,4 @@
-﻿/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -75,7 +75,7 @@ async function uploadAvatarExpo(asset: { uri: string; fileName?: string | null; 
   const form = new FormData();
   form.append("file", { uri: asset.uri, name: meta.name, type: meta.type } as any);
   form.append("upload_preset", uploadPreset);
-  form.append("folder", "palevel/avatars");
+  form.append("folder", "eya/avatars");
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
     method: "POST",
@@ -306,7 +306,8 @@ export default function StudentProfileScreen() {
   };
 
   const displayName = `${firstName || "User"} ${lastName || ""}`.trim();
-  const appLink = "https://pamaketi.vercel.app";
+  const appLink = "https://eya.vercel.app";
+  const roleLabel = "User";
 
   const shareReferral = async () => {
     await Share.share({
@@ -347,7 +348,7 @@ export default function StudentProfileScreen() {
               </View>
 
               <View style={styles.heroText}>
-                <Text style={styles.heroLabel}>Student Profile</Text>
+                <Text style={styles.heroLabel}>User Profile</Text>
                 <Text style={styles.heroName}>{displayName || "User"}</Text>
                 <View style={styles.heroEmailRow}>
                   <Mail size={14} color="#5b6887" />
@@ -364,7 +365,7 @@ export default function StudentProfileScreen() {
               ) : null}
               <View style={styles.heroPill}>
                 <Text style={styles.heroPillText}>
-                  Role: <Text style={styles.heroPillStrong}>{role}</Text>
+                  Role: <Text style={styles.heroPillStrong}>{roleLabel}</Text>
                 </Text>
               </View>
             </View>

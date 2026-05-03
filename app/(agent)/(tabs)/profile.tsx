@@ -1,35 +1,11 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { Bell, Search, User2, Camera } from "lucide-react-native";
-import * as ImagePicker from "expo-image-picker";
-import SoftPageGlow from "@/components/SoftPageGlow";
-import { supabase } from "@/lib/supabase";
-import { normalizeAppRole } from "@/lib/roleRouting";
-import { useAuth } from "@/providers/AuthProvider";
-import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
 import { useRouter } from "expo-router";
-import { getAgentRiderProfile, setAgentRiderProfile } from "@/lib/agentRiderProfile";
-
-type ProfileRow = {
-  id?: string;
-  full_name?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  surname?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  role?: "student" | "landlord" | "agent" | "admin" | string | null;
-  created_at?: string | null;
-};
-
-function firstName(profile: ProfileRow | null, email?: string | null) {
-  const full = profile?.full_name?.trim();
-  if (full) return full.split(/\s+/)[0] ?? "Rider";
-  const composed = `${profile?.first_name ?? ""} ${profile?.last_name ?? profile?.surname ?? ""}`.trim();
-  if (composed) return composed.split(/\s+/)[0] ?? "Rider";
-  return email?.split("@")[0] || "Rider";
-}
+import * as ImagePicker from "expo-image-picker";
+import { Bell, Camera, ChevronRight, Search, Star, Truck, User2, WalletCards } from "lucide-react-native";
+import SoftPageGlow from "@/components/SoftPageGlow";
+import { useAgentWorkspace } from "@/components/agent/useAgentWorkspace";
+import { useAuth } from "@/providers/AuthProvider";
 
 function getUploadFileMeta(asset: { uri: string; fileName?: string | null; mimeType?: string | null }) {
   const fromName = (asset.fileName ?? "").split(".").pop()?.toLowerCase() ?? "";
@@ -51,7 +27,7 @@ async function uploadAvatar(asset: { uri: string; fileName?: string | null; mime
   const form = new FormData();
   form.append("file", { uri: asset.uri, name: meta.name, type: meta.type } as any);
   form.append("upload_preset", uploadPreset);
-  form.append("folder", "pamaketi/agents");
+  form.append("folder", "eya/agents");
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form });
   const json = await res.json();
@@ -59,93 +35,45 @@ async function uploadAvatar(asset: { uri: string; fileName?: string | null; mime
   return json.secure_url as string;
 }
 
-export default function AgentProfile() {
-  const { user, role, signOut } = useAuth();
+export default function AgentProfileScreen() {
   const router = useRouter();
-  const { unreadCount } = useNotificationInbox();
-
-  const [loading, setLoading] = useState(true);
+  const { user, role, loading: authLoading, setActiveRole } = useAuth();
+  const { workspace, metrics, loading, error, saveProfile, setOnlineStatus } = useAgentWorkspace();
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [profile, setProfile] = useState<ProfileRow | null>(null);
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [vehicleType, setVehicleType] = useState("Motorbike");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(true);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const vehicleRef = useRef<TextInput>(null);
-  const phoneRef = useRef<TextInput>(null);
-  const fullNameRef = useRef<TextInput>(null);
-
-  const displayEmail = profile?.email ?? user?.email ?? "-";
-  const currentRole = String(profile?.role ?? role ?? "agent");
-  const riderName = useMemo(() => firstName(profile, user?.email), [profile, user?.email]);
+  const [message, setMessage] = useState<string | null>(null);
+  const [fullName, setFullName] = useState(workspace.profile.fullName);
+  const [phone, setPhone] = useState(workspace.profile.phone);
+  const [vehicleType, setVehicleType] = useState(workspace.profile.vehicleType);
+  const isAdmin = role === "admin" || user?.user_metadata?.role === "admin";
 
   useEffect(() => {
-    if (!user) return;
+    if (!authLoading && !user) router.replace("/(auth)/login");
+  }, [authLoading, router, user]);
 
-    const load = async () => {
-      try {
-        setLoading(true);
-        setErr(null);
-        setMsg(null);
+  useEffect(() => {
+    setFullName(workspace.profile.fullName);
+    setPhone(workspace.profile.phone);
+    setVehicleType(workspace.profile.vehicleType);
+  }, [workspace.profile.fullName, workspace.profile.phone, workspace.profile.vehicleType]);
 
-        const attempts = [
-          "id,full_name,email,phone,role,created_at",
-          "id,first_name,last_name,email,phone,role,created_at",
-          "id,first_name,surname,email,phone,role,created_at",
-          "id,full_name,phone,role,created_at",
-        ];
-
-        let profileData: ProfileRow | null = null;
-        for (const clause of attempts) {
-          const { data, error } = await supabase.from("profiles").select(clause).eq("id", user.id).maybeSingle();
-          if (!error) {
-            profileData = (data as ProfileRow | null) ?? null;
-            break;
-          }
-        }
-
-        if (!profileData) {
-          setErr("Could not load profile.");
-          setLoading(false);
-          return;
-        }
-
-        if (normalizeAppRole(profileData.role) !== "agent") {
-          router.replace("/onboarding");
-          return;
-        }
-
-        const riderProfile = await getAgentRiderProfile(user.id);
-        setProfile(profileData);
-        const initialName = profileData.full_name ?? `${profileData.first_name ?? ""} ${profileData.last_name ?? profileData.surname ?? ""}`.trim();
-        setFullName((initialName ?? "").trim());
-        setPhone((profileData.phone ?? "").trim());
-        setVehicleType(riderProfile?.vehicleType ?? "Motorbike");
-        setAvatarUrl(riderProfile?.avatarUrl ?? null);
-        setIsOnline(riderProfile?.isOnline ?? true);
-        setLoading(false);
-      } catch (e: any) {
-        setErr(e?.message ?? "Something went wrong");
-        setLoading(false);
-      }
-    };
-
-    void load();
-  }, [user?.id]);
-
-  const persistRiderExtras = async (next: { avatarUrl?: string | null; vehicleType?: string; isOnline?: boolean }) => {
-    if (!user) return;
-    await setAgentRiderProfile({
-      userId: user.id,
-      avatarUrl: next.avatarUrl ?? avatarUrl ?? null,
-      vehicleType: next.vehicleType ?? vehicleType,
-      isOnline: next.isOnline ?? isOnline,
-    });
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      setMessage(null);
+      await saveProfile({
+        fullName,
+        phone,
+        vehicleType,
+      });
+      setEditing(false);
+      setMessage("Profile updated.");
+    } catch (err: any) {
+      Alert.alert("Could not save profile", err?.message ?? "Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAvatarChange = async () => {
@@ -164,97 +92,72 @@ export default function AgentProfile() {
     const asset = result.assets?.[0];
     if (!asset?.uri) return;
 
-    setUploadingAvatar(true);
     try {
+      setUploadingAvatar(true);
       const url = await uploadAvatar(asset);
-      setAvatarUrl(url);
-      await persistRiderExtras({ avatarUrl: url });
-      setMsg("Profile picture updated.");
-      setErr(null);
-    } catch (e: any) {
-      setErr(e?.message ?? "Could not update rider photo.");
-      setMsg(null);
+      await saveProfile({
+        fullName: workspace.profile.fullName,
+        phone: workspace.profile.phone,
+        vehicleType: workspace.profile.vehicleType,
+        avatarUrl: url,
+      });
+      setMessage("Profile picture updated.");
+    } catch (err: any) {
+      Alert.alert("Avatar upload failed", err?.message ?? "Could not update rider photo.");
     } finally {
       setUploadingAvatar(false);
     }
   };
 
-  const handleSave = async () => {
-    if (!user) return;
+  const goBackToUserSection = async () => {
+    await setActiveRole("student");
+    router.replace("/(student)/(tabs)/account");
+  };
 
-    setSaving(true);
-    setErr(null);
-    setMsg(null);
-
-    const cleanName = fullName.trim();
-    const cleanPhone = phone.trim().replace(/\s+/g, "");
-
-    if (cleanName.length < 2) {
-      setErr("Please enter your full name.");
-      setSaving(false);
-      return;
-    }
-
-    if (cleanPhone && !cleanPhone.startsWith("+265")) {
-      setErr("Phone should start with +265.");
-      setSaving(false);
-      return;
-    }
-
-    let updateError: string | null = null;
-    const fullNameUpdate = await supabase.from("profiles").update({ full_name: cleanName, phone: cleanPhone || null }).eq("id", user.id);
-
-    if (fullNameUpdate.error) {
-      const parts = cleanName.split(/\s+/).filter(Boolean);
-      const first = parts.shift() ?? cleanName;
-      const rest = parts.join(" ") || null;
-      const fallback = await supabase.from("profiles").update({ first_name: first, last_name: rest, surname: rest, phone: cleanPhone || null } as any).eq("id", user.id);
-      if (fallback.error) updateError = fallback.error.message;
-    }
-
-    if (updateError) {
-      setErr(updateError);
-      setSaving(false);
-      return;
-    }
-
-    await persistRiderExtras({ vehicleType });
-    setProfile((prev) => ({ ...(prev ?? {}), full_name: cleanName, phone: cleanPhone || null }));
-    setMsg("Profile updated successfully.");
-    setSaving(false);
+  const openAdminPortal = async () => {
+    await setActiveRole("admin");
+    router.replace("/admin" as any);
   };
 
   const toggleOnline = async () => {
-    const next = !isOnline;
-    setIsOnline(next);
-    await persistRiderExtras({ isOnline: next });
-    setMsg(next ? "You are now online." : "You are now offline.");
-    setErr(null);
+    try {
+      await setOnlineStatus(!workspace.profile.isOnline);
+    } catch (err: any) {
+      Alert.alert("Status update failed", err?.message ?? "Could not update rider status.");
+    }
   };
 
-  const logout = () => {
-    Alert.alert("Log out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
+  const openWorkspaceSwitch = () => {
+    Alert.alert("Switch workspace", "Move around the app without logging out.", [
+      ...(isAdmin
+        ? [
+            {
+              text: "Admin portal",
+              onPress: () => void openAdminPortal(),
+            },
+          ]
+        : []),
       {
-        text: "Log out",
-        style: "destructive",
+        text: "User section",
         onPress: async () => {
-          try {
-            await signOut();
-          } finally {
-            router.replace("/(auth)/login");
-          }
+          await setActiveRole("student");
+          router.replace("/(student)/(tabs)/account");
         },
       },
+      {
+        text: "Manage roles",
+        onPress: () => router.push({ pathname: "/onboarding", params: { role: "agent" } }),
+      },
+      { text: "Cancel", style: "cancel" },
     ]);
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <SafeAreaView style={styles.root}>
         <SoftPageGlow variant="account" />
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#0e2756" />
+          <ActivityIndicator size="large" color="#2c3068" />
         </View>
       </SafeAreaView>
     );
@@ -265,175 +168,291 @@ export default function AgentProfile() {
       <SoftPageGlow variant="account" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Profile</Text>
-          <View style={styles.headerButtons}>
-            <View style={styles.headerActionWrap}>
-              <CircleIcon icon={<Bell size={18} color="#0e2756" />} onPress={() => router.push("/(agent)/notifications")} />
-              {unreadCount ? (
-                <View style={styles.dotBadge}>
-                  <Text style={styles.dotBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
-                </View>
-              ) : null}
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>Profile</Text>
+            <View style={styles.statusRow}>
+              <View style={[styles.liveDot, !workspace.profile.isOnline && styles.liveDotOff]} />
+              <Text style={styles.statusText}>{workspace.profile.isOnline ? "ONLINE" : "OFFLINE"}</Text>
             </View>
-            <CircleIcon icon={<Search size={18} color="#0e2756" />} onPress={() => router.push("/(agent)/(tabs)/deliveries")} />
-            <Pressable style={styles.miniAvatar} onPress={handleAvatarChange}>
-              {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.miniAvatarImage} /> : <Text style={styles.miniAvatarText}>{riderName.slice(0, 2).toUpperCase()}</Text>}
+          </View>
+
+          <View style={styles.headerActions}>
+            <Pressable style={styles.circleAction} onPress={() => router.push("/(agent)/notifications")}>
+              <Bell size={18} color="#2c3068" />
+            </Pressable>
+            <Pressable style={styles.circleAction} onPress={() => router.push("/(agent)/(tabs)/earnings")}>
+              <Search size={18} color="#2c3068" />
             </Pressable>
           </View>
         </View>
 
-        {err ? (
+        {error ? (
           <View style={styles.noticeCard}>
-            <Text style={styles.noticeText}>{err}</Text>
+            <Text style={styles.noticeText}>{error}</Text>
           </View>
         ) : null}
-        {msg ? (
+        {message ? (
           <View style={styles.okCard}>
-            <Text style={styles.okText}>{msg}</Text>
+            <Text style={styles.okText}>{message}</Text>
           </View>
         ) : null}
 
-        <View style={styles.profileHero}>
-          <Pressable style={styles.heroAvatar} onPress={handleAvatarChange}>
-            {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.heroAvatarImage} /> : <User2 size={28} color="#0e2756" />}
+        <View style={styles.heroCard}>
+          <Pressable style={styles.avatarWrap} onPress={() => void handleAvatarChange()}>
+            {workspace.profile.avatarUrl ? (
+              <Image source={{ uri: workspace.profile.avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <User2 size={30} color="#2c3068" />
+            )}
             <View style={styles.cameraBadge}>
               <Camera size={14} color="#fff" />
             </View>
           </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.heroName}>{fullName || riderName}</Text>
-            <View style={styles.heroMetaRow}>
-              <View style={[styles.greenDot, !isOnline && styles.offlineDot]} />
-              <Text style={styles.heroMetaText}>{isOnline ? "Active Rider" : "Offline Rider"}</Text>
-              <View style={styles.softDot} />
+
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroName}>{workspace.profile.fullName}</Text>
+            <Text style={styles.heroPhone}>{workspace.profile.phone || workspace.profile.email || "+265 not set"}</Text>
+            <View style={styles.activeRow}>
+              <View style={[styles.liveDot, !workspace.profile.isOnline && styles.liveDotOff]} />
+              <Text style={styles.activeText}>{workspace.profile.isOnline ? "Active rider" : "Offline rider"}</Text>
             </View>
-            {uploadingAvatar ? <Text style={styles.uploadText}>Uploading picture...</Text> : null}
           </View>
+
+          <Pressable style={[styles.onlinePill, !workspace.profile.isOnline && styles.onlinePillOff]} onPress={() => void toggleOnline()}>
+            <Text style={styles.onlinePillText}>{workspace.profile.isOnline ? "Active" : "Offline"}</Text>
+          </Pressable>
         </View>
 
-        <InfoCard label="Account Info" value={displayEmail} onEdit={() => Alert.alert("Account email", "Email changes are handled from your auth account settings.")} />
-        <EditableField label="Vehicle Type" value={vehicleType} onChangeText={setVehicleType} inputRef={vehicleRef} />
-        <EditableField label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" inputRef={phoneRef} />
-        <EditableField label="Full name" value={fullName} onChangeText={setFullName} inputRef={fullNameRef} />
+        {uploadingAvatar ? <Text style={styles.helperText}>Uploading rider picture...</Text> : null}
 
-        <Pressable style={styles.saveBtn} onPress={handleSave} disabled={saving}>
-          <Text style={styles.saveBtnText}>{saving ? "Saving..." : "Save changes"}</Text>
+        <View style={styles.statsRow}>
+          <StatTile icon={<Truck size={18} color="#d78b35" />} label="Completed Deliveries" value={`${metrics.completedCount}`} />
+          <StatTile icon={<Star size={18} color="#d78b35" />} label="Rating" value={workspace.rating ? workspace.rating.toFixed(1) : "New"} />
+        </View>
+
+        <MenuCard label="Edit Profile" onPress={() => setEditing((current) => !current)} />
+        <MenuCard label="Notifications" onPress={() => router.push("/(agent)/notifications")} />
+        <MenuCard label="Earnings" onPress={() => router.push("/(agent)/(tabs)/earnings")} />
+        {isAdmin ? <MenuCard label="Admin Portal" onPress={() => void openAdminPortal()} /> : null}
+        <MenuCard label="Switch workspace" onPress={openWorkspaceSwitch} />
+        <MenuCard label="Go back to User section" onPress={() => void goBackToUserSection()} />
+
+        {editing ? (
+          <View style={styles.editCard}>
+            <Field label="Full name" value={fullName} onChangeText={setFullName} />
+            <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+            <Field label="Vehicle type" value={vehicleType} onChangeText={setVehicleType} />
+
+            <View style={styles.editActions}>
+              <Pressable style={styles.cancelBtn} onPress={() => setEditing(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.saveBtn} onPress={() => void handleSave()} disabled={saving}>
+                <Text style={styles.saveBtnText}>{saving ? "Saving..." : "Save changes"}</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        <Pressable style={styles.footerToggle} onPress={() => void toggleOnline()}>
+          <WalletCards size={18} color="#4d58ad" />
+          <Text style={styles.footerToggleText}>{workspace.profile.isOnline ? "Go offline" : "Go online"}</Text>
+          <ChevronRight size={18} color="#4d58ad" />
         </Pressable>
-
-        <Pressable style={styles.primaryBtn} onPress={toggleOnline}>
-          <Text style={styles.primaryBtnText}>{isOnline ? "Go Offline" : "Go Online"}</Text>
-        </Pressable>
-
-        <Pressable style={styles.secondaryBtn} onPress={logout}>
-          <Text style={styles.secondaryBtnText}>Logout</Text>
-        </Pressable>
-
-        <Text style={styles.roleText}>Role: {currentRole}</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function CircleIcon({ icon, onPress }: { icon: React.ReactNode; onPress?: () => void }) {
-  return (
-    <Pressable style={styles.circleIcon} onPress={onPress}>
-      {icon}
-    </Pressable>
-  );
-}
-
-function InfoCard({ label, onEdit, value }: { label: string; value: string; onEdit: () => void }) {
-  return (
-    <View style={styles.infoCard}>
-      <View style={{ flex: 1, gap: 6 }}>
-        <Text style={styles.infoTitle}>{label}</Text>
-        <Text style={styles.infoValue}>{value}</Text>
-      </View>
-      <Pressable onPress={onEdit}>
-        <Text style={styles.editText}>Edit ›</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function EditableField({
-  inputRef,
-  keyboardType,
+function Field({
   label,
-  onChangeText,
   value,
+  onChangeText,
+  keyboardType,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   keyboardType?: "default" | "phone-pad";
-  inputRef: React.RefObject<TextInput | null>;
 }) {
   return (
-    <View style={styles.infoCard}>
-      <View style={{ flex: 1, gap: 6 }}>
-        <Text style={styles.infoTitle}>{label}</Text>
-        <TextInput ref={inputRef} value={value} onChangeText={onChangeText} style={styles.input} placeholderTextColor="#9aa3bd" keyboardType={keyboardType} />
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput value={value} onChangeText={onChangeText} style={styles.fieldInput} keyboardType={keyboardType} placeholderTextColor="#a1a6c0" />
+    </View>
+  );
+}
+
+function MenuCard({ label, onPress, danger = false }: { label: string; onPress: () => void; danger?: boolean }) {
+  return (
+    <Pressable style={styles.menuCard} onPress={onPress}>
+      <Text style={[styles.menuText, danger && styles.menuTextDanger]}>{label}</Text>
+      <ChevronRight size={18} color={danger ? "#bf3d67" : "#8085aa"} />
+    </Pressable>
+  );
+}
+
+function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <View style={styles.statTile}>
+      <View style={styles.statTileHead}>
+        {icon}
+        <Text style={styles.statTileLabel}>{label}</Text>
       </View>
-      <Pressable onPress={() => inputRef.current?.focus()}>
-        <Text style={styles.editText}>Edit ›</Text>
-      </Pressable>
+      <Text style={styles.statTileValue}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f4f2fb" },
+  root: { flex: 1, backgroundColor: "#f3eefb" },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 18, paddingBottom: 120, gap: 16 },
+  content: { padding: 18, paddingBottom: 130, gap: 16 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { color: "#2a2d63", fontSize: 24, fontWeight: "500" },
-  headerButtons: { flexDirection: "row", gap: 10, alignItems: "center" },
-  headerActionWrap: { position: "relative" },
-  dotBadge: {
-    position: "absolute",
-    right: -4,
-    top: -2,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    paddingHorizontal: 5,
-    backgroundColor: "#ff0f64",
-    borderWidth: 2,
-    borderColor: "#fff",
+  headerCopy: { flexDirection: "row", alignItems: "center", gap: 14 },
+  title: { color: "#262a63", fontSize: 25, fontWeight: "900" },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  liveDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#7cd36d" },
+  liveDotOff: { backgroundColor: "#a0a9bf" },
+  statusText: { color: "#555c84", fontSize: 14, fontWeight: "800" },
+  headerActions: { flexDirection: "row", gap: 10 },
+  circleAction: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderWidth: 1,
+    borderColor: "#ebe6f8",
     alignItems: "center",
     justifyContent: "center",
   },
-  dotBadgeText: { color: "#fff", fontSize: 10, fontWeight: "900" },
-  circleIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: "rgba(255,255,255,0.84)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#eeeaf8" },
-  miniAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#ece7f8", overflow: "hidden" },
-  miniAvatarImage: { width: "100%", height: "100%" },
-  miniAvatarText: { color: "#0e2756", fontWeight: "900" },
-  noticeCard: { borderRadius: 18, backgroundColor: "#fff0f6", borderWidth: 1, borderColor: "#ffd5e4", padding: 12 },
-  noticeText: { color: "#b0003a", fontWeight: "800" },
-  okCard: { borderRadius: 18, backgroundColor: "#f0fff6", borderWidth: 1, borderColor: "#c7f5d8", padding: 12 },
-  okText: { color: "#0b6b2f", fontWeight: "800" },
-  profileHero: { overflow: "hidden", borderRadius: 28, backgroundColor: "rgba(255,255,255,0.92)", borderWidth: 1, borderColor: "#ece7f8", padding: 18, flexDirection: "row", alignItems: "center", gap: 14 },
-  heroAvatar: { width: 74, height: 74, borderRadius: 37, backgroundColor: "#f5efff", alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  heroAvatarImage: { width: "100%", height: "100%" },
-  cameraBadge: { position: "absolute", right: 4, bottom: 4, width: 24, height: 24, borderRadius: 12, backgroundColor: "#0e2756", alignItems: "center", justifyContent: "center" },
-  heroName: { color: "#202554", fontSize: 22, fontWeight: "900" },
-  heroMetaRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
-  greenDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: "#41c15f" },
-  offlineDot: { backgroundColor: "#9ca5ba" },
-  softDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: "#e1e3ca" },
-  heroMetaText: { color: "#5f667b", fontSize: 14, fontWeight: "600" },
-  uploadText: { color: "#8a88a0", fontSize: 12, fontWeight: "700", marginTop: 6 },
-  infoCard: { borderRadius: 24, backgroundColor: "rgba(255,255,255,0.92)", borderWidth: 1, borderColor: "#ece7f8", paddingHorizontal: 16, paddingVertical: 16, flexDirection: "row", alignItems: "center", gap: 12 },
-  infoTitle: { color: "#202554", fontSize: 16, fontWeight: "900" },
-  infoValue: { color: "#5f667b", fontSize: 14, fontWeight: "600" },
-  editText: { color: "#7a7790", fontSize: 15, fontWeight: "600" },
-  input: { color: "#5f667b", fontSize: 15, fontWeight: "600", paddingVertical: 0 },
-  saveBtn: { borderRadius: 24, backgroundColor: "#202554", alignItems: "center", justifyContent: "center", paddingVertical: 18 },
-  saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "900" },
-  primaryBtn: { borderRadius: 24, backgroundColor: "rgba(255,255,255,0.92)", borderWidth: 1, borderColor: "#ece7f8", alignItems: "center", justifyContent: "center", paddingVertical: 18 },
-  primaryBtnText: { color: "#202554", fontSize: 16, fontWeight: "900" },
-  secondaryBtn: { borderRadius: 20, backgroundColor: "rgba(255,255,255,0.86)", borderWidth: 1, borderColor: "#ece7f8", alignItems: "center", justifyContent: "center", paddingVertical: 16 },
-  secondaryBtnText: { color: "#5a556f", fontSize: 16, fontWeight: "600" },
-  roleText: { color: "#8a88a0", fontSize: 12, fontWeight: "700", textAlign: "center" },
+  noticeCard: { borderRadius: 18, backgroundColor: "#fff0f6", borderWidth: 1, borderColor: "#ffd7e5", padding: 12 },
+  noticeText: { color: "#b0003a", fontSize: 13, fontWeight: "800" },
+  okCard: { borderRadius: 18, backgroundColor: "#eef9f2", borderWidth: 1, borderColor: "#cdebd6", padding: 12 },
+  okText: { color: "#0a7337", fontSize: 13, fontWeight: "800" },
+  heroCard: {
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.88)",
+    borderWidth: 1,
+    borderColor: "#ece7f8",
+    padding: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  avatarWrap: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    backgroundColor: "#f3f4ff",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: { width: "100%", height: "100%" },
+  cameraBadge: {
+    position: "absolute",
+    right: 4,
+    bottom: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#2c3068",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroCopy: { flex: 1, gap: 4 },
+  heroName: { color: "#262a63", fontSize: 22, fontWeight: "900" },
+  heroPhone: { color: "#656b8f", fontSize: 14, fontWeight: "700" },
+  activeRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  activeText: { color: "#656b8f", fontSize: 14, fontWeight: "700" },
+  onlinePill: {
+    borderRadius: 999,
+    backgroundColor: "#456b66",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  onlinePillOff: { backgroundColor: "#8d97ac" },
+  onlinePillText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  helperText: { color: "#7d7799", fontSize: 12, fontWeight: "700" },
+  statsRow: { flexDirection: "row", gap: 10 },
+  statTile: {
+    flex: 1,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.84)",
+    borderWidth: 1,
+    borderColor: "#ece7f8",
+    padding: 16,
+    gap: 10,
+  },
+  statTileHead: { flexDirection: "row", alignItems: "center", gap: 10 },
+  statTileLabel: { flex: 1, color: "#676d91", fontSize: 14, fontWeight: "800" },
+  statTileValue: { color: "#2e3362", fontSize: 24, fontWeight: "900" },
+  menuCard: {
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.86)",
+    borderWidth: 1,
+    borderColor: "#ece7f8",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  menuText: { color: "#363b68", fontSize: 16, fontWeight: "800" },
+  menuTextDanger: { color: "#bf3d67" },
+  editCard: {
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.88)",
+    borderWidth: 1,
+    borderColor: "#ece7f8",
+    padding: 16,
+    gap: 12,
+  },
+  fieldWrap: { gap: 6 },
+  fieldLabel: { color: "#74799c", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
+  fieldInput: {
+    borderRadius: 18,
+    backgroundColor: "#f7f7fe",
+    borderWidth: 1,
+    borderColor: "#e8eaf6",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    color: "#2f3462",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  editActions: { flexDirection: "row", gap: 10, marginTop: 6 },
+  cancelBtn: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 18,
+    backgroundColor: "#f4f4fb",
+    borderWidth: 1,
+    borderColor: "#e7e6f4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelBtnText: { color: "#777b9f", fontSize: 15, fontWeight: "800" },
+  saveBtn: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 18,
+    backgroundColor: "#4d58ad",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveBtnText: { color: "#fff", fontSize: 15, fontWeight: "900" },
+  footerToggle: {
+    borderRadius: 22,
+    backgroundColor: "#eef0fb",
+    borderWidth: 1,
+    borderColor: "#e2e5f4",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  footerToggleText: { flex: 1, marginLeft: 10, color: "#4d58ad", fontSize: 15, fontWeight: "900" },
 });

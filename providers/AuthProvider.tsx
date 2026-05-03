@@ -2,9 +2,12 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { normalizeAppRole } from "@/lib/roleRouting";
-import { ENV } from "@/lib/env";
+import { ENV, isConfiguredAdminEmail } from "@/lib/env";
 import { clearDevAuthRecord, getDevAuthRecord, recordToUser, setDevAuthRecord } from "@/lib/devAuth";
 import { ensureProfileRoleFromAuthUser } from "@/lib/authProfile";
+import { readStoredActiveWorkspace, storeActiveWorkspace } from "@/lib/activeWorkspace";
+import { getFallbackWorkspaceRole } from "@/lib/workspaceAccess";
+import { hasApprovedWorkspaceRole } from "@/lib/roleApplications";
 
 type Role = "student" | "landlord" | "agent" | "vendor" | "admin" | null;
 
@@ -12,25 +15,72 @@ type AuthCtx = {
   user: User | null;
   session: Session | null;
   role: Role;
+  activeRole: Role;
   loading: boolean;
   signOut: () => Promise<void>;
   signInDev: (input: { email: string; role: Exclude<Role, null> }) => Promise<void>;
   refreshRole: (userRef?: string | User | null) => Promise<void>;
+  setActiveRole: (role: Exclude<Role, null>) => Promise<void>;
 };
 
 const Ctx = createContext<AuthCtx | null>(null);
+
+function sanitizeRole(role: Role, email?: string | null): Role {
+  if (ENV.DEV_AUTH_MODE) return role;
+  if (role === "admin" && !isConfiguredAdminEmail(email)) return null;
+  return role;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role>(null);
+  const [activeRole, setActiveRoleState] = useState<Role>(null);
   const [loading, setLoading] = useState(true);
+
+  const hydrateActiveRole = async (nextUser: User | null, nextRole: Role) => {
+    if (!nextUser?.id) {
+      setActiveRoleState(null);
+      return null;
+    }
+
+    const normalizedRole = sanitizeRole(normalizeAppRole(nextRole), nextUser.email);
+    if (normalizedRole === "admin") {
+      setActiveRoleState("admin");
+      await storeActiveWorkspace(nextUser.id, "admin");
+      return "admin";
+    }
+
+    const stored = sanitizeRole(await readStoredActiveWorkspace(nextUser.id), nextUser.email);
+    const resolved = stored && stored !== "admin" ? stored : getFallbackWorkspaceRole(normalizedRole, nextUser.email);
+    setActiveRoleState(resolved);
+    return resolved;
+  };
 
   const signInDev = async (input: { email: string; role: Exclude<Role, null> }) => {
     const record = await setDevAuthRecord(input);
+    const nextUser = recordToUser(record);
+    const nextRole = sanitizeRole(normalizeAppRole(record.role), record.email);
     setSession(null);
-    setUser(recordToUser(record));
-    setRole(normalizeAppRole(record.role));
+    setUser(nextUser);
+    setRole(nextRole);
+    await hydrateActiveRole(nextUser, nextRole);
+  };
+
+  const setActiveRole = async (nextRole: Exclude<Role, null>) => {
+    const resolved = sanitizeRole(normalizeAppRole(nextRole), user?.email ?? null);
+    if (!resolved) return;
+    const isAdminAccount = normalizeAppRole(role) === "admin";
+    if (resolved === "admin" && !isAdminAccount) return;
+    if (resolved !== "student" && resolved !== "admin" && !isAdminAccount) {
+      const approved = user?.id ? await hasApprovedWorkspaceRole(user.id, resolved) : false;
+      const ownsRole = normalizeAppRole(role) === resolved;
+      if (!approved && !ownsRole) return;
+    }
+    setActiveRoleState(resolved);
+    if (user?.id) {
+      await storeActiveWorkspace(user.id, resolved);
+    }
   };
 
   const refreshRole = async (userRef?: string | User | null) => {
@@ -39,28 +89,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (!userId) {
       setRole(null);
+      setActiveRoleState(null);
       return;
     }
 
     if (ENV.DEV_AUTH_MODE) {
       const record = await getDevAuthRecord();
-      setRole(normalizeAppRole(record?.role));
+      const nextRole = sanitizeRole(normalizeAppRole(record?.role), record?.email);
+      setRole(nextRole);
+      await hydrateActiveRole(authUser ?? user, nextRole);
       return;
     }
 
     if (authUser) {
       const recoveredRole = await ensureProfileRoleFromAuthUser(authUser);
-      setRole(recoveredRole);
+      setRole(sanitizeRole(recoveredRole, authUser.email));
+      await hydrateActiveRole(authUser, sanitizeRole(recoveredRole, authUser.email));
       return;
     }
 
     const { data, error } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
     if (error) {
       setRole(null);
+      await hydrateActiveRole(user, null);
       return;
     }
 
-    setRole(normalizeAppRole(data?.role));
+    const nextRole = sanitizeRole(normalizeAppRole(data?.role), user?.email ?? null);
+    setRole(nextRole);
+    await hydrateActiveRole(user, nextRole);
   };
 
   useEffect(() => {
@@ -73,9 +130,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (ENV.DEV_AUTH_MODE) {
           const record = await getDevAuthRecord();
           if (!alive) return;
+          const nextUser = record ? recordToUser(record) : null;
+          const nextRole = sanitizeRole(normalizeAppRole(record?.role), record?.email);
           setSession(null);
-          setUser(record ? recordToUser(record) : null);
-          setRole(normalizeAppRole(record?.role));
+          setUser(nextUser);
+          setRole(nextRole);
+          await hydrateActiveRole(nextUser, nextRole);
           return;
         }
 
@@ -89,7 +149,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    init();
+    void init().catch(() => {
+      if (alive) {
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setActiveRoleState(null);
+        setLoading(false);
+      }
+    });
 
     if (ENV.DEV_AUTH_MODE) {
       return () => {
@@ -101,10 +169,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(newSession ?? null);
       setUser(newSession?.user ?? null);
       setLoading(false);
+      if (!newSession?.user) {
+        setActiveRoleState(null);
+      }
 
       // Avoid awaiting Supabase queries inside auth state callbacks.
       // It can block auth methods (e.g. signInWithPassword) from resolving.
-      void refreshRole(newSession?.user ?? null);
+      void refreshRole(newSession?.user ?? null).catch(() => {
+        setRole(null);
+        setActiveRoleState(null);
+      });
     });
 
     return () => {
@@ -125,16 +199,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null);
           setUser(null);
           setRole(null);
+          setActiveRoleState(null);
           return;
         }
 
         await supabase.auth.signOut();
         setRole(null);
+        setActiveRoleState(null);
       },
       signInDev,
       refreshRole,
+      activeRole,
+      setActiveRole,
     }),
-    [user, session, role, loading],
+    [user, session, role, activeRole, loading],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

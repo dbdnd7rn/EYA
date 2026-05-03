@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,59 +12,48 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import {
-  BriefcaseBusiness,
-  ChevronDown,
   Eye,
   EyeOff,
-  House,
   LockKeyhole,
   Mail,
-  Search,
   UserRound,
-  UtensilsCrossed,
 } from "lucide-react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { supabase } from "@/lib/supabase";
 import { ENV } from "@/lib/env";
-import { getDevAccount, matchDevAccount } from "@/lib/devAuth";
+import { consumeAuthFeedback } from "@/lib/authFeedback";
+import { matchDevAccount } from "@/lib/devAuth";
+import { signInWithGoogle } from "@/lib/googleAuth";
 import { useAuth } from "@/providers/AuthProvider";
 import EyaWordmark from "@/components/brand/EyaWordmark";
 import GoogleMark from "@/components/brand/GoogleMark";
-import { signInWithGoogle } from "@/lib/googleAuth";
-
-type RoleChoice = "student" | "vendor" | "landlord" | "agent";
-
-const ROLE_OPTIONS: {
-  value: RoleChoice;
-  label: string;
-  buttonLabel: string;
-  Icon: typeof UserRound;
-}[] = [
-  { value: "student", label: "Student", buttonLabel: "Student", Icon: Search },
-  { value: "agent", label: "Agent", buttonLabel: "Agent", Icon: BriefcaseBusiness },
-  { value: "vendor", label: "Restaurant", buttonLabel: "Restaurant", Icon: UtensilsCrossed },
-  { value: "landlord", label: "Landlord", buttonLabel: "Landlord", Icon: House },
-];
-
-function roleLabel(role: RoleChoice) {
-  return ROLE_OPTIONS.find((item) => item.value === role)?.buttonLabel ?? "Student";
-}
 
 export default function LoginScreen() {
+  const params = useLocalSearchParams<{ redirectTo?: string }>();
   const { signInDev } = useAuth();
-  const params = useLocalSearchParams<{ role?: string }>();
-  const initialRole = params.role === "vendor" || params.role === "landlord" || params.role === "agent" ? params.role : "student";
-
-  const [roleChoice, setRoleChoice] = useState<RoleChoice>(initialRole);
-  const [showRoles, setShowRoles] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const redirectTo = params.redirectTo === "/admin" ? "/admin" : null;
+  const isAdminLogin = redirectTo === "/admin";
 
-  const selectedRole = ROLE_OPTIONS.find((item) => item.value === roleChoice) ?? ROLE_OPTIONS[0];
+  useEffect(() => {
+    let active = true;
+
+    const hydrateFeedback = async () => {
+      const feedback = await consumeAuthFeedback("login");
+      if (!active || !feedback) return;
+      setError(feedback.error ?? null);
+    };
+
+    void hydrateFeedback();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async () => {
     setError(null);
@@ -74,34 +62,28 @@ export default function LoginScreen() {
     try {
       if (ENV.DEV_AUTH_MODE) {
         const account = matchDevAccount(email, password);
-        const expected = getDevAccount(roleChoice);
-
-        if (!account || account.role !== roleChoice) {
-          setError(
-            expected
-              ? `Use ${expected.email} / ${expected.password} for ${roleLabel(roleChoice)} login in dev mode.`
-              : "That test account is not available in dev mode.",
-          );
+        if (!account) {
+          setError("Invalid dev credentials. Use a configured test account.");
           return;
         }
 
         await signInDev({ email: account.email, role: account.role });
-        router.replace("/redirect");
+        router.replace((redirectTo ?? "/redirect") as any);
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
 
-      if (error) {
-        setError(error.message);
+      if (signInError) {
+        setError(signInError.message);
         return;
       }
 
-      await new Promise((r) => setTimeout(r, 300));
-      router.replace("/redirect");
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      router.replace((redirectTo ?? "/redirect") as any);
     } catch {
       setError("Failed to sign in. Please try again.");
     } finally {
@@ -114,9 +96,9 @@ export default function LoginScreen() {
     setGoogleLoading(true);
 
     try {
-      const result = await signInWithGoogle(roleChoice);
+      const result = await signInWithGoogle(null, "login");
       if (!result.redirected && !result.cancelled) {
-        router.replace("/redirect");
+        router.replace((redirectTo ?? "/redirect") as any);
       }
     } catch (err: any) {
       setError(err?.message ?? "Google sign-in failed. Please try again.");
@@ -131,9 +113,9 @@ export default function LoginScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.shell}>
             <View style={styles.card}>
-              <View style={styles.wordmarkWrap}>
+              <Pressable style={styles.wordmarkWrap}>
                 <EyaWordmark width={220} height={72} withTagline />
-              </View>
+              </Pressable>
 
               <Text style={styles.title}>Welcome Back</Text>
               <Text style={styles.subtitle}>Sign in to your account.</Text>
@@ -144,36 +126,13 @@ export default function LoginScreen() {
                 </View>
               ) : null}
 
-              <Text style={styles.sectionLabel}>Login as</Text>
-
-              <Pressable style={styles.selectButton} onPress={() => setShowRoles((value) => !value)}>
+              <Text style={styles.sectionLabel}>{isAdminLogin ? "Sign in as Admin" : "Sign in as User"}</Text>
+              <View style={styles.selectButton}>
                 <View style={styles.inputIconWrap}>
                   <UserRound size={22} color="#4a5b87" />
                 </View>
-                <Text style={styles.selectButtonText}>{selectedRole.buttonLabel || "Select Role"}</Text>
-                <ChevronDown size={24} color="#4a5b87" style={{ transform: [{ rotate: showRoles ? "180deg" : "0deg" }] }} />
-              </Pressable>
-
-              {showRoles ? (
-                <View style={styles.roleMenu}>
-                  {ROLE_OPTIONS.map(({ value, label, Icon }, index) => {
-                    const selected = value === roleChoice;
-                    return (
-                      <Pressable
-                        key={value}
-                        onPress={() => {
-                          setRoleChoice(value);
-                          setShowRoles(false);
-                        }}
-                        style={[styles.roleRow, index < ROLE_OPTIONS.length - 1 && styles.roleRowBorder, selected && styles.roleRowSelected]}
-                      >
-                        <Icon size={22} color={selected ? "#102968" : "#566788"} />
-                        <Text style={[styles.roleText, selected && styles.roleTextSelected]}>{label}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
+                <Text style={styles.selectButtonText}>{isAdminLogin ? "Admin Access" : "User"}</Text>
+              </View>
 
               <View style={styles.inputStack}>
                 <View style={styles.inputWrap}>
@@ -233,11 +192,7 @@ export default function LoginScreen() {
                 <View style={styles.orLine} />
               </View>
 
-              <Pressable
-                style={styles.googleButton}
-                onPress={handleGoogleSignIn}
-                disabled={googleLoading || loading}
-              >
+              <Pressable style={styles.googleButton} onPress={handleGoogleSignIn} disabled={googleLoading || loading}>
                 <View style={styles.googleBadge}>
                   <GoogleMark size={22} />
                 </View>
@@ -249,11 +204,8 @@ export default function LoginScreen() {
                   Forgot Password?
                 </Text>
                 <Text style={styles.signupPrompt}>
-                  Don’t have an account?{" "}
-                  <Text
-                    style={styles.signupLink}
-                    onPress={() => router.push({ pathname: "/(auth)/signup", params: { role: roleChoice } })}
-                  >
+                  Don't have an account?{" "}
+                  <Text style={styles.signupLink} onPress={() => router.push("/(auth)/signup")}>
                     Sign Up
                   </Text>
                 </Text>
@@ -351,6 +303,19 @@ const styles = StyleSheet.create({
   roleRowSelected: { backgroundColor: "#f8faff" },
   roleText: { color: "#0f2c68", fontSize: 16, fontWeight: "700" },
   roleTextSelected: { color: "#102968" },
+  adminInfoBox: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#d7e1ff",
+    backgroundColor: "#f3f7ff",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  adminInfoText: { flex: 1, color: "#18325d", fontSize: 13, fontWeight: "700" },
   inputStack: { marginTop: 12, gap: 12 },
   inputWrap: {
     minHeight: 58,

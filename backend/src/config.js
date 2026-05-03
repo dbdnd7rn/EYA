@@ -15,10 +15,26 @@ export const config = {
   supabaseUrl: (process.env.SUPABASE_URL || "").trim(),
   supabaseServiceRoleKey: (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim(),
   supabaseNewAppSchema: (process.env.SUPABASE_NEW_APP_SCHEMA || "public").trim(),
+  adminEmails: (process.env.ADMIN_EMAILS || "").trim(),
   checkoutSuccessUrl: (process.env.CHECKOUT_SUCCESS_URL || "").trim(),
   checkoutCancelUrl: (process.env.CHECKOUT_CANCEL_URL || "").trim(),
   appScheme: (process.env.APP_SCHEME || "").trim(),
 };
+
+export function getConfiguredAdminEmails() {
+  return config.adminEmails
+    .split(",")
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isConfiguredAdminEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) return false;
+  const allowed = getConfiguredAdminEmails();
+  if (!allowed.length) return true;
+  return allowed.includes(normalized);
+}
 
 export function requireCoreConfig() {
   const missing = [];

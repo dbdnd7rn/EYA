@@ -11,15 +11,15 @@ const featureCards = [
   {
     id: "rooms",
     title: "Find Rooms",
-    subtitle: "Compare, request, move in",
+    subtitle: "Browse, compare and move in with confidence",
     Icon: House,
     tint: "#d6ebff",
     iconColor: "#3e81e0",
   },
   {
     id: "market",
-    title: "Shop Market",
-    subtitle: "Buy essentials near campus",
+    title: "Shop Essentials",
+    subtitle: "Discover and buy essentials from trusted sellers near your location",
     Icon: ShoppingBag,
     tint: "#ffe0ee",
     iconColor: "#ff4b8d",
@@ -27,14 +27,14 @@ const featureCards = [
   {
     id: "food",
     title: "Order Food",
-    subtitle: "Fast delivery to your door",
+    subtitle: "Fast, reliable delivery wherever you are from verified food service providers",
     Icon: UtensilsCrossed,
     tint: "#ffe7d8",
     iconColor: "#f28b34",
   },
 ] as const;
 
-const trustPoints = ["Verified listings", "Real-time delivery tracking", "Built for campus life"];
+const trustPoints = ["Verified providers", "Built for confidence", "Built for everyday living"];
 
 export default function IndexPage() {
   const router = useRouter();
@@ -63,13 +63,13 @@ export default function IndexPage() {
           </View>
 
           <View style={styles.heroBlock}>
-            <Text style={styles.heroTitle}>One app for campus life</Text>
-            <Text style={styles.heroSub}>Rooms • Market • Food</Text>
+            <Text style={styles.heroTitle}>One app for all needs</Text>
+            <Text style={styles.heroSub}>Housing, market, food</Text>
           </View>
 
           <View style={styles.cardsStack}>
             {featureCards.map(({ id, title, subtitle, Icon, tint, iconColor }) => (
-              <Pressable key={id} style={styles.featureCard} onPress={() => router.push("/(auth)/signup")}>
+              <Pressable key={id} style={styles.featureCard} onPress={() => router.replace("/(auth)/signup")}>
                 <View style={[styles.featureIconWrap, { backgroundColor: tint }]}>
                   <Icon size={42} color={iconColor} />
                 </View>
@@ -93,12 +93,12 @@ export default function IndexPage() {
           </View>
 
           <View style={styles.ctaBlock}>
-            <Text style={styles.ctaTitle}>Start using EYA</Text>
+            <Text style={styles.ctaTitle}>Get started with EYA</Text>
             <View style={styles.ctaRow}>
-              <Pressable style={styles.signupBtn} onPress={() => router.push("/(auth)/signup")}>
+              <Pressable style={styles.signupBtn} onPress={() => router.replace("/(auth)/signup")}>
                 <Text style={styles.signupBtnText}>Sign Up</Text>
               </Pressable>
-              <Pressable style={styles.loginBtn} onPress={() => router.push("/(auth)/login")}>
+              <Pressable style={styles.loginBtn} onPress={() => router.replace("/(auth)/login")}>
                 <Text style={styles.loginBtnText}>Login</Text>
               </Pressable>
             </View>

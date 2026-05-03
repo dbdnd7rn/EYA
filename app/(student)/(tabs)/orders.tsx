@@ -3,11 +3,12 @@ import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Tex
 import { useRouter } from "expo-router";
 import { CheckCircle2, ChevronRight, Clock3, MapPin, PackageOpen, Sparkles, Store, Truck } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
-import { formatCacheTime, getCachedJson, setCachedJson } from "@/lib/offlineCache";
+import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { supabase } from "@/lib/supabase";
 import { supabaseNewApp } from "@/lib/supabaseNewApp";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 type OrderFilter = "all" | "active" | "completed";
 type DbOrderStatus = "pending" | "accepted" | "preparing" | "picked_up" | "on_the_way" | "delivered" | "cancelled";
@@ -100,12 +101,12 @@ function buildItemSummary(items: OrderItemRow[]) {
 export default function OrdersScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { theme } = useStudentTheme();
   const { isOnline } = useNetwork();
   const [filter, setFilter] = useState<OrderFilter>("active");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<UiOrderRow[]>([]);
-  const [cacheTime, setCacheTime] = useState<number | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -125,16 +126,10 @@ export default function OrdersScreen() {
         const cached = await getCachedJson<UiOrderRow[]>(cacheKey);
         if (cached?.data?.length && active) {
           setRows(cached.data);
-          setCacheTime(cached.ts);
           setLoading(false);
         }
 
         if (!isOnline) {
-          if (active && !cached?.data?.length) {
-            setError("Offline with no cached orders yet.");
-          } else if (active) {
-            setError("Offline mode: showing cached orders.");
-          }
           return;
         }
 
@@ -210,7 +205,6 @@ export default function OrdersScreen() {
 
         if (!active) return;
         setRows(nextRows);
-        setCacheTime(Date.now());
         await setCachedJson(cacheKey, nextRows);
       } catch (e: any) {
         if (!active) return;
@@ -246,27 +240,27 @@ export default function OrdersScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
-        <SoftPageGlow topColor="rgba(170, 184, 255, 0.18)" middleColor="rgba(212, 199, 255, 0.16)" bottomColor="rgba(255, 223, 205, 0.12)" />
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+        <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#2d3170" />
+          <ActivityIndicator size="large" color={theme.accent} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root}>
-      <SoftPageGlow topColor="rgba(170, 184, 255, 0.18)" middleColor="rgba(212, 199, 255, 0.16)" bottomColor="rgba(255, 223, 205, 0.12)" />
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Your Orders</Text>
+        <Text style={[styles.title, { color: theme.text }]}>Your Orders</Text>
 
-        <View style={styles.filterWrap}>
+        <View style={[styles.filterWrap, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
           {(["all", "active", "completed"] as OrderFilter[]).map((item) => {
             const active = item === filter;
             return (
-              <Pressable key={item} style={[styles.filterChip, active && styles.filterChipActive]} onPress={() => setFilter(item)}>
-                <Text style={[styles.filterText, active && styles.filterTextActive]}>
+              <Pressable key={item} style={[styles.filterChip, active && styles.filterChipActive, active && { backgroundColor: theme.accent }]} onPress={() => setFilter(item)}>
+                <Text style={[styles.filterText, { color: theme.textMuted }, active && styles.filterTextActive]}>
                   {item === "all" ? "All" : item === "active" ? "Active" : "Completed"}
                 </Text>
               </Pressable>
@@ -275,37 +269,36 @@ export default function OrdersScreen() {
         </View>
 
         {error ? (
-          <View style={styles.noticeCard}>
-            <Text style={styles.noticeText}>{error}</Text>
+          <View style={[styles.noticeCard, { backgroundColor: theme.isDark ? "#2a1e28" : "#fff0f6", borderColor: theme.isDark ? "#52313f" : "#ffd5e4" }]}>
+            <Text style={[styles.noticeText, { color: theme.isDark ? "#ffb3c6" : "#b0003a" }]}>{error}</Text>
           </View>
         ) : null}
-        {cacheTime ? <Text style={styles.cacheMeta}>Orders cache: {formatCacheTime(cacheTime)}</Text> : null}
 
         {activeOrder && (filter === "all" || filter === "active") ? (
-          <View style={styles.activeCard}>
+          <View style={[styles.activeCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.activeTop}>
-              <View style={styles.activeIconWrap}>
-                {activeOrder.mode === "food" ? <Truck size={30} color="#5068db" /> : <PackageOpen size={30} color="#5068db" />}
+              <View style={[styles.activeIconWrap, { backgroundColor: theme.surfaceMuted }]}>
+                {activeOrder.mode === "food" ? <Truck size={30} color={theme.accent} /> : <PackageOpen size={30} color={theme.accent} />}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.activeTitle}>{activeOrder.title}</Text>
-                <Text style={styles.activeMeta}>{activeOrder.itemSummary}</Text>
+                <Text style={[styles.activeTitle, { color: theme.text }]}>{activeOrder.title}</Text>
+                <Text style={[styles.activeMeta, { color: theme.textMuted }]}>{activeOrder.itemSummary}</Text>
                 <View style={styles.statusRow}>
-                  <View style={styles.statusDot} />
-                  <Text style={styles.statusText}>{activeOrder.statusLabel}</Text>
+                  <View style={[styles.statusDot, { backgroundColor: theme.success, borderColor: theme.success }]} />
+                  <Text style={[styles.statusText, { color: theme.text }]}>{activeOrder.statusLabel}</Text>
                 </View>
-                {activeOrder.etaLabel ? <Text style={styles.etaText}>{activeOrder.etaLabel}</Text> : null}
+                {activeOrder.etaLabel ? <Text style={[styles.etaText, { color: theme.textSoft }]}>{activeOrder.etaLabel}</Text> : null}
               </View>
             </View>
 
-            <View style={styles.routeCard}>
+            <View style={[styles.routeCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }]}>
               <View style={styles.routeRow}>
-                <Store size={16} color="#5068db" />
-                <Text style={styles.routeText}>{activeOrder.from}</Text>
+                <Store size={16} color={theme.accent} />
+                <Text style={[styles.routeText, { color: theme.text }]}>{activeOrder.from}</Text>
               </View>
               <View style={styles.routeRow}>
                 <MapPin size={16} color="#0d7b45" />
-                <Text style={styles.routeText}>{activeOrder.to}</Text>
+                <Text style={[styles.routeText, { color: theme.text }]}>{activeOrder.to}</Text>
               </View>
             </View>
 
@@ -317,7 +310,7 @@ export default function OrdersScreen() {
 
             {activeOrder.deliveryStatus ? (
               <Pressable
-                style={styles.trackBtn}
+                style={[styles.trackBtn, { backgroundColor: theme.accent }]}
                 onPress={() =>
                   router.push({
                     pathname: "/(student)/delivery/[orderId]",
@@ -341,39 +334,39 @@ export default function OrdersScreen() {
         {completedOrders.length > 0 && (filter === "all" || filter === "completed") ? (
           <>
             <View style={styles.sectionHead}>
-              <Text style={styles.sectionTitle}>Completed Orders</Text>
-              <ChevronRight size={22} color="#8c94ac" />
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Completed Orders</Text>
+              <ChevronRight size={22} color={theme.textSoft} />
             </View>
 
             <View style={styles.completedList}>
               {completedOrders.map((row) => (
-                <View key={row.id} style={styles.completedCard}>
+                <View key={row.id} style={[styles.completedCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                   <View style={styles.completedTop}>
-                    <View style={styles.completedIconWrap}>
-                      {row.mode === "food" ? <Truck size={26} color="#5068db" /> : <PackageOpen size={26} color="#5068db" />}
+                    <View style={[styles.completedIconWrap, { backgroundColor: theme.surfaceMuted }]}>
+                      {row.mode === "food" ? <Truck size={26} color={theme.accent} /> : <PackageOpen size={26} color={theme.accent} />}
                     </View>
                     <View style={styles.completedCopy}>
-                      <Text numberOfLines={1} style={styles.completedTitle}>{row.title}</Text>
-                      <Text numberOfLines={2} style={styles.completedSub}>{row.itemSummary}</Text>
+                      <Text numberOfLines={1} style={[styles.completedTitle, { color: theme.text }]}>{row.title}</Text>
+                      <Text numberOfLines={2} style={[styles.completedSub, { color: theme.textMuted }]}>{row.itemSummary}</Text>
                       <View style={styles.completedMetaRow}>
                         <CheckCircle2 size={18} color={row.isCancelled ? "#b0003a" : "#86bd98"} fill={row.isCancelled ? "#fff0f6" : "#eaf8ef"} />
-                        <Text style={styles.completedMetaText}>{row.statusLabel}</Text>
+                        <Text style={[styles.completedMetaText, { color: theme.textMuted }]}>{row.statusLabel}</Text>
                       </View>
-                      {row.orderReference ? <Text style={styles.referenceText}>Ref {row.orderReference}</Text> : null}
+                      {row.orderReference ? <Text style={[styles.referenceText, { color: theme.textSoft }]}>Ref {row.orderReference}</Text> : null}
                     </View>
                     <View style={styles.completedRight}>
-                      <Text style={styles.completedAmount}>{row.amountLabel}</Text>
-                      <Text style={styles.completedDate}>{row.dateLabel}</Text>
+                      <Text style={[styles.completedAmount, { color: theme.text }]}>{row.amountLabel}</Text>
+                      <Text style={[styles.completedDate, { color: theme.textSoft }]}>{row.dateLabel}</Text>
                     </View>
                   </View>
 
                   <View style={styles.actionRow}>
-                    <Pressable style={styles.softBtn} onPress={() => router.push(row.mode === "food" ? "/(food)/(tabs)/food" : "/(student)/(tabs)/marketplace")}>
-                      <Text style={styles.softBtnText}>Reorder</Text>
+                    <Pressable style={[styles.softBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }]} onPress={() => router.push(row.mode === "food" ? "/(food)/(tabs)/food" : "/(student)/(tabs)/marketplace")}>
+                      <Text style={[styles.softBtnText, { color: theme.text }]}>Reorder</Text>
                     </Pressable>
                     {row.deliveryStatus ? (
                       <Pressable
-                        style={styles.softBtn}
+                        style={[styles.softBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }]}
                         onPress={() =>
                           router.push({
                             pathname: "/(student)/delivery/[orderId]",
@@ -381,11 +374,11 @@ export default function OrdersScreen() {
                           })
                         }
                       >
-                        <Text style={styles.softBtnText}>View delivery</Text>
+                        <Text style={[styles.softBtnText, { color: theme.text }]}>View delivery</Text>
                       </Pressable>
                     ) : (
-                      <Pressable style={styles.softBtn} onPress={() => router.push(row.mode === "food" ? "/(food)/(tabs)/food" : "/(student)/(tabs)/marketplace")}>
-                        <Text style={styles.softBtnText}>View details</Text>
+                      <Pressable style={[styles.softBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }]} onPress={() => router.push(row.mode === "food" ? "/(food)/(tabs)/food" : "/(student)/(tabs)/marketplace")}>
+                        <Text style={[styles.softBtnText, { color: theme.text }]}>View details</Text>
                       </Pressable>
                     )}
                   </View>
@@ -396,15 +389,15 @@ export default function OrdersScreen() {
         ) : null}
 
         {filteredRows.length === 0 ? (
-          <View style={styles.emptyCard}>
+          <View style={[styles.emptyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.emptyGlowLeft} />
             <View style={styles.emptyGlowRight} />
-            <Text style={styles.emptyTitle}>No orders yet</Text>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>No orders yet</Text>
             <View style={styles.emptyActionRow}>
-              <Pressable style={styles.emptyBtn} onPress={() => router.push("/(food)/(tabs)/food")}>
+              <Pressable style={[styles.emptyBtn, { backgroundColor: theme.accent }]} onPress={() => router.push("/(food)/(tabs)/food")}>
                 <Text style={styles.emptyBtnText}>Order food</Text>
               </Pressable>
-              <Pressable style={styles.emptyBtn} onPress={() => router.push("/(student)/(tabs)/marketplace")}>
+              <Pressable style={[styles.emptyBtn, { backgroundColor: theme.accent }]} onPress={() => router.push("/(student)/(tabs)/marketplace")}>
                 <Text style={styles.emptyBtnText}>Browse market</Text>
               </Pressable>
             </View>
@@ -419,9 +412,10 @@ export default function OrdersScreen() {
 }
 
 function MetaPill({ label, positive = false }: { label: string; positive?: boolean }) {
+  const { theme } = useStudentTheme();
   return (
-    <View style={[styles.metaPill, positive && styles.metaPillPositive]}>
-      <Text style={[styles.metaPillText, positive && styles.metaPillTextPositive]}>{label}</Text>
+    <View style={[styles.metaPill, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }, positive && styles.metaPillPositive]}>
+      <Text style={[styles.metaPillText, { color: theme.textMuted }, positive && styles.metaPillTextPositive]}>{label}</Text>
     </View>
   );
 }
@@ -445,7 +439,6 @@ const styles = StyleSheet.create({
   filterTextActive: { color: "#ffffff" },
   noticeCard: { borderRadius: 18, backgroundColor: "#fff0f6", borderWidth: 1, borderColor: "#ffd5e4", padding: 12 },
   noticeText: { color: "#b0003a", fontWeight: "800" },
-  cacheMeta: { color: "#7e88a5", fontSize: 12, fontWeight: "700" },
   activeCard: {
     borderRadius: 30,
     backgroundColor: "#ffffff",

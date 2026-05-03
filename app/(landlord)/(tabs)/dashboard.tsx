@@ -7,9 +7,11 @@ import TopNav from "@/components/TopNav";
 import { computeListingQualityScore } from "@/lib/productSignals";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
+import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
 
 export default function LandlordDashboardScreen() {
   const { user, loading: authLoading } = useAuth();
+  const { unreadCount } = useNotificationInbox();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -182,7 +184,7 @@ export default function LandlordDashboardScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.title}>Quick actions</Text>
+          <Text style={styles.title}>Command center</Text>
           <Pressable style={styles.btn} onPress={() => router.push("/(landlord)/(tabs)/create")}>
             <Plus size={16} color="#fff" />
             <Text style={styles.btnText}>Create listing</Text>
@@ -192,6 +194,14 @@ export default function LandlordDashboardScreen() {
           </Pressable>
           <Pressable style={styles.softBtn} onPress={() => router.push("/(landlord)/(tabs)/enquiries")}>
             <Text style={styles.softBtnText}>Open enquiries</Text>
+          </Pressable>
+          <Pressable style={styles.softBtn} onPress={() => router.push("/(landlord)/notifications")}>
+            <Text style={styles.softBtnText}>
+              {unreadCount > 0 ? `Notifications (${unreadCount > 99 ? "99+" : unreadCount})` : "Notifications"}
+            </Text>
+          </Pressable>
+          <Pressable style={styles.softBtn} onPress={() => router.push("/(landlord)/subscription")}>
+            <Text style={styles.softBtnText}>Access and support</Text>
           </Pressable>
         </View>
       </ScrollView>

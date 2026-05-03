@@ -1,13 +1,38 @@
 import React from "react";
 import * as Notifications from "expo-notifications";
+import { useRouter } from "expo-router";
+import { notificationTargetForRole } from "@/lib/appNotifications";
 import { ENV } from "@/lib/env";
 import { captureRuntimeError, captureRuntimeEvent, reportStartupWarnings, setMonitoringUserContext } from "@/lib/monitoring";
 import { registerForPushNotificationsAsync, scheduleLocalNotification, syncPushToken } from "@/lib/notifications";
+import { normalizeAppRole, type AppRole } from "@/lib/roleRouting";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 
+function readPayloadString(data: Record<string, unknown>, key: string) {
+  const value = data[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function routeFromNotificationPayload(data: Record<string, unknown>, currentRole: AppRole) {
+  const event = readPayloadString(data, "event");
+  const role = normalizeAppRole(readPayloadString(data, "role")) ?? currentRole;
+  const type = readPayloadString(data, "notificationType") ?? readPayloadString(data, "type");
+
+  if (role === "agent" && event === "delivery_request") {
+    return "/(agent)/(tabs)/deliveries";
+  }
+
+  if (role === "student" || role === "vendor" || role === "agent" || role === "landlord" || role === "admin") {
+    return notificationTargetForRole(role, type, data);
+  }
+
+  return null;
+}
+
 export default function AppRuntimeProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { role, activeRole, user } = useAuth();
+  const router = useRouter();
 
   React.useEffect(() => {
     void reportStartupWarnings();
@@ -52,6 +77,7 @@ export default function AppRuntimeProvider({ children }: { children: React.React
     });
 
     const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = (response.notification.request.content.data ?? {}) as Record<string, unknown>;
       void captureRuntimeEvent({
         type: "push_opened",
         message: "User opened a push notification.",
@@ -60,6 +86,11 @@ export default function AppRuntimeProvider({ children }: { children: React.React
           identifier: response.notification.request.identifier,
         },
       });
+
+      const target = routeFromNotificationPayload(data, activeRole ?? role);
+      if (target) {
+        router.push(target as any);
+      }
     });
 
     const notificationRowSub = supabase
@@ -70,7 +101,7 @@ export default function AppRuntimeProvider({ children }: { children: React.React
         seenLocalNotificationIds.add(next.id);
 
         const type = String(next.type ?? "").toLowerCase();
-        const isAudibleLocalFallback = type === "vendor_message";
+        const isAudibleLocalFallback = type.includes("message") || type.includes("enquiry");
         if (!isAudibleLocalFallback) return;
 
         void scheduleLocalNotification({
@@ -92,7 +123,7 @@ export default function AppRuntimeProvider({ children }: { children: React.React
       responseSub.remove();
       supabase.removeChannel(notificationRowSub);
     };
-  }, [user?.id]);
+  }, [activeRole, role, router, user?.id]);
 
   return <>{children}</>;
 }

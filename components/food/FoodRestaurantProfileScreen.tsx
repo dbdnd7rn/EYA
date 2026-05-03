@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Dimensions, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, Bike, ChevronRight, Clock3, Mail, MapPin, MessageCircle, Phone, ShieldCheck, Star, UtensilsCrossed } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
@@ -13,8 +13,15 @@ type Props = {
 export default function FoodRestaurantProfileScreen({ fallbackRoute }: Props) {
   const router = useRouter();
   const params = useLocalSearchParams<{ vendorId?: string }>();
+  const galleryRef = React.useRef<ScrollView | null>(null);
   const [restaurant, setRestaurant] = React.useState<Awaited<ReturnType<typeof getFoodRestaurantByVendorId>>>(null);
   const [loading, setLoading] = React.useState(true);
+  const [galleryIndex, setGalleryIndex] = React.useState(0);
+  const heroWidth = Dimensions.get("window").width - 32;
+  const galleryImages = React.useMemo(
+    () => (restaurant?.galleryImages.length ? restaurant.galleryImages : restaurant ? [restaurant.bannerImage] : []),
+    [restaurant],
+  );
 
   React.useEffect(() => {
     let active = true;
@@ -32,6 +39,19 @@ export default function FoodRestaurantProfileScreen({ fallbackRoute }: Props) {
       active = false;
     };
   }, [params.vendorId]);
+
+  React.useEffect(() => {
+    setGalleryIndex(0);
+    if (galleryImages.length <= 1) return;
+    const timer = setInterval(() => {
+      setGalleryIndex((current) => {
+        const next = (current + 1) % galleryImages.length;
+        galleryRef.current?.scrollTo({ x: next * heroWidth, animated: true });
+        return next;
+      });
+    }, 5200);
+    return () => clearInterval(timer);
+  }, [galleryImages, heroWidth]);
 
   if (loading) {
     return (
@@ -69,7 +89,17 @@ export default function FoodRestaurantProfileScreen({ fallbackRoute }: Props) {
         </Pressable>
 
         <View style={styles.heroCard}>
-          <Image source={{ uri: restaurant.bannerImage }} style={styles.heroImage} />
+          <ScrollView
+            ref={galleryRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={(event) => setGalleryIndex(Math.round(event.nativeEvent.contentOffset.x / heroWidth))}
+          >
+            {galleryImages.map((imageUrl, index) => (
+              <Image key={`${imageUrl}-${index}`} source={{ uri: imageUrl }} style={[styles.heroImage, { width: heroWidth }]} />
+            ))}
+          </ScrollView>
           <View style={styles.heroOverlay} />
           <View style={styles.heroBadge}>
             <UtensilsCrossed size={14} color="#fff" />
@@ -80,6 +110,9 @@ export default function FoodRestaurantProfileScreen({ fallbackRoute }: Props) {
           </View>
           <View style={styles.heroBottom}>
             <Text style={styles.heroTitle}>{restaurant.name}</Text>
+            <View style={styles.galleryDots}>
+              {galleryImages.map((imageUrl, index) => <View key={`${imageUrl}-dot-${index}`} style={[styles.galleryDot, index === galleryIndex && styles.galleryDotActive]} />)}
+            </View>
             <View style={styles.metaRow}>
               <MetaPill icon={<Star size={12} color="#ffd166" fill="#ffd166" />} label={restaurant.rating.toFixed(1)} />
               <MetaPill icon={<Clock3 size={12} color="#fff" />} label={restaurant.isOpen ? "Open now" : "Closed"} />
@@ -175,8 +208,8 @@ function RestaurantListingCard({ item, onPress }: { item: FoodCard; onPress: () 
       <Image source={{ uri: item.image }} style={styles.listingImage} />
       <View style={styles.listingCopy}>
         <Text numberOfLines={1} style={styles.listingName}>{item.meal}</Text>
-        <Text numberOfLines={1} style={styles.listingSub}>{item.cuisine}</Text>
-        <Text style={styles.listingPrice}>{kwacha(item.mealPrice)}</Text>
+        <Text numberOfLines={2} style={styles.listingSub}>{item.menuSummary || item.cuisine}</Text>
+        <Text style={styles.listingPrice}>{item.hasCustomization ? `From ${kwacha(item.mealPrice)}` : kwacha(item.mealPrice)}</Text>
       </View>
       <ChevronRight size={18} color="#7a8ea4" />
     </Pressable>
@@ -200,7 +233,7 @@ const styles = StyleSheet.create({
   },
   backText: { color: "#16315f", fontSize: 13, fontWeight: "800" },
   heroCard: { height: 280, borderRadius: 30, overflow: "hidden", backgroundColor: "#d9e6ea" },
-  heroImage: { width: "100%", height: "100%", position: "absolute" },
+  heroImage: { height: 280, backgroundColor: "#d9e6ea" },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(18,31,58,0.34)" },
   heroBadge: {
     marginTop: 16,
@@ -228,6 +261,9 @@ const styles = StyleSheet.create({
   avatarImage: { width: "100%", height: "100%", borderRadius: 34, backgroundColor: "#d9e6ea" },
   heroBottom: { marginTop: "auto", padding: 16, gap: 10 },
   heroTitle: { color: "#fff", fontSize: 31, fontWeight: "900" },
+  galleryDots: { flexDirection: "row", gap: 6 },
+  galleryDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.35)" },
+  galleryDotActive: { width: 18, backgroundColor: "#ffffff" },
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   metaPill: {
     borderRadius: 999,

@@ -1,4 +1,4 @@
-﻿import { ENV } from "@/lib/env";
+import { ENV } from "@/lib/env";
 
 export type SupportedPaymentMethod = "airtel_money" | "mpamba" | "bank_transfer";
 
@@ -84,7 +84,7 @@ export async function initializePayChanguCheckout(input: InitPaymentInput): Prom
     throw new Error("PayChangu backend URL is not configured. Set EXPO_PUBLIC_PAYCHANGU_BACKEND.");
   }
 
-  const project = input.project ?? "pa-level";
+  const project = input.project ?? "eya";
   const payload = {
     amount: input.amountMwk,
     currency: "MWK",

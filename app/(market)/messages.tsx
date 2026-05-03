@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Image, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ImagePlus, SendHorizonal } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -41,7 +41,7 @@ async function uploadChatImage(asset: { uri: string; fileName?: string | null; m
   const form = new FormData();
   form.append("file", { uri: asset.uri, name: meta.name, type: meta.type } as any);
   form.append("upload_preset", uploadPreset);
-  form.append("folder", "pamaketi/vendor-chat");
+  form.append("folder", "eya/vendor-chat");
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form });
   const json = await res.json();
@@ -62,6 +62,7 @@ export default function SellerMessagesPage() {
   const [messages, setMessages] = useState<VendorMessageRow[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const scrollRef = React.useRef<ScrollView | null>(null);
 
   const syncMessagesWithPending = async (conversationId: string, liveRows: VendorMessageRow[]) => {
     const pending = await getPendingVendorMessages(conversationId);
@@ -196,7 +197,19 @@ export default function SellerMessagesPage() {
   return (
     <SafeAreaView style={styles.root}>
       <SoftPageGlow variant="account" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 12}
+      >
+      <ScrollView
+        ref={scrollRef as any}
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+      >
         <View style={styles.header}>
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
             <ChevronLeft size={22} color="#102a54" />
@@ -245,7 +258,10 @@ export default function SellerMessagesPage() {
                 {[selectedConversation.phone, selectedConversation.campus, selectedConversation.area].filter(Boolean).join(" | ") || "Customer profile details"}
               </Text>
             ) : null}
-            <View style={styles.messageList}>
+            <View
+              style={styles.messageList}
+              onLayout={() => scrollRef.current?.scrollToEnd({ animated: true })}
+            >
               {messages.map((message) => {
                 const mine = message.sender_role === "vendor";
                 return (
@@ -267,7 +283,14 @@ export default function SellerMessagesPage() {
               <Pressable style={styles.iconBtn} onPress={sendImage} disabled={sending}>
                 <ImagePlus size={18} color="#102a54" />
               </Pressable>
-              <TextInput value={draft} onChangeText={setDraft} placeholder="Type a message..." placeholderTextColor="#98a3bd" style={styles.input} />
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder="Type a message..."
+                placeholderTextColor="#98a3bd"
+                style={styles.input}
+                onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
+              />
               <Pressable style={styles.sendBtn} onPress={sendText} disabled={sending}>
                 <SendHorizonal size={18} color="#fff" />
               </Pressable>
@@ -275,12 +298,15 @@ export default function SellerMessagesPage() {
           </View>
         ) : null}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f3f1fb" },
+  flex: { flex: 1 },
+  scroll: { flex: 1 },
   content: { padding: 18, paddingBottom: 42, gap: 18 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   backBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },

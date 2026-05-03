@@ -180,7 +180,7 @@ create table if not exists public.payments (
   related_order_id uuid,
   related_enquiry_id uuid,
   related_listing_id uuid,
-  project text not null default 'pa-level',
+  project text not null default 'eya',
   provider text not null default 'paychangu',
   method text not null check (method in ('airtel_money', 'mpamba', 'bank_transfer')),
   reference text not null unique,

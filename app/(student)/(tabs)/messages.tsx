@@ -1,16 +1,19 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Dimensions, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Filter, MapPin, MessageCircle, Search } from "lucide-react-native";
+import { House, MapPin, MessageCircle, Search, ShoppingBag, Store, UtensilsCrossed } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
+import { listStudentMarketRequests, type MarketInterestRequest } from "@/lib/marketInterest";
+import { listVendorConversationsForCustomer } from "@/lib/newApp/vendorMessages";
+import type { CatalogItemRow, SalesChannel, VendorConversationRow, VendorRow } from "@/lib/newApp/types";
+import { supabaseNewApp } from "@/lib/supabaseNewApp";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
-import RoomsBottomNav from "@/components/rooms/RoomsBottomNav";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
-type EnquiryStatus = "new" | "replied" | "closed" | "read" | string;
+type InboxKind = "hostel" | "market" | "food";
 
 type ListingMini = {
   id: string;
@@ -23,111 +26,251 @@ type ListingMini = {
 
 type EnquiryRow = {
   id: string;
-  student_id: string | null;
-  landlord_id: string | null;
-  listing_id: string | null;
   message: string | null;
-  status: EnquiryStatus;
   created_at: string | null;
   listings: ListingMini[] | ListingMini | null;
 };
 
-function initials(name?: string | null) {
-  const s = (name || "").trim();
-  if (!s) return "PL";
-  const parts = s.split(/\s+/).filter(Boolean);
-  const a = parts[0]?.[0] ?? "P";
-  const b = parts[1]?.[0] ?? "L";
-  return (a + b).toUpperCase();
+type HostelMessageRow = {
+  enquiry_id: string;
+  content: string | null;
+  created_at: string;
+};
+
+type VendorMessagePreviewRow = {
+  conversation_id: string;
+  content: string | null;
+  image_url: string | null;
+  message_type: "text" | "image";
+  created_at: string;
+};
+
+type ChatInboxEntry = {
+  id: string;
+  kind: InboxKind;
+  title: string;
+  subtitle: string;
+  preview: string;
+  updatedAt: string;
+  imageUrl: string | null;
+  enquiryId?: string;
+  vendorId?: string;
+  channel?: SalesChannel;
+  itemId?: string | null;
+  itemName?: string | null;
+  subject?: string | null;
+  vendorName?: string | null;
+  priceMwk?: number | null;
+  requestStatus?: MarketInterestRequest["status"] | null;
+  requestLabel?: string | null;
+};
+
+function inboxCacheKey(userId: string) {
+  return `student-chat-inbox:${userId}`;
 }
 
-function fmtTime(iso?: string | null) {
-  if (!iso) return "";
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function formatTime(iso: string) {
+  const date = new Date(iso);
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function displayName(listing: ListingMini | null) {
-  return listing?.title?.trim() || "Hostel";
+function initials(label?: string | null) {
+  const parts = (label || "Chat").trim().split(/\s+/).filter(Boolean);
+  return `${parts[0]?.[0] ?? "C"}${parts[1]?.[0] ?? ""}`.toUpperCase();
 }
 
-function statusPill(status: string) {
-  const s = (status || "").toLowerCase();
-  if (s === "new") return { bg: "#eaf3ff", border: "#b6d2ff", text: "#1d5fc7", label: "New", show: true };
-  if (s === "replied") return { bg: "#eefaf1", border: "#b8ebc4", text: "#1a7f43", label: "Replied", show: true };
-  if (s === "read") return { bg: "#f3f4f6", border: "#e5e7eb", text: "#6b7280", label: "Read", show: false };
-  if (s === "closed") return { bg: "#f3f4f6", border: "#e5e7eb", text: "#6b7280", label: "Closed", show: false };
-  return { bg: "#f6f7fb", border: "#e7eaf6", text: "#0e2756", label: status || "-", show: false };
+function locationLabel(parts: (string | null | undefined)[]) {
+  return parts.filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(" • ");
+}
+
+function hostelPreview(enquiry: EnquiryRow, latest: HostelMessageRow | null) {
+  if (latest?.content?.trim()) return latest.content.trim();
+  if (enquiry.message?.trim()) return enquiry.message.trim();
+  return "Open hostel chat";
+}
+
+function vendorPreview(latest: VendorMessagePreviewRow | null, subject?: string | null) {
+  if (latest?.message_type === "image") return "Sent a photo";
+  if (latest?.content?.trim()) return latest.content.trim();
+  if (subject?.trim()) return subject.trim();
+  return "Open seller chat";
+}
+
+function sourceIcon(kind: InboxKind) {
+  if (kind === "market") return <Store size={18} color="#0f6d80" />;
+  if (kind === "food") return <UtensilsCrossed size={18} color="#9c4b1a" />;
+  return <House size={18} color="#23457b" />;
+}
+
+function isDeliveryRequestStatus(status?: MarketInterestRequest["status"] | null) {
+  return status === "discussing" || status === "arranged" || status === "completed";
+}
+
+async function loadHostelEntries(userId: string): Promise<ChatInboxEntry[]> {
+  const { data: enquiries, error } = await supabase
+    .from("enquiries")
+    .select(
+      `
+      id,
+      message,
+      created_at,
+      listings:listing_id (
+        id,
+        title,
+        listing_type,
+        campus,
+        area,
+        city
+      )
+    `,
+    )
+    .eq("student_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const enquiryRows = (enquiries ?? []) as EnquiryRow[];
+  const enquiryIds = enquiryRows.map((row) => row.id);
+  let latestMessages: HostelMessageRow[] = [];
+
+  if (enquiryIds.length) {
+    const { data: messageRows, error: messageError } = await supabase
+      .from("messages")
+      .select("enquiry_id,content,created_at")
+      .in("enquiry_id", enquiryIds)
+      .order("created_at", { ascending: false })
+      .limit(400);
+    if (messageError) throw messageError;
+    latestMessages = (messageRows ?? []) as HostelMessageRow[];
+  }
+
+  const latestByEnquiry = new Map<string, HostelMessageRow>();
+  for (const row of latestMessages) {
+    if (!latestByEnquiry.has(row.enquiry_id)) latestByEnquiry.set(row.enquiry_id, row);
+  }
+
+  return enquiryRows.map((enquiry) => {
+    const listing = (Array.isArray(enquiry.listings) ? enquiry.listings[0] : enquiry.listings) ?? null;
+    const latest = latestByEnquiry.get(enquiry.id) ?? null;
+    return {
+      id: `hostel:${enquiry.id}`,
+      kind: "hostel",
+      title: listing?.title?.trim() || "Hostel chat",
+      subtitle: locationLabel([listing?.area, listing?.city, listing?.campus]) || "Accommodation enquiry",
+      preview: hostelPreview(enquiry, latest),
+      updatedAt: latest?.created_at ?? enquiry.created_at ?? new Date().toISOString(),
+      imageUrl: null,
+      enquiryId: enquiry.id,
+      requestStatus: null,
+      requestLabel: null,
+    };
+  });
+}
+
+async function loadVendorEntries(userId: string): Promise<ChatInboxEntry[]> {
+  const [conversations, requests] = await Promise.all([
+    listVendorConversationsForCustomer(userId),
+    listStudentMarketRequests(userId),
+  ]);
+  if (!conversations.length) return [];
+
+  const vendorIds = [...new Set(conversations.map((row) => row.vendor_id))];
+  const itemIds = [...new Set(conversations.map((row) => row.catalog_item_id).filter((value): value is string => Boolean(value)))];
+  const conversationIds = conversations.map((row) => row.id);
+
+  const [vendorRes, itemRes, messageRes] = await Promise.all([
+    vendorIds.length ? supabaseNewApp.from("vendors").select("id,name,area,campus,city").in("id", vendorIds) : Promise.resolve({ data: [], error: null }),
+    itemIds.length ? supabaseNewApp.from("catalog_items").select("id,name,image_url,price_mwk").in("id", itemIds) : Promise.resolve({ data: [], error: null }),
+    supabaseNewApp
+      .from("vendor_messages")
+      .select("conversation_id,content,image_url,message_type,created_at")
+      .in("conversation_id", conversationIds)
+      .order("created_at", { ascending: false })
+      .limit(500),
+  ]);
+
+  if (vendorRes.error) throw vendorRes.error;
+  if (itemRes.error) throw itemRes.error;
+  if (messageRes.error) throw messageRes.error;
+
+  const vendorsById = new Map(
+    ((vendorRes.data ?? []) as Pick<VendorRow, "id" | "name" | "area" | "campus" | "city">[]).map((row) => [row.id, row]),
+  );
+  const itemsById = new Map(
+    ((itemRes.data ?? []) as Pick<CatalogItemRow, "id" | "name" | "image_url" | "price_mwk">[]).map((row) => [row.id, row]),
+  );
+  const latestByConversation = new Map<string, VendorMessagePreviewRow>();
+  for (const row of (messageRes.data ?? []) as VendorMessagePreviewRow[]) {
+    if (!latestByConversation.has(row.conversation_id)) latestByConversation.set(row.conversation_id, row);
+  }
+
+  return conversations.map((conversation: VendorConversationRow) => {
+    const vendor = vendorsById.get(conversation.vendor_id);
+    const item = conversation.catalog_item_id ? itemsById.get(conversation.catalog_item_id) : null;
+    const latest = latestByConversation.get(conversation.id) ?? null;
+    const kind: InboxKind = conversation.channel === "food" ? "food" : "market";
+    const request = requests.find((row) => row.vendorId === conversation.vendor_id && row.customerId === userId && row.itemId === conversation.catalog_item_id);
+    return {
+      id: `${kind}:${conversation.id}`,
+      kind,
+      title: vendor?.name?.trim() || (kind === "food" ? "Restaurant chat" : "Shop chat"),
+      subtitle: item?.name?.trim() || conversation.subject?.trim() || locationLabel([vendor?.area, vendor?.city, vendor?.campus]) || "Seller conversation",
+      preview: vendorPreview(latest, conversation.subject),
+      updatedAt: latest?.created_at ?? conversation.last_message_at ?? conversation.created_at,
+      imageUrl: item?.image_url ?? latest?.image_url ?? null,
+      vendorId: conversation.vendor_id,
+      channel: conversation.channel,
+      itemId: conversation.catalog_item_id,
+      itemName: item?.name ?? null,
+      subject: conversation.subject ?? null,
+      vendorName: vendor?.name ?? null,
+      priceMwk: item?.price_mwk ?? null,
+      requestStatus: request?.status ?? null,
+      requestLabel: request?.pickupTimeLabel ? `${request.pickupTimeLabel} • ${request.pickupLocation}` : request?.lastMessage ?? null,
+    };
+  });
 }
 
 export default function StudentMessagesScreen() {
+  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { isOnline } = useNetwork();
-  const router = useRouter();
-
-  const [rows, setRows] = useState<EnquiryRow[]>([]);
+  const { theme } = useStudentTheme();
+  const [rows, setRows] = useState<ChatInboxEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
 
-  const screenWidth = Dimensions.get("window").width;
-
-  useEffect(() => {
-    if (!authLoading && !user) router.replace("/(auth)/login");
-  }, [authLoading, user, router]);
-
-  const load = async (opts?: { silent?: boolean }) => {
-    if (!user) return;
+  const refreshInbox = async (opts?: { silent?: boolean }) => {
+    if (!user?.id) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
 
     try {
       if (!opts?.silent) setLoading(true);
       setError(null);
 
       if (!isOnline) {
-        const cached = await getCachedJson<EnquiryRow[]>(`messages:${user.id}`);
+        const cached = await getCachedJson<ChatInboxEntry[]>(inboxCacheKey(user.id));
         setRows(cached?.data ?? []);
-        setError(cached?.data ? null : "No messages available yet.");
+        setError(cached?.data?.length ? null : "No chats available offline yet.");
         return;
       }
 
-      const { data, error } = await supabase
-        .from("enquiries")
-        .select(
-          `
-          id,
-          student_id,
-          landlord_id,
-          listing_id,
-          message,
-          status,
-          created_at,
-          listings:listing_id (
-            id,
-            title,
-            listing_type,
-            campus,
-            area,
-            city
-          )
-        `,
-        )
-        .eq("student_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      const nextRows = (data ?? []) as EnquiryRow[];
+      const [hostelEntries, vendorEntries] = await Promise.all([loadHostelEntries(user.id), loadVendorEntries(user.id)]);
+      const nextRows = [...hostelEntries, ...vendorEntries].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
+      await setCachedJson(inboxCacheKey(user.id), nextRows);
       setRows(nextRows);
-      await setCachedJson(`messages:${user.id}`, nextRows);
-    } catch {
-      const cached = await getCachedJson<EnquiryRow[]>(`messages:${user.id}`);
-      if (cached?.data) {
-        setRows(cached.data);
-        setError(null);
-      } else {
-        setRows([]);
-        setError("Failed to load messages.");
-      }
+    } catch (err: any) {
+      const cached = await getCachedJson<ChatInboxEntry[]>(inboxCacheKey(user?.id));
+      setRows(cached?.data ?? []);
+      setError(cached?.data?.length ? "Showing saved chats. Live refresh failed." : (err?.message ?? "Could not load chats right now."));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -135,33 +278,89 @@ export default function StudentMessagesScreen() {
   };
 
   useEffect(() => {
-    void load();
-  }, [user?.id, isOnline]);
+    if (!authLoading && !user) router.replace("/(auth)/login");
+  }, [authLoading, router, user]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await load({ silent: true });
-  };
+  useEffect(() => {
+    if (!authLoading) void refreshInbox();
+  }, [authLoading, isOnline, user?.id]);
 
-  const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
+  useEffect(() => {
+    if (!user?.id || !isOnline) return;
+
+    const hostelChannel = supabase
+      .channel(`student-chat-inbox-hostel-${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "enquiries", filter: `student_id=eq.${user.id}` }, () => {
+        void refreshInbox({ silent: true });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `receiver_id=eq.${user.id}` }, () => {
+        void refreshInbox({ silent: true });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `sender_id=eq.${user.id}` }, () => {
+        void refreshInbox({ silent: true });
+      })
+      .subscribe();
+
+    const vendorChannel = supabaseNewApp
+      .channel(`student-chat-inbox-vendor-${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "vendor_conversations", filter: `customer_id=eq.${user.id}` }, () => {
+        void refreshInbox({ silent: true });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "vendor_messages", filter: `receiver_id=eq.${user.id}` }, () => {
+        void refreshInbox({ silent: true });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "vendor_messages", filter: `sender_id=eq.${user.id}` }, () => {
+        void refreshInbox({ silent: true });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(hostelChannel);
+      supabaseNewApp.removeChannel(vendorChannel);
+    };
+  }, [isOnline, user?.id]);
+
+  const visibleRows = useMemo(() => {
+    const term = query.trim().toLowerCase();
     if (!term) return rows;
+    return rows.filter((row) =>
+      [row.title, row.subtitle, row.preview, row.vendorName, row.itemName, row.requestLabel]
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        .some((value) => value.toLowerCase().includes(term)),
+    );
+  }, [query, rows]);
 
-    return rows.filter((r) => {
-      const listing = (Array.isArray(r.listings) ? r.listings[0] : r.listings) ?? null;
-      const name = displayName(listing).toLowerCase();
-      const msg = (r.message ?? "").toLowerCase();
-      const loc = [listing?.area, listing?.city, listing?.campus].filter(Boolean).join(" ").toLowerCase();
-      return name.includes(term) || msg.includes(term) || loc.includes(term);
+  const totalChats = rows.length;
+  const hostelCount = rows.filter((row) => row.kind === "hostel").length;
+  const deliveryCount = rows.filter((row) => isDeliveryRequestStatus(row.requestStatus)).length;
+
+  const openChat = (row: ChatInboxEntry) => {
+    if (row.kind === "hostel" && row.enquiryId) {
+      router.push({ pathname: "/(student)/chat/[enquiryId]", params: { enquiryId: row.enquiryId } });
+      return;
+    }
+    if (!row.vendorId || !row.channel) return;
+    router.push({
+      pathname: "/(student)/vendor-chat/[vendorId]",
+      params: {
+        vendorId: row.vendorId,
+        channel: row.channel,
+        ...(row.itemId ? { itemId: row.itemId } : {}),
+        ...(row.subject ? { subject: row.subject } : {}),
+        ...(row.vendorName ? { vendorName: row.vendorName } : {}),
+        ...(row.itemName ? { itemName: row.itemName } : {}),
+        ...(row.imageUrl ? { image: row.imageUrl } : {}),
+        ...(row.priceMwk != null ? { price: String(row.priceMwk) } : {}),
+      },
     });
-  }, [rows, q]);
+  };
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
         <View style={styles.skeletonWrap}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <View key={i} style={styles.skeletonRow} />
+          {Array.from({ length: 5 }).map((_, index) => (
+            <View key={index} style={[styles.skeletonRow, { backgroundColor: theme.surfaceMuted }]} />
           ))}
         </View>
       </SafeAreaView>
@@ -169,338 +368,232 @@ export default function StudentMessagesScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ff0f64" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void refreshInbox({ silent: true }); }} tintColor="#0f6d80" />}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.heroCard}>
-          <View style={styles.heroCloud} />
-          <View style={styles.heroSun} />
-          <View style={styles.heroHorizon} />
-          <View style={styles.heroTextWrap}>
-            <Text style={styles.heroTitle}>Messages</Text>
-            <Text style={styles.heroSub}>Chats with landlords or hostel owners</Text>
-          </View>
-          <View style={styles.heroHouse}>
-            <View style={styles.houseRoof} />
-            <View style={styles.houseBody}>
-              <View style={styles.houseWindow} />
-              <View style={styles.houseDoor} />
-              <View style={styles.houseWindow} />
-            </View>
-            <View style={styles.houseBushLeft} />
-            <View style={styles.houseBushRight} />
+        <View style={[styles.heroCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={[styles.heroOrbLarge, { backgroundColor: theme.glowTop }]} />
+          <View style={[styles.heroOrbSmall, { backgroundColor: theme.glowMiddle }]} />
+          <Text style={[styles.heroEyebrow, { color: theme.textMuted }]}>Student inbox</Text>
+          <Text style={[styles.heroTitle, { color: theme.text }]}>Chats</Text>
+          <Text style={[styles.heroSub, { color: theme.textMuted }]}>All your hostel, market, food, and delivery conversations in one place.</Text>
+
+          <View style={styles.metricsRow}>
+            <MetricCard label="Total" value={String(totalChats)} tint="#e9f9f2" textColor="#156b45" />
+            <MetricCard label="Hostels" value={String(hostelCount)} tint="#edf4ff" textColor="#2351a6" />
+            <MetricCard label="Delivery" value={String(deliveryCount)} tint="#fff4e8" textColor="#995522" />
           </View>
         </View>
 
-        <View style={styles.searchBar}>
-          <Search size={18} color="#67738f" />
+        <View style={[styles.searchCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Search size={18} color={theme.textSoft} />
           <TextInput
-            style={styles.searchInput}
-            value={q}
-            onChangeText={setQ}
-            placeholder="Search hostel or messages..."
-            placeholderTextColor="#9aa3bd"
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search chats, shops, hostels..."
+            placeholderTextColor={theme.textSoft}
+            style={[styles.searchInput, { color: theme.text }]}
           />
-          <View style={styles.searchDivider} />
-          <Pressable style={styles.filtersBtn} onPress={() => {}}>
-            <Filter size={18} color="#476f8b" />
-            <Text style={styles.filtersText}>Filters</Text>
-          </Pressable>
         </View>
 
-        <View style={[styles.sectionCard, { width: screenWidth - 32 }]}>
-          <Text style={styles.sectionTitle}>Recent chats</Text>
+        {error ? (
+          <View style={[styles.errorCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Text style={[styles.errorText, { color: theme.text }]}>{error}</Text>
+          </View>
+        ) : null}
 
-          {error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-
-          {filtered.length === 0 && !error ? (
-            <View style={styles.emptyCard}>
-              <View style={styles.emptyIcon}>
-                <MessageCircle size={26} color="#ff0f64" />
-              </View>
-              <Text style={styles.emptyTitle}>No messages yet</Text>
-              <Text style={styles.emptySub}>When you message a hostel, it will appear here.</Text>
-            </View>
-          ) : null}
-
-          {filtered.length > 0 ? (
-            <View style={styles.tilesWrap}>
-              {filtered.map((r) => {
-                const listing = (Array.isArray(r.listings) ? r.listings[0] : r.listings) ?? null;
-                const title = displayName(listing);
-                const location = [listing?.area, listing?.city, listing?.campus].filter(Boolean).join(" • ");
-                const pill = statusPill(String(r.status ?? "new"));
-
-                return (
-                  <Pressable
-                    key={r.id}
-                    onPress={() => {
-                      if (!isOnline) {
-                        Alert.alert("Internet required", "Open chat requires internet connection.");
-                        return;
-                      }
-                      router.push({ pathname: "/(student)/chat/[enquiryId]", params: { enquiryId: r.id } });
-                    }}
-                    style={({ pressed }) => [styles.chatCard, pressed && { backgroundColor: "#f6f9ff" }]}
-                  >
-                    <View style={styles.chatRow}>
-                      <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{initials(title)}</Text>
-                      </View>
-
-                      <View style={styles.chatMain}>
-                        <View style={styles.chatTopRow}>
-                          <Text numberOfLines={1} style={styles.chatTitle}>
-                            {title}
-                          </Text>
-                          {pill.show ? (
-                            <View style={[styles.statusBadge, { backgroundColor: pill.bg, borderColor: pill.border }]}>
-                              <Text style={[styles.statusBadgeText, { color: pill.text }]}>{pill.label}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-
-                        <View style={styles.locRow}>
-                          <MapPin size={14} color="#5f6b85" />
-                          <Text numberOfLines={1} style={styles.locText}>
-                            {location || "Location not provided"}
-                          </Text>
-                        </View>
-
-                        <Text numberOfLines={2} style={styles.preview}>
-                          {r.message || "Open chat"}
-                        </Text>
-
-                        <View style={styles.metaRow}>
-                          <View style={styles.compareChip}>
-                            <Text style={styles.compareChipText}>Compare</Text>
-                          </View>
-                          <Text style={styles.timeText}>{fmtTime(r.created_at)}</Text>
-                        </View>
-                      </View>
+        <View style={styles.list}>
+          {visibleRows.length ? (
+            visibleRows.map((row) => (
+              <Pressable key={row.id} style={[styles.chatCard, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => openChat(row)}>
+                <View style={styles.chatLeft}>
+                  {row.imageUrl ? (
+                    <Image source={{ uri: row.imageUrl }} style={styles.chatImage} />
+                  ) : (
+                    <View style={[styles.avatar, { backgroundColor: row.kind === "hostel" ? "#24457a" : row.kind === "food" ? "#9c4b1a" : "#0f6d80" }]}>
+                      <Text style={styles.avatarText}>{initials(row.title)}</Text>
                     </View>
-                  </Pressable>
-                );
-              })}
+                  )}
+                  <View style={styles.chatCopy}>
+                    <View style={styles.chatTopRow}>
+                      <Text numberOfLines={1} style={[styles.chatTitle, { color: theme.text }]}>{row.title}</Text>
+                      <Text style={[styles.chatTime, { color: theme.textMuted }]}>{formatTime(row.updatedAt)}</Text>
+                    </View>
+
+                    <View style={styles.badgesRow}>
+                      <View style={styles.sourcePill}>
+                        {sourceIcon(row.kind)}
+                        <Text style={[styles.sourcePillText, { color: theme.text }]}>
+                          {row.kind === "hostel" ? "Hostel" : row.kind === "food" ? "Food" : "Market"}
+                        </Text>
+                      </View>
+                      {row.requestStatus && isDeliveryRequestStatus(row.requestStatus) ? (
+                        <View style={styles.deliveryPill}>
+                          <ShoppingBag size={14} color="#995522" />
+                          <Text style={styles.deliveryPillText}>Delivery</Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <View style={styles.locationRow}>
+                      <MapPin size={13} color={theme.textSoft} />
+                      <Text numberOfLines={1} style={[styles.locationText, { color: theme.textMuted }]}>{row.subtitle}</Text>
+                    </View>
+
+                    <Text numberOfLines={2} style={[styles.preview, { color: theme.textMuted }]}>{row.preview}</Text>
+                    {row.requestLabel ? <Text numberOfLines={1} style={[styles.requestMeta, { color: theme.textSoft }]}>{row.requestLabel}</Text> : null}
+                  </View>
+                </View>
+              </Pressable>
+            ))
+          ) : (
+            <View style={[styles.emptyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={styles.emptyIconWrap}>
+                <MessageCircle size={24} color="#0f6d80" />
+              </View>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>No chats yet</Text>
+              <Text style={[styles.emptySub, { color: theme.textMuted }]}>Start a hostel enquiry or message a seller and it will appear here.</Text>
             </View>
-          ) : null}
+          )}
         </View>
       </ScrollView>
-
-      <RoomsBottomNav active="messages" />
     </SafeAreaView>
+  );
+}
+
+function MetricCard({ label, value, tint, textColor }: { label: string; value: string; tint: string; textColor: string }) {
+  return (
+    <View style={[styles.metricCard, { backgroundColor: tint }]}>
+      <Text style={[styles.metricValue, { color: textColor }]}>{value}</Text>
+      <Text style={[styles.metricLabel, { color: textColor }]}>{label}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
   content: { padding: 16, paddingBottom: 120, gap: 14 },
-
-  skeletonWrap: { padding: 16, gap: 10 },
-  skeletonRow: { height: 86, borderRadius: 24, backgroundColor: "#dde6ff" },
-
+  skeletonWrap: { padding: 16, gap: 12 },
+  skeletonRow: { height: 96, borderRadius: 26 },
   heroCard: {
-    position: "relative",
+    borderRadius: 30,
+    borderWidth: 1,
+    padding: 20,
     overflow: "hidden",
-    minHeight: 170,
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: "#edf0f8",
-    backgroundColor: "#edf8ff",
-    padding: 22,
-    justifyContent: "space-between",
+    gap: 14,
   },
-  heroTextWrap: { zIndex: 2, maxWidth: "62%" },
-  heroCloud: {
+  heroOrbLarge: {
     position: "absolute",
-    top: 26,
-    right: 132,
-    width: 66,
-    height: 18,
+    top: -36,
+    right: -12,
+    width: 180,
+    height: 180,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.95)",
+    opacity: 0.28,
   },
-  heroSun: {
+  heroOrbSmall: {
     position: "absolute",
-    right: 18,
-    top: 18,
-    width: 126,
-    height: 126,
+    left: -24,
+    bottom: -40,
+    width: 150,
+    height: 150,
     borderRadius: 999,
-    backgroundColor: "rgba(255,234,176,0.72)",
+    opacity: 0.22,
   },
-  heroHorizon: {
-    position: "absolute",
-    left: -20,
-    right: -20,
-    bottom: -28,
-    height: 72,
-    borderRadius: 72,
-    backgroundColor: "rgba(202,234,218,0.65)",
+  heroEyebrow: { fontSize: 13, fontWeight: "800", textTransform: "uppercase" },
+  heroTitle: { fontSize: 34, fontWeight: "900" },
+  heroSub: { fontSize: 14, fontWeight: "700", lineHeight: 21, maxWidth: "92%" },
+  metricsRow: { flexDirection: "row", gap: 10 },
+  metricCard: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 2,
   },
-  heroTitle: { color: "#102968", fontSize: 36, fontWeight: "900" },
-  heroSub: { marginTop: 6, color: "#4d658f", fontSize: 15, fontWeight: "500" },
-  heroHouse: {
-    position: "absolute",
-    right: 18,
-    bottom: 14,
-    width: 128,
-    height: 92,
-    alignItems: "center",
-    justifyContent: "flex-end",
-    zIndex: 2,
-  },
-  houseRoof: {
-    position: "absolute",
-    top: 10,
-    width: 86,
-    height: 30,
-    backgroundColor: "#6cb8c6",
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 12,
-    transform: [{ skewX: "-26deg" }],
-  },
-  houseBody: {
-    width: 78,
-    height: 54,
-    borderRadius: 8,
-    backgroundColor: "#fffaf0",
+  metricValue: { fontSize: 20, fontWeight: "900" },
+  metricLabel: { fontSize: 12, fontWeight: "800" },
+  searchCard: {
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#d8e7ea",
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-evenly",
-    paddingBottom: 8,
-  },
-  houseWindow: { width: 12, height: 12, borderRadius: 3, backgroundColor: "#9ed3dd" },
-  houseDoor: { width: 14, height: 24, borderRadius: 4, backgroundColor: "#7fb6c8" },
-  houseBushLeft: {
-    position: "absolute",
-    left: 12,
-    bottom: 0,
-    width: 30,
-    height: 16,
-    borderRadius: 16,
-    backgroundColor: "#9fd0b1",
-  },
-  houseBushRight: {
-    position: "absolute",
-    right: 8,
-    bottom: 2,
-    width: 34,
-    height: 18,
-    borderRadius: 16,
-    backgroundColor: "#8dc4a1",
-  },
-
-  searchBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    borderWidth: 1,
-    borderColor: "#e6eaf5",
-    backgroundColor: "#fff",
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
   },
-  searchInput: { flex: 1, color: "#66708e", fontSize: 16, fontWeight: "500" },
-  searchDivider: { width: 1, height: 28, backgroundColor: "#e7eaf6" },
-  filtersBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 6, paddingVertical: 2 },
-  filtersText: { color: "#0e2756", fontSize: 14, fontWeight: "800" },
-
-  sectionCard: {
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: "#edf0f8",
-    backgroundColor: "#fbfcff",
-    padding: 18,
-    gap: 12,
-  },
-  sectionTitle: { color: "#102968", fontSize: 18, fontWeight: "900" },
-
-  errorBox: {
-    borderWidth: 1,
-    borderColor: "#fecdd3",
-    backgroundColor: "#fff1f2",
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  errorText: { color: "#be123c", fontWeight: "700", fontSize: 13 },
-
-  emptyCard: {
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    padding: 22,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#edf0f8",
-  },
-  emptyIcon: {
-    width: 56,
-    height: 56,
+  searchInput: { flex: 1, fontSize: 15, fontWeight: "700" },
+  errorCard: {
     borderRadius: 18,
-    backgroundColor: "#fff0f6",
-    alignItems: "center",
-    justifyContent: "center",
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  emptyTitle: { marginTop: 12, color: "#0e2756", fontSize: 18, fontWeight: "900" },
-  emptySub: { marginTop: 6, color: "#5f6b85", fontSize: 13, fontWeight: "600", textAlign: "center" },
-
-  tilesWrap: { gap: 14 },
+  errorText: { fontSize: 13, fontWeight: "700" },
+  list: { gap: 12 },
   chatCard: {
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    padding: 18,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: "#e9edf7",
-    shadowColor: "#0e2756",
-    shadowOpacity: 0.04,
-    shadowRadius: 14,
-    elevation: 2,
+    padding: 14,
   },
-  chatRow: { flexDirection: "row", alignItems: "flex-start" },
+  chatLeft: { flexDirection: "row", gap: 12 },
+  chatImage: { width: 64, height: 64, borderRadius: 18, backgroundColor: "#d8e6ef" },
   avatar: {
-    width: 52,
-    height: 52,
+    width: 64,
+    height: 64,
     borderRadius: 18,
-    backgroundColor: "#0e2756",
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: { color: "#fff", fontSize: 18, fontWeight: "900" },
-  chatMain: { flex: 1, minWidth: 0, marginLeft: 12 },
-  chatTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  chatTitle: { flex: 1, color: "#0e2756", fontSize: 17, fontWeight: "900" },
-
-  statusBadge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
-  statusBadgeText: { fontSize: 11, fontWeight: "800" },
-
-  locRow: { marginTop: 6, flexDirection: "row", alignItems: "center", gap: 6 },
-  locText: { flex: 1, color: "#5f6b85", fontSize: 12, fontWeight: "700" },
-
-  preview: { marginTop: 10, color: "#4f5875", fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  metaRow: { marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  compareChip: {
-    borderWidth: 1,
-    borderColor: "#e2e7f3",
-    backgroundColor: "#fbfcff",
+  chatCopy: { flex: 1, gap: 7 },
+  chatTopRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  chatTitle: { flex: 1, fontSize: 17, fontWeight: "900" },
+  chatTime: { fontSize: 12, fontWeight: "800" },
+  badgesRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  sourcePill: {
+    alignSelf: "flex-start",
     borderRadius: 999,
-    paddingHorizontal: 16,
+    backgroundColor: "rgba(255,255,255,0.72)",
+    paddingHorizontal: 10,
     paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
-  compareChipText: { color: "#102968", fontSize: 12, fontWeight: "800" },
-  timeText: { color: "#6d7694", fontSize: 12, fontWeight: "700" },
+  sourcePillText: { fontSize: 12, fontWeight: "800" },
+  deliveryPill: {
+    borderRadius: 999,
+    backgroundColor: "#fff4e8",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  deliveryPillText: { color: "#995522", fontSize: 12, fontWeight: "900" },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  locationText: { flex: 1, fontSize: 12, fontWeight: "700" },
+  preview: { fontSize: 13, fontWeight: "700", lineHeight: 19 },
+  requestMeta: { fontSize: 11, fontWeight: "800" },
+  emptyCard: {
+    borderRadius: 26,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: "center",
+    gap: 8,
+  },
+  emptyIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: "#e7f6f8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: { fontSize: 18, fontWeight: "900" },
+  emptySub: { fontSize: 13, fontWeight: "700", textAlign: "center", lineHeight: 20 },
 });

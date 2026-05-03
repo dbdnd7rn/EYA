@@ -20,11 +20,10 @@ export async function uploadStorefrontImage(asset: UploadAsset) {
   const form = new FormData();
   form.append("file", { uri: asset.uri, name: meta.name, type: meta.type } as any);
   form.append("upload_preset", uploadPreset);
-  form.append("folder", "pamaketi/storefront");
+  form.append("folder", "eya/storefront");
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form });
   const json = await res.json();
   if (!res.ok) throw new Error(json?.error?.message || "Image upload failed.");
   return json.secure_url as string;
 }
-

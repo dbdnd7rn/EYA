@@ -79,6 +79,10 @@ function formatTypeLabel(value: TypeFilter) {
   return value === "hostel" ? "Hostel" : "Bedsitter";
 }
 
+function formatLocationLabel(row: ListingRow) {
+  return [row.area, row.city, row.campus].filter(Boolean).join(", ") || "Location not set";
+}
+
 function formatLocation(row: ListingRow) {
   return [row.area, row.city, row.campus].filter(Boolean).join(" • ") || "Location not set";
 }
@@ -189,10 +193,11 @@ export default function LandlordListingsScreen() {
   }, [user?.id]);
 
   const onToggleActive = async (id: string, current: boolean) => {
+    if (!user) return;
     setBusyId(id);
     setError(null);
 
-    const { error } = await supabase.from("listings").update({ is_active: !current }).eq("id", id);
+    const { error } = await supabase.from("listings").update({ is_active: !current }).eq("id", id).eq("landlord_id", user.id);
 
     if (error) {
       setError(error.message);
@@ -205,6 +210,7 @@ export default function LandlordListingsScreen() {
   };
 
   const onDelete = async (id: string) => {
+    if (!user) return;
     Alert.alert("Delete listing", "Delete this listing? This cannot be undone.", [
       { text: "Cancel", style: "cancel" },
       {
@@ -214,7 +220,7 @@ export default function LandlordListingsScreen() {
           setBusyId(id);
           setError(null);
 
-          const { error } = await supabase.from("listings").delete().eq("id", id);
+          const { error } = await supabase.from("listings").delete().eq("id", id).eq("landlord_id", user.id);
 
           if (error) {
             setError(error.message);
@@ -426,7 +432,7 @@ export default function LandlordListingsScreen() {
                           {r.title}
                         </Text>
                         <Text style={styles.meta} numberOfLines={1}>
-                          {formatLocation(r)}
+                          {formatLocationLabel(r)}
                         </Text>
                       </View>
                       <Text style={styles.dateText}>{fmtDate(r.created_at)}</Text>

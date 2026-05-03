@@ -15,11 +15,11 @@ export type OrderHandoffDetails = {
     delivery_mode: string | null;
     created_at: string | null;
     payment_reference: string;
-    line_items: Array<{
+    line_items: {
       item_name_snapshot: string;
       quantity: number;
       line_total_mwk: number;
-    }>;
+    }[];
   };
   handoff: {
     delivery_pin: string | null;

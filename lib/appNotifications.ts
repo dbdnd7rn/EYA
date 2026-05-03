@@ -1,3 +1,5 @@
+import type { Href } from "expo-router";
+import { ENV } from "@/lib/env";
 import { supabase } from "@/lib/supabase";
 
 export type AppNotificationType =
@@ -16,7 +18,10 @@ export type AppNotificationType =
   | "support_ticket_created"
   | "support_ticket_updated"
   | "trust_report_created"
-  | "trust_report_updated";
+  | "trust_report_updated"
+  | "role_application_submitted"
+  | "role_application_approved"
+  | "role_application_declined";
 
 export type AppNotificationRole = "student" | "vendor" | "agent" | "landlord" | "admin";
 
@@ -47,7 +52,14 @@ function uniq(values: (string | null | undefined)[]) {
   return [...new Set(values.filter((value): value is string => typeof value === "string" && value.trim().length > 0))];
 }
 
+function readNotificationValue(data: Record<string, unknown> | null | undefined, key: string) {
+  const value = data?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 export async function listNotificationsForUser(userId: string, limit = 100) {
+  if (ENV.DEV_AUTH_MODE) return [];
+
   const { data, error } = await supabase
     .from("notifications")
     .select("id,user_id,title,message,type,priority,data,is_read,read_at,pushed_at,created_at")
@@ -60,6 +72,8 @@ export async function listNotificationsForUser(userId: string, limit = 100) {
 }
 
 export async function getUnreadNotificationCount(userId: string) {
+  if (ENV.DEV_AUTH_MODE) return 0;
+
   const { count, error } = await supabase
     .from("notifications")
     .select("*", { count: "exact", head: true })
@@ -71,6 +85,8 @@ export async function getUnreadNotificationCount(userId: string) {
 }
 
 export async function markAllNotificationsRead(userId: string) {
+  if (ENV.DEV_AUTH_MODE) return;
+
   const { error } = await supabase
     .from("notifications")
     .update({ is_read: true, read_at: new Date().toISOString() })
@@ -80,6 +96,8 @@ export async function markAllNotificationsRead(userId: string) {
 }
 
 export async function markNotificationsRead(notificationIds: string[]) {
+  if (ENV.DEV_AUTH_MODE) return;
+
   const ids = uniq(notificationIds);
   if (!ids.length) return;
   const { error } = await supabase.from("notifications").update({ is_read: true, read_at: new Date().toISOString() }).in("id", ids);
@@ -87,6 +105,8 @@ export async function markNotificationsRead(notificationIds: string[]) {
 }
 
 export async function createInAppNotifications(inputs: CreateNotificationInput[]) {
+  if (ENV.DEV_AUTH_MODE) return;
+
   const rows = inputs
     .filter((input) => input.userId && input.title.trim() && input.message.trim())
     .map((input) => ({
@@ -109,6 +129,8 @@ export async function createInAppNotification(input: CreateNotificationInput) {
 }
 
 export async function listAdminUserIds() {
+  if (ENV.DEV_AUTH_MODE) return [];
+
   const { data, error } = await supabase.from("profiles").select("id").eq("role", "admin");
   if (error) throw error;
   return uniq((data ?? []).map((row) => (row as { id?: string | null }).id));
@@ -123,16 +145,19 @@ export async function createAdminNotification(input: Omit<CreateNotificationInpu
       title: input.title,
       message: input.message,
       type: input.type,
+      priority: input.priority,
+      data: input.data,
     })),
   );
 }
 
-export function notificationHrefForRole(role: AppNotificationRole, type?: string | null) {
+export function notificationHrefForRole(role: AppNotificationRole, type?: string | null): Href {
   const normalized = String(type ?? "").toLowerCase();
 
   if (role === "student") {
+    if (normalized.includes("role_application")) return "/onboarding";
     if (normalized.startsWith("payment") || normalized.startsWith("wallet")) return "/(student)/(tabs)/wallet";
-    if (normalized.includes("message")) return "/(student)/(tabs)/messages";
+    if (normalized.includes("message") || normalized.includes("enquiry")) return "/(student)/(tabs)/messages";
     if (normalized.includes("support")) return "/support";
     return "/(student)/(tabs)/orders";
   }
@@ -149,13 +174,52 @@ export function notificationHrefForRole(role: AppNotificationRole, type?: string
   }
 
   if (role === "landlord") {
-    if (normalized.includes("message")) return "/(landlord)/(tabs)/enquiries";
+    if (normalized.includes("message") || normalized.includes("enquiry")) return "/(landlord)/(tabs)/enquiries";
     if (normalized.includes("payment") || normalized.includes("wallet")) return "/(landlord)/subscription";
     if (normalized.includes("support")) return "/support";
     return "/(landlord)/(tabs)/dashboard";
   }
 
   if (normalized.includes("trust")) return "/admin/reports";
-  if (normalized.includes("support")) return "/support";
-  return "/admin/moderation";
+  if (normalized.includes("role_application")) return "/admin";
+  return "/admin";
+}
+
+export function notificationTargetForRole(role: AppNotificationRole, type?: string | null, data?: Record<string, unknown> | null): Href {
+  const normalized = String(type ?? "").toLowerCase();
+  const orderId = readNotificationValue(data, "orderId") ?? readNotificationValue(data, "relatedOrderId");
+  const enquiryId = readNotificationValue(data, "enquiryId");
+  const listingId = readNotificationValue(data, "listingId");
+
+  if (role === "agent" && orderId && (normalized.includes("delivery") || normalized.includes("order"))) {
+    return {
+      pathname: "/delivery/[orderId]",
+      params: { orderId },
+    };
+  }
+
+  if (role === "student" && enquiryId && (normalized.includes("message") || normalized.includes("enquiry"))) {
+    return {
+      pathname: "/(student)/chat/[enquiryId]",
+      params: { enquiryId },
+    };
+  }
+
+  if (role === "landlord") {
+    if (enquiryId && (normalized.includes("message") || normalized.includes("enquiry"))) {
+      return {
+        pathname: "/(landlord)/chat/[enquiryId]",
+        params: { enquiryId },
+      };
+    }
+
+    if (listingId) {
+      return {
+        pathname: "/(landlord)/listing/[id]",
+        params: { id: listingId },
+      };
+    }
+  }
+
+  return notificationHrefForRole(role, type);
 }

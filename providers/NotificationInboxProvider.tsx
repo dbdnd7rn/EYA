@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { ENV } from "@/lib/env";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { getUnreadNotificationCount, markAllNotificationsRead } from "@/lib/appNotifications";
 import { useAuth } from "@/providers/AuthProvider";
@@ -40,9 +41,13 @@ export function NotificationInboxProvider({ children }: { children: React.ReactN
 
   const markAllRead = async () => {
     if (!user?.id) return;
-    await markAllNotificationsRead(user.id);
     setUnreadCount(0);
-    await setCachedJson(cacheKey(user.id), { unreadCount: 0 });
+    try {
+      await markAllNotificationsRead(user.id);
+      await setCachedJson(cacheKey(user.id), { unreadCount: 0 });
+    } catch {
+      // Keep local read state even if the remote inbox is unavailable.
+    }
   };
 
   useEffect(() => {
@@ -56,23 +61,31 @@ export function NotificationInboxProvider({ children }: { children: React.ReactN
       }
 
       setLoading(true);
-      const cached = await getCachedJson<{ unreadCount?: number }>(cacheKey(user.id));
-      if (active && typeof cached?.data?.unreadCount === "number") {
-        setUnreadCount(cached.data.unreadCount);
+      try {
+        const cached = await getCachedJson<{ unreadCount?: number }>(cacheKey(user.id));
+        if (active && typeof cached?.data?.unreadCount === "number") {
+          setUnreadCount(cached.data.unreadCount);
+        }
+      } catch {
+        // Ignore unread-count cache failures.
       }
       if (active) {
-        await refresh();
+        await refresh().catch(() => {
+          if (active) setLoading(false);
+        });
       }
     };
 
-    void load();
+    void load().catch(() => {
+      if (active) setLoading(false);
+    });
     return () => {
       active = false;
     };
   }, [user?.id]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || ENV.DEV_AUTH_MODE) return;
 
     const channel = supabase
       .channel(`notifications-inbox-${user.id}`)

@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "EYA",
-    "slug": "pamaketi",
-    "scheme": "pamaketi",
+    "slug": "pa-level",
+    "scheme": "eya",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -23,6 +23,7 @@
       }
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "POST_NOTIFICATIONS",
         "RECORD_AUDIO",
@@ -33,7 +34,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.vac.pamaketi"
+      "package": "com.vac.eya"
     },
     "plugins": [
       "expo-router",

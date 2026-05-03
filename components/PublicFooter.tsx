@@ -55,9 +55,9 @@ export default function PublicFooter() {
         <View style={{ gap: 10 }}>
           <Text style={{ color: "#fff", fontSize: 12, letterSpacing: 0.7, fontWeight: "900" }}>CONTACT</Text>
 
-          <Pressable onPress={() => open("mailto:hello.pamaketi@gmail.com")} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <Pressable onPress={() => open("mailto:hello@eya.app")} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
             <Mail size={16} color="#d6e1ff" />
-            <Text style={{ color: "#d6e1ff", fontSize: 13, fontWeight: "600" }}>hello.pamaketi@gmail.com</Text>
+            <Text style={{ color: "#d6e1ff", fontSize: 13, fontWeight: "600" }}>hello@eya.app</Text>
           </Pressable>
 
           <Pressable onPress={() => open("tel:+265996595135")} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
@@ -106,4 +106,3 @@ export default function PublicFooter() {
     </View>
   );
 }
-

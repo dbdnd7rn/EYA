@@ -1,251 +1,84 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
-import { CheckCircle2, ChevronRight, Clock3, MapPin, PackageOpen, Search, ShieldCheck, Truck } from "lucide-react-native";
-import SoftPageGlow from "@/components/SoftPageGlow";
-import { formatCacheTime, getCachedJson, setCachedJson } from "@/lib/offlineCache";
-import { supabase } from "@/lib/supabase";
-import { supabaseNewApp } from "@/lib/supabaseNewApp";
-import { useAuth } from "@/providers/AuthProvider";
-import { useNetwork } from "@/providers/NetworkProvider";
+import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { Clock3, MapPin, Package2, Search, Truck, WalletCards } from "lucide-react-native";
+import SoftPageGlow from "@/components/SoftPageGlow";
+import { useAgentWorkspace, type AgentJobCard, type AgentRequestCard } from "@/components/agent/useAgentWorkspace";
+import { useAuth } from "@/providers/AuthProvider";
 
-type DeliveryStatus = "searching" | "assigned" | "picked_up" | "arriving" | "delivered" | "failed" | "cancelled";
-type DbOrderStatus = "pending" | "accepted" | "preparing" | "picked_up" | "on_the_way" | "delivered" | "cancelled";
-
-type DeliveryRow = {
-  id: string;
-  order_id: string;
-  status: DeliveryStatus;
-  created_at: string;
-  updated_at: string;
-  eta_minutes: number | null;
-};
-
-type OrderRow = {
-  id: string;
-  customer_id: string;
-  vendor_id: string;
-  channel: "market" | "food";
-  status: DbOrderStatus;
-  dropoff_notes: string | null;
-  delivery_fee_mwk: number;
-  total_mwk: number;
-  payment_status: string;
-};
-
-type OrderItemRow = {
-  order_id: string;
-  item_name_snapshot: string;
-  quantity: number;
-};
-
-type VendorRow = {
-  id: string;
-  name: string;
-  area: string | null;
-  campus: string | null;
-};
-
-type HandoffRow = {
-  order_id: string;
-  order_reference: string;
-  verified_at: string | null;
-};
-
-type UiDeliveryRow = {
-  id: string;
-  orderId: string;
-  vendorName: string;
-  routeLabel: string;
-  title: string;
-  summary: string;
-  payoutLabel: string;
-  etaLabel: string;
-  status: DeliveryStatus;
-  orderStatus: DbOrderStatus;
-  orderReference: string | null;
-  handoffVerified: boolean;
-  updatedLabel: string;
-};
-
-const FILTERS: Array<{ id: "all" | DeliveryStatus; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "assigned", label: "Assigned" },
-  { id: "picked_up", label: "Picked Up" },
-  { id: "arriving", label: "Arriving" },
-  { id: "delivered", label: "Delivered" },
-];
-
-function money(value: number) {
+function kwacha(value: number) {
   return `MWK ${Math.round(value || 0).toLocaleString("en-MW")}`;
+}
+
+function deliveryStatusLabel(status: string) {
+  return status.replaceAll("_", " ");
+}
+
+function etaLabel(job: AgentJobCard) {
+  if (job.status === "delivered") return "Delivered";
+  if (job.status === "failed") return "Delivery failed";
+  if (job.status === "cancelled") return "Cancelled";
+  if (job.etaMinutes) return `${job.etaMinutes} min`;
+  return "ETA pending";
 }
 
 function timeLabel(iso: string) {
   return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function etaLabel(status: DeliveryStatus, etaMinutes: number | null) {
-  if (status === "delivered") return "Delivered";
-  if (status === "failed") return "Failed";
-  if (status === "cancelled") return "Cancelled";
-  if (etaMinutes) return `${etaMinutes} min`;
-  return "ETA pending";
-}
-
-function statusPillStyle(status: DeliveryStatus) {
-  if (status === "delivered") return { bg: "#e8f7ee", fg: "#0d7b45" };
-  if (status === "picked_up") return { bg: "#ede3fb", fg: "#6a35af" };
-  if (status === "arriving") return { bg: "#fff2da", fg: "#8a611a" };
-  if (status === "failed" || status === "cancelled") return { bg: "#fff0f6", fg: "#b0003a" };
-  return { bg: "#202554", fg: "#ffffff" };
-}
-
-function buildItemSummary(items: OrderItemRow[]) {
-  if (!items.length) return "Order items unavailable";
-  return items.map((item) => `${item.quantity}x ${item.item_name_snapshot}`).join(" · ");
-}
-
 export default function AgentDeliveriesScreen() {
-  const { user, loading: authLoading } = useAuth();
-  const { isOnline } = useNetwork();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [rows, setRows] = useState<UiDeliveryRow[]>([]);
-  const [filter, setFilter] = useState<"all" | DeliveryStatus>("all");
-  const [cacheTime, setCacheTime] = useState<number | null>(null);
+  const { user, loading: authLoading } = useAuth();
+  const { workspace, metrics, loading, error, setOnlineStatus, dismissRequest, acceptRequest } = useAgentWorkspace();
+  const [requestIndex, setRequestIndex] = useState(0);
+  const requestCards = workspace.openRequests;
+  const activeCards = workspace.activeJobs;
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/(auth)/login");
-  }, [authLoading, user, router]);
+  }, [authLoading, router, user]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (requestIndex >= requestCards.length) {
+      setRequestIndex(0);
+    }
+  }, [requestCards.length, requestIndex]);
 
-    let active = true;
-    const load = async () => {
-      const cacheKey = `agent_deliveries_${user.id}`;
-      setLoading(true);
-      setErr(null);
-      try {
-        if (!isOnline) {
-          const cached = await getCachedJson<UiDeliveryRow[]>(cacheKey);
-          if (!active) return;
-          setRows(cached?.data ?? []);
-          setCacheTime(cached?.ts ?? null);
-          setErr(cached?.data ? "Offline mode: showing cached deliveries." : "Offline with no cached deliveries yet.");
-          return;
-        }
+  const shownRequest = useMemo(() => requestCards[requestIndex] ?? null, [requestCards, requestIndex]);
+  const nextRequest = useMemo(() => (requestCards.length > 1 ? requestCards[(requestIndex + 1) % requestCards.length] : null), [requestCards, requestIndex]);
+  const topActiveJob = activeCards[0] ?? null;
 
-        const { data: deliveryData, error: deliveryError } = await supabaseNewApp
-          .from("deliveries")
-          .select("id,order_id,status,created_at,updated_at,eta_minutes")
-          .eq("driver_id", user.id)
-          .order("updated_at", { ascending: false });
-        if (deliveryError) throw deliveryError;
+  const toggleOnline = async () => {
+    try {
+      await setOnlineStatus(!workspace.profile.isOnline);
+    } catch (err: any) {
+      Alert.alert("Status update failed", err?.message ?? "Could not update rider status.");
+    }
+  };
 
-        const deliveries = (deliveryData ?? []) as DeliveryRow[];
-        const orderIds = deliveries.map((row) => row.order_id);
+  const handleAccept = async (orderId: string) => {
+    try {
+      await acceptRequest(orderId);
+      router.push({ pathname: "/delivery/[orderId]", params: { orderId } });
+    } catch (err: any) {
+      Alert.alert("Accept failed", err?.message ?? "Could not accept this request.");
+    }
+  };
 
-        const [{ data: orderData, error: orderError }, { data: itemData, error: itemError }, { data: handoffData, error: handoffError }] = await Promise.all([
-          orderIds.length
-            ? supabaseNewApp.from("orders").select("id,customer_id,vendor_id,channel,status,dropoff_notes,delivery_fee_mwk,total_mwk,payment_status").in("id", orderIds)
-            : Promise.resolve({ data: [], error: null }),
-          orderIds.length
-            ? supabaseNewApp.from("order_items").select("order_id,item_name_snapshot,quantity").in("order_id", orderIds).order("created_at", { ascending: true })
-            : Promise.resolve({ data: [], error: null }),
-          orderIds.length
-            ? supabaseNewApp.from("order_handoffs").select("order_id,order_reference,verified_at").in("order_id", orderIds)
-            : Promise.resolve({ data: [], error: null }),
-        ]);
-        if (orderError) throw orderError;
-        if (itemError) throw itemError;
-        if (handoffError) throw handoffError;
-
-        const orders = (orderData ?? []) as OrderRow[];
-        const vendorIds = [...new Set(orders.map((row) => row.vendor_id))];
-        const { data: vendorData, error: vendorError } = vendorIds.length
-          ? await supabaseNewApp.from("vendors").select("id,name,area,campus").in("id", vendorIds)
-          : { data: [], error: null };
-        if (vendorError) throw vendorError;
-
-        const paidOrders = orders.filter((row) => String(row.payment_status || "").toLowerCase() === "paid");
-        const paidOrderIds = new Set(paidOrders.map((row) => row.id));
-        const ordersById = new Map(paidOrders.map((row) => [row.id, row]));
-        const vendorsById = new Map(((vendorData ?? []) as VendorRow[]).map((row) => [row.id, row]));
-        const itemsByOrderId = new Map<string, OrderItemRow[]>();
-        ((itemData ?? []) as OrderItemRow[]).forEach((row) => {
-          const current = itemsByOrderId.get(row.order_id) ?? [];
-          current.push(row);
-          itemsByOrderId.set(row.order_id, current);
-        });
-        const handoffByOrderId = new Map(((handoffData ?? []) as HandoffRow[]).map((row) => [row.order_id, row]));
-
-        const nextRows: UiDeliveryRow[] = deliveries.filter((delivery) => paidOrderIds.has(delivery.order_id)).map((delivery) => {
-          const order = ordersById.get(delivery.order_id);
-          const vendor = order ? vendorsById.get(order.vendor_id) : null;
-          const items = itemsByOrderId.get(delivery.order_id) ?? [];
-          const handoff = handoffByOrderId.get(delivery.order_id);
-          return {
-            id: delivery.id,
-            orderId: delivery.order_id,
-            vendorName: vendor?.name ?? "Campus vendor",
-            routeLabel: order?.dropoff_notes ?? vendor?.campus ?? vendor?.area ?? "Campus delivery",
-            title: items[0]?.item_name_snapshot ?? vendor?.name ?? "Delivery order",
-            summary: buildItemSummary(items),
-            payoutLabel: money(Number(order?.delivery_fee_mwk || 0)),
-            etaLabel: etaLabel(delivery.status, delivery.eta_minutes),
-            status: delivery.status,
-            orderStatus: order?.status ?? "pending",
-            orderReference: handoff?.order_reference ?? null,
-            handoffVerified: Boolean(handoff?.verified_at),
-            updatedLabel: timeLabel(delivery.updated_at),
-          };
-        });
-
-        if (!active) return;
-        setRows(nextRows);
-        await setCachedJson(cacheKey, nextRows);
-        setCacheTime(Date.now());
-      } catch (e: any) {
-        if (!active) return;
-        const cached = await getCachedJson<UiDeliveryRow[]>(`agent_deliveries_${user.id}`);
-        if (cached?.data) {
-          setRows(cached.data);
-          setCacheTime(cached.ts ?? null);
-          setErr("Offline mode: showing cached deliveries.");
-        } else {
-          setErr(e?.message ?? "Failed to load deliveries.");
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    void load();
-
-    const channel = supabase
-      .channel(`agent-deliveries-${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "deliveries" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "order_handoffs" }, () => void load())
-      .subscribe();
-
-    return () => {
-      active = false;
-      supabase.removeChannel(channel);
-    };
-  }, [isOnline, user?.id]);
-
-  const filtered = useMemo(() => (filter === "all" ? rows : rows.filter((row) => row.status === filter)), [rows, filter]);
+  const handleDecline = async (request: AgentRequestCard) => {
+    try {
+      await dismissRequest(request.orderId, request.updatedAt);
+    } catch (err: any) {
+      Alert.alert("Decline failed", err?.message ?? "Could not decline this request.");
+    }
+  };
 
   if (authLoading || loading) {
     return (
       <SafeAreaView style={styles.root}>
         <SoftPageGlow variant="orders" />
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#0e2756" />
+          <ActivityIndicator size="large" color="#2c3068" />
         </View>
       </SafeAreaView>
     );
@@ -256,139 +89,340 @@ export default function AgentDeliveriesScreen() {
       <SoftPageGlow variant="orders" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Deliveries</Text>
-          <View style={styles.headerButtons}>
-            <CircleIcon icon={<Search size={18} color="#0e2756" />} />
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>Deliveries</Text>
+            <View style={styles.statusRow}>
+              <View style={[styles.liveDot, !workspace.profile.isOnline && styles.liveDotOff]} />
+              <Text style={styles.statusText}>{workspace.profile.isOnline ? "Online" : "Offline"}</Text>
+            </View>
           </View>
+
+          <Pressable style={styles.circleAction} onPress={() => router.push("/(agent)/notifications")}>
+            <Search size={18} color="#2c3068" />
+          </Pressable>
         </View>
 
-        <View style={styles.filterRow}>
-          {FILTERS.map((f) => {
-            const active = f.id === filter;
-            return (
-              <Pressable key={f.id} style={[styles.filterChip, active && styles.filterChipActive]} onPress={() => setFilter(f.id)}>
-                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{f.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <Pressable style={[styles.onlineBar, !workspace.profile.isOnline && styles.onlineBarOff]} onPress={() => void toggleOnline()}>
+          <View style={[styles.onlineBadge, !workspace.profile.isOnline && styles.onlineBadgeOff]} />
+          <Text style={styles.onlineBarText}>
+            {workspace.profile.isOnline ? "You are online" : "Go online to receive requests"}
+          </Text>
+        </Pressable>
 
-        {err ? (
+        {error ? (
           <View style={styles.noticeCard}>
-            <Text style={styles.noticeText}>{err}</Text>
+            <Text style={styles.noticeText}>{error}</Text>
           </View>
         ) : null}
-        {cacheTime ? <Text style={styles.cacheMeta}>Deliveries cache: {formatCacheTime(cacheTime)}</Text> : null}
+        {workspace.requestNotice ? (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeText}>{workspace.requestNotice}</Text>
+          </View>
+        ) : null}
+        {workspace.cacheLabel ? <Text style={styles.cacheText}>Last sync: {workspace.cacheLabel}</Text> : null}
 
-        {filtered.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No deliveries</Text>
-            <Text style={styles.emptySub}>Assigned rider jobs will appear here once available.</Text>
+        {topActiveJob ? (
+          <View style={styles.heroCard}>
+            <View style={styles.heroTop}>
+              <View style={styles.heroIconWrap}>
+                <Truck size={34} color="#5060d8" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroEyebrow}>Current delivery</Text>
+                <Text style={styles.heroTitle}>{topActiveJob.title}</Text>
+                <Text style={styles.heroSub}>{topActiveJob.vendorName}</Text>
+              </View>
+              <View style={styles.heroPill}>
+                <Text style={styles.heroPillText}>{deliveryStatusLabel(topActiveJob.status)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.routeRow}>
+              <MapPin size={16} color="#6570aa" />
+              <Text style={styles.routeText}>{topActiveJob.dropoffLabel}</Text>
+            </View>
+            <Text style={styles.metaText}>{topActiveJob.itemSummary}</Text>
+
+            <View style={styles.metaStrip}>
+              <MetaChip label={etaLabel(topActiveJob)} />
+              <MetaChip label={kwacha(topActiveJob.payoutMwk)} />
+              {topActiveJob.orderReference ? <MetaChip label={topActiveJob.orderReference} /> : null}
+            </View>
+
+            <View style={styles.actionRow}>
+              <Pressable
+                style={[styles.actionBtn, styles.actionBtnPrimary]}
+                onPress={() => router.push({ pathname: "/delivery/[orderId]", params: { orderId: topActiveJob.orderId } })}
+              >
+                <Text style={[styles.actionBtnText, styles.actionBtnTextPrimary]}>Open Job</Text>
+              </Pressable>
+              <Pressable style={styles.actionBtn} onPress={() => router.push("/(agent)/(tabs)/earnings")}>
+                <Text style={styles.actionBtnText}>Earnings</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : shownRequest && workspace.profile.isOnline ? (
+          <View style={styles.heroCard}>
+            <View style={styles.heroTop}>
+              <View style={styles.heroIconWrap}>
+                <Package2 size={34} color="#5060d8" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroEyebrow}>New delivery request</Text>
+                <Text style={styles.heroTitle}>{shownRequest.title}</Text>
+                <Text style={styles.heroSub}>{shownRequest.vendorName}</Text>
+              </View>
+            </View>
+
+            <View style={styles.routeRow}>
+              <MapPin size={16} color="#6570aa" />
+              <Text style={styles.routeText}>{shownRequest.dropoffLabel}</Text>
+            </View>
+            <Text style={styles.metaText}>{shownRequest.itemSummary}</Text>
+
+            <View style={styles.metaStrip}>
+              <MetaChip label={kwacha(shownRequest.payoutMwk)} />
+              <MetaChip label={shownRequest.channel === "food" ? "Food order" : "Market order"} />
+              <MetaChip label={timeLabel(shownRequest.createdAt)} />
+            </View>
+
+            <View style={styles.actionRow}>
+              <Pressable style={[styles.actionBtn, styles.actionBtnPrimary]} onPress={() => void handleAccept(shownRequest.orderId)}>
+                <Text style={[styles.actionBtnText, styles.actionBtnTextPrimary]}>Accept</Text>
+              </Pressable>
+              <Pressable style={styles.actionBtn} onPress={() => void handleDecline(shownRequest)}>
+                <Text style={styles.actionBtnText}>Decline</Text>
+              </Pressable>
+            </View>
+
+            {nextRequest ? (
+              <Pressable style={styles.peekCard} onPress={() => setRequestIndex((current) => (current + 1) % requestCards.length)}>
+                <Text style={styles.peekLabel}>Next request</Text>
+                <Text style={styles.peekTitle}>{nextRequest.title}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : (
-          filtered.map((row) => {
-            const pill = statusPillStyle(row.status);
-            return (
-              <Pressable key={row.id} style={styles.deliveryCard} onPress={() => router.push({ pathname: "/delivery/[orderId]", params: { orderId: row.orderId } })}>
-                <View style={styles.deliveryGlow} />
-                <View style={styles.deliveryTop}>
-                  <View style={styles.deliveryIconWrap}>
-                    {row.status === "delivered" ? <CheckCircle2 size={26} color="#0d7b45" /> : <Truck size={26} color="#202554" />}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.deliveryStore}>{row.vendorName}</Text>
-                    <Text style={styles.deliveryTitle}>{row.title}</Text>
-                    <Text style={styles.deliverySummary}>{row.summary}</Text>
-                  </View>
-                  <View style={[styles.statusPill, { backgroundColor: pill.bg }]}>
-                    <Text style={[styles.statusPillText, { color: pill.fg }]}>{row.status.replaceAll("_", " ")}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.infoGrid}>
-                  <InfoPill icon={<MapPin size={14} color="#5d67a4" />} label={row.routeLabel} />
-                  <InfoPill icon={<Clock3 size={14} color="#5d67a4" />} label={row.etaLabel} />
-                  {row.orderReference ? <InfoPill icon={<PackageOpen size={14} color="#5d67a4" />} label={row.orderReference} /> : null}
-                  <InfoPill icon={<Truck size={14} color="#5d67a4" />} label={`Fee ${row.payoutLabel}`} />
-                  {row.handoffVerified ? <InfoPill icon={<ShieldCheck size={14} color="#0d7b45" />} label="Handoff verified" positive /> : null}
-                </View>
-
-                <View style={styles.deliveryBottom}>
-                  <Text style={styles.deliveryMeta}>Updated {row.updatedLabel}</Text>
-                  <ChevronRight size={20} color="#706d86" />
-                </View>
-              </Pressable>
-            );
-          })
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyGlow} />
+            <View style={styles.emptyIconWrap}>
+              <Truck size={42} color="#b0b6e2" />
+            </View>
+            <Text style={styles.emptyTitle}>{workspace.profile.isOnline ? "No active job" : "You are offline"}</Text>
+            <Text style={styles.emptySub}>
+              {workspace.profile.isOnline ? "Waiting for requests..." : "Switch online when you are ready to receive deliveries."}
+            </Text>
+          </View>
         )}
+
+        {(requestCards.length > 1 || activeCards.length > 1) ? (
+          <View style={styles.pagerDots}>
+            {(topActiveJob ? activeCards : requestCards).slice(0, 4).map((row, index) => {
+              const active = topActiveJob ? index === 0 : index === requestIndex;
+              return <View key={row.id} style={[styles.dot, active && styles.dotActive]} />;
+            })}
+          </View>
+        ) : null}
+
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryRow}>
+            <SummaryBox icon={<Clock3 size={18} color="#5c68b3" />} label="Today" value={`${metrics.todayCount} trips`} />
+            <SummaryBox icon={<WalletCards size={18} color="#5c68b3" />} label="Today" value={kwacha(metrics.todayEarnings)} />
+          </View>
+          <Pressable style={styles.secondaryCardBtn} onPress={() => router.push("/(agent)/(tabs)/earnings")}>
+            <Text style={styles.secondaryCardBtnText}>Open earnings and history</Text>
+          </Pressable>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function CircleIcon({ icon }: { icon: React.ReactNode }) {
-  return <View style={styles.circleIcon}>{icon}</View>;
+function SummaryBox({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <View style={styles.summaryBox}>
+      {icon}
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={styles.summaryValue}>{value}</Text>
+    </View>
+  );
 }
 
-function InfoPill({ icon, label, positive = false }: { icon: React.ReactNode; label: string; positive?: boolean }) {
+function MetaChip({ label }: { label: string }) {
   return (
-    <View style={[styles.infoPill, positive && styles.infoPillPositive]}>
-      {icon}
-      <Text style={[styles.infoPillText, positive && styles.infoPillTextPositive]}>{label}</Text>
+    <View style={styles.metaChip}>
+      <Text style={styles.metaChipText}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f4f2fb" },
+  root: { flex: 1, backgroundColor: "#f3eefb" },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 18, paddingBottom: 120, gap: 16 },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { color: "#2a2d63", fontSize: 24, fontWeight: "700" },
-  headerButtons: { flexDirection: "row", gap: 10 },
-  circleIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: "rgba(255,255,255,0.84)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#eeeaf8" },
-  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  filterChip: { borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14, backgroundColor: "rgba(255,255,255,0.72)", borderWidth: 1, borderColor: "#efe9f8" },
-  filterChipActive: { backgroundColor: "#202554", borderColor: "#202554" },
-  filterChipText: { color: "#4e4b67", fontSize: 13, fontWeight: "600" },
-  filterChipTextActive: { color: "#fff" },
-  noticeCard: { borderRadius: 18, backgroundColor: "#fff0f6", borderWidth: 1, borderColor: "#ffd5e4", padding: 12 },
-  noticeText: { color: "#b0003a", fontWeight: "800" },
-  cacheMeta: { color: "#706d86", fontSize: 12, fontWeight: "700" },
-  emptyCard: { borderRadius: 26, backgroundColor: "rgba(255,255,255,0.9)", borderWidth: 1, borderColor: "#eee8f7", padding: 18, gap: 6 },
-  emptyTitle: { color: "#202554", fontWeight: "900", fontSize: 18 },
-  emptySub: { color: "#6f6c84", fontWeight: "600", fontSize: 13 },
-  deliveryCard: { overflow: "hidden", borderRadius: 28, backgroundColor: "rgba(255,255,255,0.9)", borderWidth: 1, borderColor: "#eee8f7", padding: 18, gap: 16 },
-  deliveryGlow: { position: "absolute", right: -10, top: -12, width: 180, height: 120, borderRadius: 80, backgroundColor: "rgba(255,218,196,0.32)" },
-  deliveryTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  deliveryIconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
-    backgroundColor: "#f2f5ff",
+  content: { padding: 18, paddingBottom: 130, gap: 16 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerCopy: { flexDirection: "row", alignItems: "center", gap: 14 },
+  title: { color: "#262a63", fontSize: 25, fontWeight: "900" },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  liveDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#7cd36d" },
+  liveDotOff: { backgroundColor: "#a0a9bf" },
+  statusText: { color: "#555c84", fontSize: 14, fontWeight: "700" },
+  circleAction: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderWidth: 1,
+    borderColor: "#ebe6f8",
     alignItems: "center",
     justifyContent: "center",
   },
-  deliveryStore: { color: "#2a2d63", fontSize: 18, fontWeight: "800" },
-  deliveryTitle: { marginTop: 4, color: "#202554", fontSize: 16, fontWeight: "800" },
-  deliverySummary: { marginTop: 4, color: "#706d86", fontSize: 13, fontWeight: "600", lineHeight: 18 },
-  statusPill: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
-  statusPillText: { fontSize: 13, fontWeight: "700", textTransform: "capitalize" },
-  infoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  infoPill: {
+  onlineBar: {
     borderRadius: 999,
-    backgroundColor: "#f4f6fc",
-    borderWidth: 1,
-    borderColor: "#e7ebf6",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: "#294a68",
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 12,
   },
-  infoPillPositive: { backgroundColor: "#e8f7ee", borderColor: "#d4eddc" },
-  infoPillText: { color: "#5d67a4", fontSize: 12, fontWeight: "700" },
-  infoPillTextPositive: { color: "#0d7b45" },
-  deliveryBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  deliveryMeta: { color: "#706d86", fontSize: 13, fontWeight: "600" },
+  onlineBarOff: { backgroundColor: "#8a93ab" },
+  onlineBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#83f27d",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.8)",
+  },
+  onlineBadgeOff: { backgroundColor: "#d7dce8" },
+  onlineBarText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  noticeCard: { borderRadius: 18, backgroundColor: "#fff0f6", borderWidth: 1, borderColor: "#ffd7e5", padding: 12 },
+  noticeText: { color: "#b0003a", fontSize: 13, fontWeight: "800" },
+  cacheText: { color: "#787393", fontSize: 12, fontWeight: "700" },
+  heroCard: {
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.88)",
+    borderWidth: 1,
+    borderColor: "#ece7f8",
+    padding: 18,
+    gap: 14,
+    shadowColor: "#9f9bc4",
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  heroTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  heroIconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 24,
+    backgroundColor: "#eef0ff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroEyebrow: { color: "#7f84ab", fontSize: 13, fontWeight: "800", textTransform: "uppercase" },
+  heroTitle: { color: "#262a63", fontSize: 22, fontWeight: "900", marginTop: 3 },
+  heroSub: { color: "#626889", fontSize: 14, fontWeight: "700", marginTop: 4 },
+  heroPill: { borderRadius: 999, backgroundColor: "#ebefff", paddingHorizontal: 12, paddingVertical: 8 },
+  heroPillText: { color: "#4a58b2", fontSize: 12, fontWeight: "800", textTransform: "capitalize" },
+  routeRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  routeText: { flex: 1, color: "#30345f", fontSize: 16, fontWeight: "700" },
+  metaText: { color: "#7d7a97", fontSize: 14, fontWeight: "600", lineHeight: 20 },
+  metaStrip: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  metaChip: {
+    borderRadius: 999,
+    backgroundColor: "#f4f5fd",
+    borderWidth: 1,
+    borderColor: "#e6e8f6",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  metaChipText: { color: "#666f9c", fontSize: 12, fontWeight: "800" },
+  actionRow: { flexDirection: "row", gap: 10 },
+  actionBtn: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: 18,
+    backgroundColor: "#f4f4fb",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e7e6f4",
+  },
+  actionBtnPrimary: { backgroundColor: "#4c58ad", borderColor: "#4c58ad" },
+  actionBtnText: { color: "#71759b", fontSize: 16, fontWeight: "900" },
+  actionBtnTextPrimary: { color: "#fff" },
+  peekCard: {
+    borderRadius: 18,
+    backgroundColor: "#f5f6fe",
+    borderWidth: 1,
+    borderColor: "#e7e9f7",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  peekLabel: { color: "#8a8db0", fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
+  peekTitle: { color: "#313661", fontSize: 14, fontWeight: "800", marginTop: 4 },
+  emptyCard: {
+    overflow: "hidden",
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.8)",
+    borderWidth: 1,
+    borderColor: "#ece7f8",
+    paddingHorizontal: 20,
+    paddingVertical: 26,
+    alignItems: "center",
+    gap: 12,
+  },
+  emptyGlow: {
+    position: "absolute",
+    left: -20,
+    top: -10,
+    width: 210,
+    height: 140,
+    borderBottomRightRadius: 110,
+    backgroundColor: "rgba(204,196,255,0.28)",
+  },
+  emptyIconWrap: {
+    width: 92,
+    height: 92,
+    borderRadius: 28,
+    backgroundColor: "#f2f3ff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: { color: "#262a63", fontSize: 20, fontWeight: "900" },
+  emptySub: { color: "#73708c", fontSize: 16, fontWeight: "600", textAlign: "center", lineHeight: 22 },
+  pagerDots: { flexDirection: "row", justifyContent: "center", gap: 8 },
+  dot: { width: 18, height: 4, borderRadius: 999, backgroundColor: "#cdc9e3" },
+  dotActive: { backgroundColor: "#6772c8", width: 34 },
+  summaryCard: {
+    borderRadius: 28,
+    backgroundColor: "rgba(255,255,255,0.88)",
+    borderWidth: 1,
+    borderColor: "#ece7f8",
+    padding: 16,
+    gap: 14,
+  },
+  summaryRow: { flexDirection: "row", gap: 10 },
+  summaryBox: {
+    flex: 1,
+    borderRadius: 20,
+    backgroundColor: "#f7f7fe",
+    borderWidth: 1,
+    borderColor: "#ebedf8",
+    padding: 14,
+    gap: 8,
+  },
+  summaryLabel: { color: "#8b8fb0", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
+  summaryValue: { color: "#2e3462", fontSize: 16, fontWeight: "900" },
+  secondaryCardBtn: {
+    minHeight: 50,
+    borderRadius: 18,
+    backgroundColor: "#eef0fb",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryCardBtnText: { color: "#5662b4", fontSize: 15, fontWeight: "900" },
 });

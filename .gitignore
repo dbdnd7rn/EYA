@@ -12,3 +12,11 @@ expo-env.d.ts
 node_modules
 android/
 ios/
+credentials.json
+credentials/
+
+.vercel
+.env
+dist/
+builds/
+.codex-*.log

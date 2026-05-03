@@ -2,7 +2,7 @@
 
 This project uses two logical database areas:
 
-- `public`: core Pa-Level housing, chat, profiles, wallet, admin content, support, trust/safety
+- `public`: core EYA housing, chat, profiles, wallet, admin content, support, trust/safety
 - `campus_market`: marketplace, food ordering, deliveries, vendor operations
 
 ## SQL Files To Run

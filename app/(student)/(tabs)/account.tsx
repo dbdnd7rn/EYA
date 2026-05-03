@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowLeft, Bell, ChevronRight, CircleHelp, CreditCard, LogOut, MapPin, MessageCircle, PencilLine, Settings, ShoppingBag, Wallet2 } from "lucide-react-native";
+import { ArrowLeft, Bell, ChevronRight, CircleHelp, CreditCard, LogOut, MapPin, PencilLine, Settings, ShieldCheck, ShoppingBag, Star, Wallet2 } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
 import { useStudentBadges } from "@/providers/StudentBadgeProvider";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 import { formatPreferredLocation, usePreferredLocation } from "@/providers/PreferredLocationProvider";
 
 type ProfileRow = {
@@ -40,8 +41,9 @@ function formatCurrency(amount: number) {
 
 export default function AccountScreen() {
   const router = useRouter();
-  const { user, signOut } = useAuth();
-  const { messages, orders, wallet } = useStudentBadges();
+  const { user, role, signOut, setActiveRole } = useAuth();
+  const { theme } = useStudentTheme();
+  const { orders, wallet } = useStudentBadges();
   const { unreadCount } = useNotificationInbox();
   const notificationCount = unreadCount;
   const { location } = usePreferredLocation();
@@ -68,7 +70,7 @@ export default function AccountScreen() {
         const prof = (profile ?? null) as ProfileRow | null;
         const wal = (wallet ?? null) as WalletAccountRow | null;
 
-        setFullName(prof?.full_name?.trim() || "Student Account");
+        setFullName(prof?.full_name?.trim() || "User Account");
         setPhone(maskPhone(prof?.phone));
         setAvatarUrl(prof?.avatar_url ?? null);
         setWalletBalance(Number(wal?.balance_mwk ?? 0));
@@ -84,135 +86,171 @@ export default function AccountScreen() {
   }, [user?.id]);
 
   const avatarText = useMemo(() => initials(fullName), [fullName]);
+  const isAdmin = role === "admin" || user?.user_metadata?.role === "admin";
+
+  const openAdminPortal = async () => {
+    await setActiveRole("admin");
+    router.replace("/admin" as any);
+  };
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
         <View style={styles.skeletonWrap}>
-          <View style={[styles.skeletonCard, { height: 74 }]} />
-          <View style={[styles.skeletonCard, { height: 172 }]} />
-          <View style={[styles.skeletonCard, { height: 260 }]} />
-          <View style={[styles.skeletonCard, { height: 82 }]} />
+          <View style={[styles.skeletonCard, { height: 74, backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { height: 172, backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { height: 260, backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { height: 82, backgroundColor: theme.surfaceMuted }]} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root}>
-      <SoftPageGlow topColor="rgba(169, 190, 255, 0.16)" middleColor="rgba(206, 196, 255, 0.14)" bottomColor="rgba(255, 214, 196, 0.12)" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.shell}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
+      <ScrollView contentContainerStyle={[styles.content, { backgroundColor: theme.background }]} showsVerticalScrollIndicator={false}>
+        <View style={[styles.shell, { backgroundColor: theme.shell }]}>
           <View style={styles.headerRow}>
-            <Pressable style={styles.circleBtn} onPress={() => router.push("/(student)/(tabs)/home")}>
-              <ArrowLeft size={22} color="#23273f" />
+            <Pressable style={[styles.circleBtn, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} onPress={() => router.push("/(student)/(tabs)/home")}>
+              <ArrowLeft size={22} color={theme.text} />
             </Pressable>
 
-            <Text style={styles.headerTitle}>Account</Text>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>Account</Text>
 
             <View style={styles.headerRight}>
-              <Pressable style={styles.circleBtn} onPress={() => router.push("/(student)/notifications")}>
-                <Bell size={22} color="#23273f" />
+              <Pressable style={[styles.circleBtn, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} onPress={() => router.push("/(student)/notifications")}>
+                <Bell size={22} color={theme.text} />
               </Pressable>
               {notificationCount ? (
-                <View style={styles.dotBadge}>
+                <View style={[styles.dotBadge, { borderColor: theme.surface }]}>
                   <Text style={styles.dotBadgeText}>{notificationCount > 9 ? "9+" : notificationCount}</Text>
                 </View>
               ) : null}
             </View>
           </View>
 
-          <View style={styles.profileCard}>
+          <View style={[styles.profileCard, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}>
             <View style={styles.profileRow}>
               {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+                <Image source={{ uri: avatarUrl }} style={[styles.avatarImg, { backgroundColor: theme.surfaceMuted }]} />
               ) : (
-                <View style={styles.avatarFallback}>
+                <View style={[styles.avatarFallback, { backgroundColor: theme.accent }]}>
                   <Text style={styles.avatarFallbackText}>{avatarText}</Text>
                 </View>
               )}
 
               <View style={styles.profileText}>
-                <Text numberOfLines={1} style={styles.name}>{fullName}</Text>
-                <Text style={styles.phone}>{phone}</Text>
+                <Text numberOfLines={1} style={[styles.name, { color: theme.text }]}>{fullName}</Text>
+                <Text style={[styles.phone, { color: theme.textMuted }]}>{phone}</Text>
               </View>
             </View>
 
-            <Pressable style={styles.editBtn} onPress={() => router.push("/(student)/(tabs)/profile")}>
-              <PencilLine size={18} color="#5e63a8" />
-              <Text style={styles.editBtnText}>Edit profile</Text>
+            <Pressable style={[styles.editBtn, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} onPress={() => router.push("/(student)/(tabs)/profile")}>
+              <PencilLine size={18} color={theme.accent} />
+              <Text style={[styles.editBtnText, { color: theme.text }]}>Edit profile</Text>
             </Pressable>
           </View>
 
           <View style={styles.grid}>
-            <Pressable style={[styles.tile, styles.walletTile]} onPress={() => router.push("/(student)/(tabs)/wallet")}>
+            <Pressable style={[styles.tile, styles.walletTile, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]} onPress={() => router.push("/(student)/(tabs)/wallet")}>
               <View style={styles.walletGlow} />
               {wallet ? (
-                <View style={styles.countBubble}>
-                  <Text style={styles.countText}>{wallet > 9 ? "9+" : wallet}</Text>
+                <View style={[styles.countBubble, { backgroundColor: theme.isDark ? "#24344e" : "#fff4ea" }]}>
+                  <Text style={[styles.countText, { color: theme.text }]}>{wallet > 9 ? "9+" : wallet}</Text>
                 </View>
               ) : null}
-              <Text style={styles.tileEyebrow}>Wallet Balance</Text>
-              <Text style={styles.walletAmount}>{formatCurrency(walletBalance)}</Text>
-              <View style={styles.walletPill}>
-                <Wallet2 size={18} color="#6a6f97" />
-                <Text style={styles.walletPillText}>Open wallet</Text>
+              <Text style={[styles.tileEyebrow, { color: theme.textMuted }]}>Wallet Balance</Text>
+              <Text style={[styles.walletAmount, { color: theme.text }]}>{formatCurrency(walletBalance)}</Text>
+              <View style={[styles.walletPill, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                <Wallet2 size={18} color={theme.textMuted} />
+                <Text style={[styles.walletPillText, { color: theme.text }]}>Open wallet</Text>
               </View>
             </Pressable>
 
-            <Pressable style={styles.tile} onPress={() => router.push("/(student)/(tabs)/orders")}>
+            <Pressable style={[styles.tile, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]} onPress={() => router.push("/(student)/(tabs)/orders")}>
               <View style={[styles.iconBubble, { backgroundColor: "#fdecd7" }]}>
                 <ShoppingBag size={22} color="#c28d36" />
               </View>
               {orders ? (
-                <View style={styles.countBubble}>
-                  <Text style={styles.countText}>{orders > 9 ? "9+" : orders}</Text>
+                <View style={[styles.countBubble, { backgroundColor: theme.isDark ? "#24344e" : "#fff4ea" }]}>
+                  <Text style={[styles.countText, { color: theme.text }]}>{orders > 9 ? "9+" : orders}</Text>
                 </View>
               ) : null}
-              <Text style={styles.tileTitle}>Orders</Text>
+              <Text style={[styles.tileTitle, { color: theme.text }]}>Orders</Text>
             </Pressable>
 
             <Pressable
-              style={styles.tile}
+              style={[styles.tile, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}
               onPress={() => router.push("/(student)/address")}
             >
               <View style={[styles.iconBubble, { backgroundColor: "#e5f3ee" }]}>
                 <MapPin size={22} color="#698b7a" />
               </View>
-              <Text style={styles.tileTitle}>Addresses</Text>
-              <Text numberOfLines={2} style={styles.tileSub}>{formatPreferredLocation(location)}</Text>
+              <Text style={[styles.tileTitle, { color: theme.text }]}>Addresses</Text>
+              <Text numberOfLines={2} style={[styles.tileSub, { color: theme.textSoft }]}>{formatPreferredLocation(location)}</Text>
             </Pressable>
 
             <Pressable
-              style={styles.tile}
-              onPress={() => Alert.alert("Payments", "Payment methods can be connected next.")}
+              style={[styles.tile, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}
+              onPress={() => router.push("/(student)/payments")}
             >
               <View style={[styles.iconBubble, { backgroundColor: "#e6eefb" }]}>
                 <CreditCard size={22} color="#5b6fad" />
               </View>
-              <Text style={styles.tileTitle}>Payments</Text>
+              <Text style={[styles.tileTitle, { color: theme.text }]}>Payments</Text>
             </Pressable>
           </View>
 
           <View style={styles.rowMenu}>
-            <Pressable style={styles.menuPill} onPress={() => router.push("/safety")}>
-              <View style={styles.menuIconSoft}>
-                <Settings size={18} color="#6b6f82" />
+            <Pressable style={[styles.menuPill, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]} onPress={() => router.push("/(student)/settings")}>
+              <View style={[styles.menuIconSoft, { backgroundColor: theme.surfaceMuted }]}>
+                <Settings size={18} color={theme.textMuted} />
               </View>
-              <Text style={styles.menuText}>Settings</Text>
+              <Text style={[styles.menuText, { color: theme.text }]}>Settings</Text>
             </Pressable>
 
-            <Pressable style={styles.menuPill} onPress={() => router.push("/support")}>
-              <View style={styles.menuIconSoft}>
-                <CircleHelp size={18} color="#5d63aa" />
+            <Pressable style={[styles.menuPill, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]} onPress={() => router.push("/(student)/help")}>
+              <View style={[styles.menuIconSoft, { backgroundColor: theme.surfaceMuted }]}>
+                <CircleHelp size={18} color={theme.accent} />
               </View>
-              <Text style={styles.menuText}>Help</Text>
-              <ChevronRight size={18} color="#7e84a2" />
+              <Text style={[styles.menuText, { color: theme.text }]}>Help</Text>
+              <ChevronRight size={18} color={theme.textSoft} />
             </Pressable>
           </View>
 
+          {isAdmin ? (
+            <Pressable
+              style={[styles.rolesWorkspaceBtn, styles.adminPortalBtn, { backgroundColor: theme.surfaceStrong, borderColor: "#111827" }]}
+              onPress={() => void openAdminPortal()}
+            >
+              <View style={[styles.rolesWorkspaceIconWrap, { backgroundColor: "#111827", borderColor: "#111827" }]}>
+                <ShieldCheck size={17} color="#ffffff" />
+              </View>
+              <View style={styles.rolesWorkspaceTextWrap}>
+                <Text style={[styles.rolesWorkspaceTitle, { color: theme.text }]}>Admin Portal</Text>
+                <Text style={[styles.rolesWorkspaceSub, { color: theme.textMuted }]}>Return to platform management</Text>
+              </View>
+              <ChevronRight size={19} color={theme.textSoft} />
+            </Pressable>
+          ) : null}
+
           <Pressable
-            style={styles.signOutBtn}
+            style={[styles.rolesWorkspaceBtn, { backgroundColor: theme.surface, borderColor: theme.accent }]}
+            onPress={() => router.push("/onboarding")}
+          >
+            <View style={[styles.rolesWorkspaceIconWrap, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+              <Star size={17} color={theme.accent} />
+            </View>
+            <View style={styles.rolesWorkspaceTextWrap}>
+              <Text style={[styles.rolesWorkspaceTitle, { color: theme.text }]}>Roles & Workspaces</Text>
+              <Text style={[styles.rolesWorkspaceSub, { color: theme.textMuted }]}>Register extra roles and switch workspaces</Text>
+            </View>
+            <ChevronRight size={19} color={theme.textSoft} />
+          </Pressable>
+
+          <Pressable
+            style={[styles.signOutBtn, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}
             onPress={() =>
               Alert.alert("Sign out", "Log out of your account?", [
                 { text: "Cancel", style: "cancel" },
@@ -227,10 +265,10 @@ export default function AccountScreen() {
               ])
             }
           >
-            <View style={[styles.menuIconSoft, styles.signOutIconSoft]}>
+            <View style={[styles.menuIconSoft, styles.signOutIconSoft, { backgroundColor: theme.isDark ? "#4b2c38" : "#fff0f6" }]}>
               <LogOut size={18} color="#cf7d84" />
             </View>
-            <Text style={styles.signOutText}>Sign out</Text>
+            <Text style={[styles.signOutText, { color: theme.isDark ? "#ffb3c6" : "#74494e" }]}>Sign out</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -425,6 +463,39 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   menuText: { flex: 1, color: "#0e2756", fontSize: 16, fontWeight: "700" },
+  rolesWorkspaceBtn: {
+    minHeight: 88,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#5e73dd",
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    shadowColor: "#7f8db2",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 1,
+  },
+  adminPortalBtn: {
+    borderWidth: 1.5,
+  },
+  rolesWorkspaceIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: "#e6ebf7",
+    backgroundColor: "#eef1fb",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rolesWorkspaceTextWrap: { flex: 1, gap: 3 },
+  rolesWorkspaceTitle: { color: "#0e2756", fontSize: 18, fontWeight: "900", lineHeight: 22 },
+  rolesWorkspaceSub: { color: "#6e7892", fontSize: 13, fontWeight: "600", lineHeight: 17 },
   signOutBtn: {
     minHeight: 82,
     borderRadius: 28,

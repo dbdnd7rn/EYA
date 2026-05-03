@@ -98,6 +98,10 @@ type SellerProductInput = {
   image_url?: string | null;
 };
 
+type UseSellerWorkspaceOptions = {
+  autoCreateVendor?: boolean;
+};
+
 function buildEmptyWorkspace(email?: string | null): SellerWorkspace {
   return {
     vendor: null,
@@ -125,17 +129,42 @@ function timeAgo(iso: string) {
   return `${Math.round(hours / 24)}d`;
 }
 
-function buildDefaultSellerName(email?: string | null) {
+function buildDefaultSellerName(email?: string | null, channel: SalesChannel = "market") {
   const raw = email?.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "My Shop";
-  return raw
+  const base = raw
     .split(" ")
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+  return channel === "food" ? `${base} Kitchen` : base;
 }
 
-async function loadWorkspace(ownerId: string | null | undefined, email?: string | null): Promise<SellerWorkspace> {
+const LEGACY_MARKET_SEED_SIGNATURES = [
+  { name: "Study Chair", description: "Comfortable hostel study chair", price_mwk: 45000, stock_qty: 3 },
+  { name: "Desk Lamp", description: "Soft light for late reading", price_mwk: 18000, stock_qty: 8 },
+  { name: "Microwave", description: "Quick hostel kitchen essential", price_mwk: 5200, stock_qty: 2 },
+] as const;
+
+function isLegacySeededMarketProduct(product: CatalogItemRow) {
+  if (product.channel !== "market") return false;
+  return LEGACY_MARKET_SEED_SIGNATURES.some((seed) =>
+    product.name === seed.name
+    && (product.description ?? null) === seed.description
+    && Number(product.price_mwk) === seed.price_mwk
+    && Number(product.stock_qty ?? 0) === seed.stock_qty,
+  );
+}
+
+async function loadWorkspace(
+  ownerId: string | null | undefined,
+  channel: SalesChannel,
+  email?: string | null,
+  options?: UseSellerWorkspaceOptions,
+): Promise<SellerWorkspace> {
   if (!ownerId) return buildEmptyWorkspace(email);
+
+  const selectVendorForChannel = (rows: VendorRow[]) =>
+    channel === "food" ? rows.find((row) => row.supports_food) ?? null : rows.find((row) => row.supports_market) ?? null;
 
   let [vendors, orders, profileRes, conversationRows] = await Promise.all([
     listMyVendors(ownerId),
@@ -144,22 +173,20 @@ async function loadWorkspace(ownerId: string | null | undefined, email?: string 
     listVendorConversationsForOwner(ownerId).catch(() => []),
   ]);
 
-  let autoCreatedVendor = false;
-  if (!vendors.length) {
+  if (!selectVendorForChannel(vendors) && (options?.autoCreateVendor ?? false)) {
     const createdVendor = await createVendor(ownerId, {
-      name: buildDefaultSellerName(email),
-      description: "Campus seller storefront",
-      supports_market: true,
-      supports_food: false,
+      name: buildDefaultSellerName(email, channel),
+      description: channel === "food" ? "Campus restaurant storefront" : "Campus seller storefront",
+      supports_market: channel === "market",
+      supports_food: channel === "food",
       campus: "MUST",
       area: "Soche",
       city: "Blantyre",
     });
-    vendors = [createdVendor];
-    autoCreatedVendor = true;
+    vendors = [createdVendor, ...vendors];
   }
 
-  const vendor = vendors.find((row) => row.supports_market) ?? vendors[0] ?? null;
+  const vendor = selectVendorForChannel(vendors);
   const profile = {
     displayName: ((profileRes.data as { full_name?: string | null; phone?: string | null } | null)?.full_name?.trim()
       || vendor?.name
@@ -176,39 +203,15 @@ async function loadWorkspace(ownerId: string | null | undefined, email?: string 
   }
 
   let products = await listCatalogItems({ vendorId: vendor.id, isActiveOnly: false });
-  if (autoCreatedVendor && !products.length) {
-    await Promise.all([
-      createCatalogItem({
-        vendor_id: vendor.id,
-        channel: "market",
-        name: "Study Chair",
-        description: "Comfortable hostel study chair",
-        price_mwk: 45000,
-        stock_qty: 3,
-        image_url: null,
-      }),
-      createCatalogItem({
-        vendor_id: vendor.id,
-        channel: "market",
-        name: "Desk Lamp",
-        description: "Soft light for late reading",
-        price_mwk: 18000,
-        stock_qty: 8,
-        image_url: null,
-      }),
-      createCatalogItem({
-        vendor_id: vendor.id,
-        channel: "market",
-        name: "Microwave",
-        description: "Quick hostel kitchen essential",
-        price_mwk: 5200,
-        stock_qty: 2,
-        image_url: null,
-      }),
-    ]);
-    products = await listCatalogItems({ vendorId: vendor.id, isActiveOnly: false });
+  if (channel === "market") {
+    const marketProducts = products.filter((row) => row.channel === "market");
+    if (marketProducts.length && marketProducts.every(isLegacySeededMarketProduct)) {
+      await Promise.all(marketProducts.map((row) => deleteCatalogItem(row.id)));
+      products = await listCatalogItems({ vendorId: vendor.id, isActiveOnly: false });
+    }
   }
-  const vendorOrders = orders.filter((row) => row.vendor_id === vendor.id);
+  const vendorProducts = products.filter((row) => row.channel === channel);
+  const vendorOrders = orders.filter((row) => row.vendor_id === vendor.id && row.channel === channel);
   const orderIds = vendorOrders.map((row) => row.id);
   const orderItemsEntries = await Promise.all(vendorOrders.slice(0, 12).map(async (row) => [row.id, await getOrderItems(row.id)] as const));
   const orderItemsByOrderId = Object.fromEntries(orderItemsEntries);
@@ -281,7 +284,7 @@ async function loadWorkspace(ownerId: string | null | undefined, email?: string 
   return {
     vendor,
     profile,
-    products,
+    products: vendorProducts,
     orders: vendorOrders,
     orderItemsByOrderId,
     deliveriesByOrderId,
@@ -292,9 +295,10 @@ async function loadWorkspace(ownerId: string | null | undefined, email?: string 
   };
 }
 
-export function useSellerWorkspace() {
+export function useSellerWorkspace(channel: SalesChannel = "market", options: UseSellerWorkspaceOptions = {}) {
   const { user } = useAuth();
   const { isOnline } = useNetwork();
+  const autoCreateVendor = options.autoCreateVendor ?? false;
   const [workspace, setWorkspace] = useState<SellerWorkspace>(buildEmptyWorkspace(user?.email ?? null));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -304,7 +308,7 @@ export function useSellerWorkspace() {
   const hasSeededOrderNotifications = useRef(false);
   const hasSeededDeliveryNotifications = useRef(false);
 
-  const cacheKey = user?.id ? `seller_workspace_${user.id}` : null;
+  const cacheKey = user?.id ? `seller_workspace_${user.id}_${channel}` : null;
 
   useEffect(() => {
     let active = true;
@@ -354,7 +358,7 @@ export function useSellerWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const next = await loadWorkspace(user?.id, user?.email ?? null);
+      const next = await loadWorkspace(user?.id, channel, user?.email ?? null, { autoCreateVendor });
       const projected = await applyOutboxToSellerWorkspace(user.id, next);
       setWorkspace(projected);
       if (cacheKey) await setCachedJson(cacheKey, projected);
@@ -367,7 +371,7 @@ export function useSellerWorkspace() {
 
   useEffect(() => {
     void refresh();
-  }, [isOnline, user?.id]);
+  }, [autoCreateVendor, channel, isOnline, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -403,8 +407,8 @@ export function useSellerWorkspace() {
       if (!meta?.pushNotificationsEnabled && !meta?.soundAlertsEnabled) return;
       lastAlertedOrderId.current = latestPending.id;
       await scheduleLocalNotification({
-        title: "New seller order",
-        body: "A customer placed a new order in your shop.",
+        title: channel === "food" ? "New restaurant order" : "New seller order",
+        body: channel === "food" ? "A student placed a new food order." : "A customer placed a new order in your shop.",
         data: { orderId: latestPending.id, role: "seller" },
         playSound: meta?.soundAlertsEnabled ?? true,
       });
@@ -445,7 +449,7 @@ export function useSellerWorkspace() {
           lastDeliveredNoticeKey.current = deliveredKey;
           await scheduleLocalNotification({
             title: "Delivery completed",
-            body: "A customer order was marked delivered.",
+            body: channel === "food" ? "A restaurant order was marked delivered." : "A customer order was marked delivered.",
             data: { orderId: latestDelivered.id, role: "seller", event: "delivery_completed" },
             playSound: meta?.soundAlertsEnabled ?? true,
           });

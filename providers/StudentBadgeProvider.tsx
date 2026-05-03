@@ -66,7 +66,7 @@ function sectionForPath(pathname: string | null): BadgeSection | null {
   if (!pathname) return null;
   if (pathname === "/(student)/(tabs)/orders" || pathname.startsWith("/(student)/delivery/")) return "orders";
   if (pathname === "/(student)/(tabs)/wallet") return "wallet";
-  if (pathname === "/(student)/(tabs)/messages" || pathname.startsWith("/(student)/chat/")) return "messages";
+  if (pathname === "/(student)/(tabs)/messages" || pathname.startsWith("/(student)/chat/") || pathname.startsWith("/(student)/vendor-chat/")) return "messages";
   return null;
 }
 
@@ -127,13 +127,19 @@ export function StudentBadgeProvider({ children }: { children: React.ReactNode }
     }
 
     try {
-      const [orderRes, walletRes, messageRes] = await Promise.all([
+      const [orderRes, walletRes, messageRes, vendorMessageRes] = await Promise.all([
         supabaseNewApp.from("orders").select("id,status,updated_at").eq("customer_id", user.id).order("updated_at", { ascending: false }).limit(120),
         supabase.from("wallet_activities").select("id,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(120),
         supabase
           .from("messages")
           .select("enquiry_id,sender_id,receiver_id,created_at")
-          .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+          .eq("receiver_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(300),
+        supabaseNewApp
+          .from("vendor_messages")
+          .select("conversation_id,sender_id,receiver_id,created_at")
+          .eq("receiver_id", user.id)
           .order("created_at", { ascending: false })
           .limit(300),
       ]);
@@ -141,18 +147,25 @@ export function StudentBadgeProvider({ children }: { children: React.ReactNode }
       const orders = ((orderRes.data ?? []) as OrderMini[]).filter((row) => isActiveOrder(row.status));
       const walletRows = (walletRes.data ?? []) as WalletActivityMini[];
       const messages = (messageRes.data ?? []) as MessageMini[];
+      const vendorMessages = ((vendorMessageRes.data ?? []) as { conversation_id: string; sender_id: string | null; receiver_id: string | null; created_at: string }[]);
 
       const latestByEnquiry = new Map<string, MessageMini>();
       for (const row of messages) {
         if (!latestByEnquiry.has(row.enquiry_id)) latestByEnquiry.set(row.enquiry_id, row);
       }
 
+      const latestVendorByConversation = new Map<string, { conversation_id: string; sender_id: string | null; receiver_id: string | null; created_at: string }>();
+      for (const row of vendorMessages) {
+        if (!latestVendorByConversation.has(row.conversation_id)) latestVendorByConversation.set(row.conversation_id, row);
+      }
+
+      const unreadHostelCount = Array.from(latestByEnquiry.values()).filter((row) => toEpoch(row.created_at) > toEpoch(seen.messagesAt)).length;
+      const unreadVendorCount = Array.from(latestVendorByConversation.values()).filter((row) => toEpoch(row.created_at) > toEpoch(seen.messagesAt)).length;
+
       setCounts({
         orders: orders.filter((row) => toEpoch(row.updated_at) > toEpoch(seen.ordersAt)).length,
         wallet: walletRows.filter((row) => toEpoch(row.created_at) > toEpoch(seen.walletAt)).length,
-        messages: Array.from(latestByEnquiry.values()).filter(
-          (row) => row.sender_id !== user.id && toEpoch(row.created_at) > toEpoch(seen.messagesAt),
-        ).length,
+        messages: unreadHostelCount + unreadVendorCount,
       });
     } catch (e) {
       console.warn("[StudentBadgeProvider] Failed to refresh badges:", e);
@@ -231,8 +244,16 @@ export function StudentBadgeProvider({ children }: { children: React.ReactNode }
       })
       .subscribe();
 
+    const vendorMessageChannel = supabaseNewApp
+      .channel(`student-badges-vendor-messages-${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "vendor_messages", filter: `receiver_id=eq.${user.id}` }, () => {
+        void refresh();
+      })
+      .subscribe();
+
     return () => {
       supabaseNewApp.removeChannel(ordersChannel);
+      supabaseNewApp.removeChannel(vendorMessageChannel);
       supabase.removeChannel(walletChannel);
       supabase.removeChannel(messageChannel);
     };

@@ -7,9 +7,9 @@ export function normalizeAppRole(raw: unknown): AppRole {
 
   if (!v) return null;
   if (v === "admin") return "admin";
-  if (v === "vendor" || v === "seller" || v === "merchant" || v === "restaurant") return "vendor";
+  if (v === "vendor" || v === "seller" || v === "merchant" || v === "restaurant" || v === "food_provider" || v === "food provider") return "vendor";
   if (v === "landlord" || v === "host") return "landlord";
-  if (v === "agent" || v === "rider" || v === "agent/rider" || v === "agent_rider" || v === "delivery_agent") return "agent";
-  if (v === "student" || v === "tenant" || v === "customer") return "student";
+  if (v === "agent" || v === "rider" || v === "agent/rider" || v === "agent_rider" || v === "delivery_agent" || v === "delivery agent") return "agent";
+  if (v === "student" || v === "tenant" || v === "customer" || v === "user") return "student";
   return null;
 }

@@ -17,14 +17,21 @@ type ShopCategoryOption = {
   hint: string;
 };
 
-const shopCategories: ShopCategoryOption[] = [
+const marketCategories: ShopCategoryOption[] = [
   { id: "Essentials", label: "Essentials", hint: "Daily campus basics" },
   { id: "Electronics", label: "Electronics", hint: "Devices and accessories" },
   { id: "Fashion", label: "Fashion", hint: "Clothes and style" },
   { id: "Study", label: "Study", hint: "Books and learning tools" },
 ];
 
-const featureItems = [
+const restaurantCategories: ShopCategoryOption[] = [
+  { id: "Lunch", label: "Lunch", hint: "Midday student meals" },
+  { id: "Dinner", label: "Dinner", hint: "Evening orders and combos" },
+  { id: "Snacks", label: "Snacks", hint: "Quick bites and sides" },
+  { id: "Drinks", label: "Drinks", hint: "Cold and hot beverages" },
+];
+
+const marketFeatures = [
   {
     id: "reach",
     title: "Reach students near your campus",
@@ -45,19 +52,44 @@ const featureItems = [
   },
 ];
 
+const restaurantFeatures = [
+  {
+    id: "reach",
+    title: "Appear in the student food section",
+    sub: "Students browsing food will see your live menu and delivery options.",
+    icon: <MapPin size={22} color="#102a54" />,
+  },
+  {
+    id: "orders",
+    title: "Catch lunch and dinner orders live",
+    sub: "Paid food orders flow into your kitchen queue as soon as students check out.",
+    icon: <Store size={22} color="#102a54" />,
+  },
+  {
+    id: "paid",
+    title: "Run one clean restaurant workflow",
+    sub: "Manage sessions, cooking, pickups, and profile updates from the restaurant role.",
+    icon: <CreditCard size={22} color="#102a54" />,
+  },
+];
+
 export default function SellerSetupPage() {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
   const isOpenFlow = pathname.startsWith("/sell/");
+  const isRestaurantFlow = !isOpenFlow;
+  const shopCategories = isRestaurantFlow ? restaurantCategories : marketCategories;
+  const featureItems = isRestaurantFlow ? restaurantFeatures : marketFeatures;
   const defaultName = useMemo(() => {
     const raw = user?.email?.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "My Shop";
-    return raw
+    const base = raw
       .split(" ")
       .filter(Boolean)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ");
-  }, [user?.email]);
+    return isRestaurantFlow ? `${base} Kitchen` : base;
+  }, [isRestaurantFlow, user?.email]);
 
   const [step, setStep] = useState<Step>("intro");
   const [vendorId, setVendorId] = useState<string | null>(null);
@@ -68,11 +100,13 @@ export default function SellerSetupPage() {
   const [campus, setCampus] = useState("MUST");
   const [area, setArea] = useState("Soche");
   const [city, setCity] = useState("Blantyre");
-  const [selectedCategory, setSelectedCategory] = useState("Essentials");
+  const [selectedCategory, setSelectedCategory] = useState(isRestaurantFlow ? "Lunch" : "Essentials");
   const [saving, setSaving] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState("");
   const [bannerUrl, setBannerUrl] = useState("");
+  const [galleryUrls, setGalleryUrls] = useState<string[]>([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingGallery, setUploadingGallery] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -80,7 +114,9 @@ export default function SellerSetupPage() {
       if (!user?.id) return;
       try {
         const vendors = await listMyVendors(user.id);
-        const current = vendors.find((item) => item.supports_market) ?? vendors[0] ?? null;
+        const current = isRestaurantFlow
+          ? (vendors.find((item) => item.supports_food) ?? null)
+          : (vendors.find((item) => item.supports_market) ?? null);
         if (!active || !current) return;
         setVendorId(current.id);
         setName(current.name || defaultName);
@@ -93,6 +129,7 @@ export default function SellerSetupPage() {
         if (!active) return;
         setAvatarUrl(storefront?.avatarUrl ?? "");
         setBannerUrl(storefront?.bannerUrl ?? "");
+        setGalleryUrls(storefront?.galleryUrls ?? []);
       } catch {
         // Keep the onboarding flow usable even if the vendor query fails.
       }
@@ -101,7 +138,7 @@ export default function SellerSetupPage() {
     return () => {
       active = false;
     };
-  }, [defaultName, user?.id]);
+  }, [defaultName, isRestaurantFlow, user?.id]);
 
   const pickAvatar = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -131,6 +168,33 @@ export default function SellerSetupPage() {
     }
   };
 
+  const addGalleryPhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission required", "Allow photo access to upload restaurant gallery images.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+      preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+    });
+    if (result.canceled) return;
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return;
+
+    setUploadingGallery(true);
+    try {
+      const url = await uploadStorefrontImage(asset);
+      setGalleryUrls((current) => [...current, url]);
+    } catch (err: any) {
+      Alert.alert("Upload failed", err?.message ?? "Could not upload restaurant gallery image.");
+    } finally {
+      setUploadingGallery(false);
+    }
+  };
+
   const submit = async () => {
     if (!user) return;
     if (!name.trim()) {
@@ -144,22 +208,24 @@ export default function SellerSetupPage() {
 
     setSaving(true);
     try {
-      const descriptionWithCategory = `${description.trim() || "Campus seller storefront"}\nCategory: ${selectedCategory}\nOwner: ${sellerName.trim()}${phone.trim() ? `\nPhone: ${phone.trim()}` : ""}`;
+      const descriptionWithCategory = `${description.trim() || (isRestaurantFlow ? "Campus restaurant storefront" : "Campus seller storefront")}\nCategory: ${selectedCategory}\nOwner: ${sellerName.trim()}${phone.trim() ? `\nPhone: ${phone.trim()}` : ""}`;
       const updatePayload = {
         name: name.trim(),
         description: descriptionWithCategory,
         campus: campus.trim() || null,
         area: area.trim() || null,
         city: city.trim() || null,
-        supports_market: true,
-        supports_food: false,
+        supports_market: !isRestaurantFlow,
+        supports_food: isRestaurantFlow,
         is_active: true,
       };
 
       let resolvedVendorId = vendorId;
       if (!resolvedVendorId) {
         const vendors = await listMyVendors(user.id);
-        const current = vendors.find((item) => item.supports_market) ?? null;
+        const current = isRestaurantFlow
+          ? (vendors.find((item) => item.supports_food) ?? null)
+          : (vendors.find((item) => item.supports_market) ?? null);
         if (current) resolvedVendorId = current.id;
       }
 
@@ -171,8 +237,8 @@ export default function SellerSetupPage() {
             campus: updatePayload.campus,
             area: updatePayload.area,
             city: updatePayload.city,
-            supports_market: true,
-            supports_food: false,
+            supports_market: !isRestaurantFlow,
+            supports_food: isRestaurantFlow,
           });
 
       setVendorId(vendor.id);
@@ -181,10 +247,11 @@ export default function SellerSetupPage() {
         vendorId: vendor.id,
         avatarUrl: (avatarUrl || existingStorefront?.avatarUrl) ?? null,
         bannerUrl: (bannerUrl || existingStorefront?.bannerUrl) ?? null,
+        galleryUrls,
       });
       setStep("done");
     } catch (err: any) {
-      Alert.alert("Setup failed", err?.message ?? "Could not create seller profile.");
+      Alert.alert("Setup failed", err?.message ?? `Could not create ${isRestaurantFlow ? "restaurant" : "seller"} profile.`);
     } finally {
       setSaving(false);
     }
@@ -198,7 +265,7 @@ export default function SellerSetupPage() {
           <Pressable style={styles.backBtn} onPress={() => (step === "intro" ? router.back() : setStep(step === "done" ? "form" : "intro"))}>
             <ChevronLeft size={22} color="#102a54" />
           </Pressable>
-          <Text style={styles.headerTag}>Sell on EYA</Text>
+          <Text style={styles.headerTag}>{isRestaurantFlow ? "Restaurant on EYA" : "Sell on EYA"}</Text>
         </View>
 
         {step === "intro" ? (
@@ -206,20 +273,20 @@ export default function SellerSetupPage() {
             <View style={styles.heroCard}>
               <View style={styles.heroBadge}>
                 <ShoppingBag size={18} color="#102a54" />
-                <Text style={styles.heroBadgeText}>{vendorId ? "Shop already created" : "Start selling"}</Text>
+                <Text style={styles.heroBadgeText}>{vendorId ? (isRestaurantFlow ? "Restaurant already created" : "Shop already created") : (isRestaurantFlow ? "Open your kitchen" : "Start selling")}</Text>
               </View>
-              <Text style={styles.heroTitle}>{vendorId ? "Your shop is ready" : "Open your own campus shop"}</Text>
+              <Text style={styles.heroTitle}>{vendorId ? (isRestaurantFlow ? "Your restaurant is ready" : "Your shop is ready") : (isRestaurantFlow ? "Open your campus restaurant" : "Open your own campus shop")}</Text>
               <Text style={styles.heroSub}>
                 {vendorId
-                  ? "You already have a shop. Add another product or update your shop details anytime."
-                  : "Create your shop, add products, receive orders, and manage everything with EYA's marketplace tools."}
+                  ? (isRestaurantFlow ? "You already have a restaurant profile. Add another menu item or update your kitchen details anytime." : "You already have a shop. Add another product or update your shop details anytime.")
+                  : (isRestaurantFlow ? "Create your restaurant, publish menu items, receive student food orders, and manage kitchen sessions from one place." : "Create your shop, add products, receive orders, and manage everything with EYA's marketplace tools.")}
               </Text>
               <View style={styles.heroArt}>
                 <View style={styles.heroBlobA} />
                 <View style={styles.heroBlobB} />
                 <View style={styles.heroStoreCard}>
                   <Store size={34} color="#102a54" />
-                  <Text style={styles.heroStoreText}>{vendorId ? name : "Your shop"}</Text>
+                  <Text style={styles.heroStoreText}>{vendorId ? name : isRestaurantFlow ? "Your kitchen" : "Your shop"}</Text>
                 </View>
               </View>
             </View>
@@ -241,11 +308,11 @@ export default function SellerSetupPage() {
               style={styles.primaryBtn}
               onPress={() => (vendorId ? router.replace(isOpenFlow ? "/sell/add-product" : "/(market)/add-product") : setStep("form"))}
             >
-              <Text style={styles.primaryBtnText}>{vendorId ? "Add a product" : "Open my shop"}</Text>
+              <Text style={styles.primaryBtnText}>{vendorId ? (isRestaurantFlow ? "Add a menu item" : "Add a product") : (isRestaurantFlow ? "Open my restaurant" : "Open my shop")}</Text>
             </Pressable>
             {vendorId ? (
               <Pressable style={styles.secondaryBtn} onPress={() => setStep("form")}>
-                <Text style={styles.secondaryBtnText}>Edit shop details</Text>
+                <Text style={styles.secondaryBtnText}>{isRestaurantFlow ? "Edit restaurant details" : "Edit shop details"}</Text>
               </Pressable>
             ) : null}
             <Pressable
@@ -260,16 +327,16 @@ export default function SellerSetupPage() {
         {step === "form" ? (
           <>
             <View style={styles.formIntro}>
-              <Text style={styles.formTitle}>{vendorId ? "Update your shop" : "Setup your shop"}</Text>
+              <Text style={styles.formTitle}>{vendorId ? (isRestaurantFlow ? "Update your restaurant" : "Update your shop") : (isRestaurantFlow ? "Setup your restaurant" : "Setup your shop")}</Text>
               <Text style={styles.formSub}>
                 {vendorId
-                  ? "Edit your shop details. Your products stay in the same shop - you can add as many as you want."
-                  : "Use your EYA colors and campus details to create a seller space that is ready for publishing."}
+                  ? (isRestaurantFlow ? "Edit your restaurant details. Your menu stays in the same kitchen and students keep ordering from the same listing." : "Edit your shop details. Your products stay in the same shop - you can add as many as you want.")
+                  : (isRestaurantFlow ? "Use your restaurant details, campus location, and menu category to publish food listings that flow into lunch and dinner sessions." : "Use your EYA colors and campus details to create a seller space that is ready for publishing.")}
               </Text>
             </View>
 
             <View style={styles.formCard}>
-              <Text style={styles.fieldLabel}>Shop profile picture</Text>
+              <Text style={styles.fieldLabel}>{isRestaurantFlow ? "Restaurant profile picture" : "Shop profile picture"}</Text>
               <Pressable style={styles.avatarPicker} onPress={() => void pickAvatar()} disabled={uploadingAvatar}>
                 {avatarUrl ? (
                   <Image source={{ uri: avatarUrl }} style={styles.avatarPreview} />
@@ -279,13 +346,35 @@ export default function SellerSetupPage() {
                   </View>
                 )}
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.avatarTitle}>{avatarUrl ? "Change profile picture" : "Upload profile picture"}</Text>
+                  <Text style={styles.avatarTitle}>{avatarUrl ? "Change profile picture" : `Upload ${isRestaurantFlow ? "restaurant" : "shop"} profile picture`}</Text>
                   <Text style={styles.avatarSub}>{uploadingAvatar ? "Uploading..." : "Square photo looks best"}</Text>
                 </View>
               </Pressable>
 
-              <Field label="Shop name">
-                <TextInput value={name} onChangeText={setName} placeholder="Shop name" placeholderTextColor="#98a3bd" style={styles.input} />
+              {isRestaurantFlow ? (
+                <View style={styles.galleryField}>
+                  <Text style={styles.fieldLabel}>Restaurant gallery</Text>
+                  <Text style={styles.galleryHint}>Add as many food or restaurant photos as you want. Students will see them sliding on your restaurant page.</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryRow}>
+                    {galleryUrls.map((url, index) => (
+                      <View key={`${url}-${index}`} style={styles.galleryThumbWrap}>
+                        <Image source={{ uri: url }} style={styles.galleryThumb} />
+                        <Pressable style={styles.galleryRemoveBtn} onPress={() => setGalleryUrls((current) => current.filter((_, currentIndex) => currentIndex !== index))}>
+                          <Text style={styles.galleryRemoveText}>x</Text>
+                        </Pressable>
+                      </View>
+                    ))}
+                    <Pressable style={styles.galleryAddCard} onPress={() => void addGalleryPhoto()} disabled={uploadingGallery}>
+                      <ImagePlus size={22} color="#102a54" />
+                      <Text style={styles.galleryAddTitle}>{uploadingGallery ? "Uploading..." : "Add photo"}</Text>
+                      <Text style={styles.galleryAddSub}>{galleryUrls.length} uploaded</Text>
+                    </Pressable>
+                  </ScrollView>
+                </View>
+              ) : null}
+
+              <Field label={isRestaurantFlow ? "Restaurant name" : "Shop name"}>
+                <TextInput value={name} onChangeText={setName} placeholder={isRestaurantFlow ? "Restaurant name" : "Shop name"} placeholderTextColor="#98a3bd" style={styles.input} />
               </Field>
 
               <Field label="Seller full name">
@@ -313,7 +402,7 @@ export default function SellerSetupPage() {
                 <TextInput value={city} onChangeText={setCity} placeholder="City" placeholderTextColor="#98a3bd" style={styles.input} />
               </Field>
 
-              <Field label="Shop category">
+              <Field label={isRestaurantFlow ? "Primary menu focus" : "Shop category"}>
                 <View style={styles.categoryChipGrid}>
                   {shopCategories.map((item) => {
                     const active = item.id === selectedCategory;
@@ -327,11 +416,11 @@ export default function SellerSetupPage() {
                 </View>
               </Field>
 
-              <Field label="Shop description">
+              <Field label={isRestaurantFlow ? "Restaurant description" : "Shop description"}>
                 <TextInput
                   value={description}
                   onChangeText={setDescription}
-                  placeholder="Briefly describe what you will be selling..."
+                  placeholder={isRestaurantFlow ? "Briefly describe your kitchen, meals, and service style..." : "Briefly describe what you will be selling..."}
                   placeholderTextColor="#98a3bd"
                   style={[styles.input, styles.textArea]}
                   multiline
@@ -354,8 +443,8 @@ export default function SellerSetupPage() {
             <View style={styles.doneCheck}>
               <Check size={38} color="#fff" />
             </View>
-            <Text style={styles.doneTitle}>Your shop is ready</Text>
-            <Text style={styles.doneSub}>You can now add products, receive orders, and manage your seller space from one place.</Text>
+            <Text style={styles.doneTitle}>{isRestaurantFlow ? "Your restaurant is ready" : "Your shop is ready"}</Text>
+            <Text style={styles.doneSub}>{isRestaurantFlow ? "You can now add menu items, receive lunch and dinner orders, and manage your kitchen workflow from one place." : "You can now add products, receive orders, and manage your seller space from one place."}</Text>
 
             <View style={styles.doneArt}>
               <View style={styles.doneArtCircle} />
@@ -366,7 +455,7 @@ export default function SellerSetupPage() {
             </View>
 
             <Pressable style={styles.primaryBtn} onPress={() => router.replace(isOpenFlow ? "/sell/add-product" : "/(market)/add-product")}>
-              <Text style={styles.primaryBtnText}>Add a product</Text>
+              <Text style={styles.primaryBtnText}>{isRestaurantFlow ? "Add a menu item" : "Add a product"}</Text>
             </Pressable>
             <Pressable style={styles.secondaryBtn} onPress={() => router.replace(isOpenFlow ? "/(student)/(tabs)/marketplace" : "/(market)/(tabs)/dashboard")}>
               <Text style={styles.secondaryBtnText}>{isOpenFlow ? "Back to marketplace" : "Go to dashboard"}</Text>
@@ -408,6 +497,37 @@ const styles = StyleSheet.create({
   avatarPlaceholder: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#eef3ff", alignItems: "center", justifyContent: "center" },
   avatarTitle: { color: "#102a54", fontSize: 16, fontWeight: "900" },
   avatarSub: { color: "#7a87a5", fontSize: 12, fontWeight: "700", marginTop: 4 },
+  galleryField: { gap: 8 },
+  galleryHint: { color: "#7a87a5", fontSize: 12, fontWeight: "700", lineHeight: 18 },
+  galleryRow: { gap: 10, paddingRight: 12 },
+  galleryThumbWrap: { position: "relative" },
+  galleryThumb: { width: 120, height: 120, borderRadius: 18, backgroundColor: "#eef3ff" },
+  galleryRemoveBtn: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(16,42,84,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  galleryRemoveText: { color: "#fff", fontSize: 12, fontWeight: "900" },
+  galleryAddCard: {
+    width: 120,
+    height: 120,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#dfe7f8",
+    backgroundColor: "#f8f9fe",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  galleryAddTitle: { color: "#102a54", fontSize: 13, fontWeight: "900" },
+  galleryAddSub: { color: "#7a87a5", fontSize: 11, fontWeight: "700" },
   heroCard: {
     borderRadius: 30,
     backgroundColor: "rgba(255,255,255,0.97)",

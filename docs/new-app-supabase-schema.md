@@ -1,6 +1,6 @@
 # New App Backend (Isolated Supabase Schema)
 
-This sets up a second backend for your new app without touching existing Pa-Level tables.
+This sets up a second backend for your new app without touching existing EYA tables.
 
 ## What was added
 
@@ -33,7 +33,7 @@ Because `supabaseNewApp` is configured with `db.schema = campus_market`, this qu
 
 - `campus_market.vendors`
 
-and does not affect existing `public.*` Pa-Level data.
+and does not affect existing `public.*` EYA data.
 
 ## Optional schema rename
 

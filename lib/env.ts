@@ -1,8 +1,8 @@
-﻿export const ENV = {
+export const ENV = {
   SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
   SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
   NEW_APP_SCHEMA: process.env.EXPO_PUBLIC_NEW_APP_SCHEMA ?? "",
-  WEB_BASE_URL: process.env.EXPO_PUBLIC_WEB_BASE_URL ?? "https://pamaketi.vercel.app",
+  WEB_BASE_URL: process.env.EXPO_PUBLIC_WEB_BASE_URL ?? "https://eya.vercel.app",
   PAYCHANGU_BACKEND:
     process.env.EXPO_PUBLIC_PAYCHANGU_BACKEND ?? process.env.NEXT_PUBLIC_PAYCHANGU_BACKEND ?? "",
   CLOUDINARY_CLOUD_NAME: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ?? "",
@@ -10,7 +10,25 @@
   ENABLE_PUSH_NOTIFICATIONS: (process.env.EXPO_PUBLIC_ENABLE_PUSH_NOTIFICATIONS ?? "true").toLowerCase() !== "false",
   APP_ENV: process.env.EXPO_PUBLIC_APP_ENV ?? "development",
   DEV_AUTH_MODE: (process.env.EXPO_PUBLIC_DEV_AUTH_MODE ?? "false").toLowerCase() === "true",
+  ADMIN_EMAILS: (process.env.EXPO_PUBLIC_ADMIN_EMAILS ?? "").trim(),
+  AUTH_REDIRECT_URL: (process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL ?? "").trim(),
 };
+
+function normalizeEmail(value: string | null | undefined) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+export function getConfiguredAdminEmails() {
+  return ENV.ADMIN_EMAILS.split(",").map((value) => normalizeEmail(value)).filter(Boolean);
+}
+
+export function isConfiguredAdminEmail(email: string | null | undefined) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+  const allowed = getConfiguredAdminEmails();
+  if (!allowed.length) return true;
+  return allowed.includes(normalized);
+}
 
 export function assertEnv() {
   const missing = getRequiredEnvIssues();

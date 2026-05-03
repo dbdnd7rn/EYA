@@ -1,488 +1,360 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
-import { CirclePlus, LogOut, PencilLine, Search, Trash2 } from "lucide-react-native";
-import SoftPageGlow from "@/components/SoftPageGlow";
+import { CirclePlus, PencilLine, RefreshCw, Search, Trash2 } from "lucide-react-native";
 import { useSellerWorkspace } from "@/components/seller/useSellerWorkspace";
-import { useAuth } from "@/providers/AuthProvider";
-import { getSellerProductMetaMap, setBulkSellerProductCategory } from "@/lib/sellerEnhancements";
+import { parseFoodDescription, summarizeFoodMenu } from "@/lib/foodMenu";
+import type { CatalogItemRow } from "@/lib/newApp/types";
+
+type FilterType = "all" | "live" | "hidden";
 
 function money(value: number) {
   return `MWK ${Math.round(value).toLocaleString()}`;
 }
 
-type ProductFilter = "all" | "market" | "food" | "inactive";
+function shortDate(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "recently";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
-type PreviewProduct = {
-  id: string;
-  name: string;
-  price_mwk: number;
-  description: string;
-  stock_qty: number | null;
-  channel: "market" | "food";
-  is_active: boolean;
-  image_url: string | null;
-};
-
-const PREVIEW_PRODUCTS: PreviewProduct[] = [
-  { id: "preview-1", name: "Study Chair", price_mwk: 45000, description: "Comfortable hostel study chair", stock_qty: 3, channel: "market", is_active: true, image_url: null },
-  { id: "preview-2", name: "Desk Lamp", price_mwk: 18000, description: "Soft light for late reading", stock_qty: 8, channel: "market", is_active: true, image_url: null },
-  { id: "preview-3", name: "Microwave", price_mwk: 5200, description: "Hidden while restocking", stock_qty: 0, channel: "market", is_active: false, image_url: null },
-];
-
-export default function SellerProductsPage() {
+export default function RestaurantMenuPage() {
   const router = useRouter();
   const pathname = usePathname();
-  const { signOut } = useAuth();
-  const { workspace, archiveProduct, setProductActive, metrics } = useSellerWorkspace();
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<ProductFilter>("all");
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [metaMap, setMetaMap] = useState<Record<string, { category?: string | null; promotion?: { title: string; type: "percent" | "flat"; value: number; active: boolean } | null } | null>>({});
-  const inputRef = useRef<TextInput | null>(null);
   const isOpenFlow = pathname.startsWith("/sell/");
-  const setupRoute = isOpenFlow ? "/sell/setup" : "/(market)/setup";
-  const addProductRoute = isOpenFlow ? "/sell/add-product" : "/(market)/add-product";
+  const isRestaurantFlow = !isOpenFlow;
+  const { workspace, metrics, archiveProduct, saveProduct, setProductActive } = useSellerWorkspace(isRestaurantFlow ? "food" : "market");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<FilterType>("all");
 
-  const sourceProducts = workspace.hasVendor ? workspace.products : PREVIEW_PRODUCTS;
-  const goToSetup = () => router.push(setupRoute);
-
-  const rows = useMemo(() => {
+  const sourceRows = workspace.products;
+  const filteredRows = useMemo(() => {
     const term = query.trim().toLowerCase();
-    return sourceProducts.filter((item) => {
-      if (filter === "inactive") {
-        if (item.is_active) return false;
-      } else {
-        if (!item.is_active && filter !== "all") return false;
-        if (filter === "market" && item.channel !== "market") return false;
-        if (filter === "food" && item.channel !== "food") return false;
-      }
-
+    return sourceRows.filter((row) => {
+      const parsed = isRestaurantFlow ? parseFoodDescription(row.description) : { description: row.description ?? "", menuConfig: null };
+      const searchText = [row.name, parsed.description, summarizeFoodMenu(parsed.menuConfig)].join(" ").toLowerCase();
+      if (filter === "live" && !row.is_active) return false;
+      if (filter === "hidden" && row.is_active) return false;
       if (!term) return true;
-      return [item.name, item.description ?? ""].some((value) => value.toLowerCase().includes(term));
+      return searchText.includes(term);
     });
-  }, [filter, query, sourceProducts]);
+  }, [filter, isRestaurantFlow, query, sourceRows]);
 
-  useEffect(() => {
-    let active = true;
-    const run = async () => {
-      const map = await getSellerProductMetaMap(sourceProducts.map((item) => item.id));
-      if (active) setMetaMap(map);
-    };
-    void run();
-    return () => {
-      active = false;
-    };
-  }, [sourceProducts]);
+  const liveCount = sourceRows.filter((row) => row.is_active).length;
+  const hiddenCount = sourceRows.filter((row) => !row.is_active).length;
 
-  const toggleSelection = (productId: string) => {
-    setSelectedIds((current) => (current.includes(productId) ? current.filter((id) => id !== productId) : [...current, productId]));
-  };
-
-  const applyBulkCategory = async (category: string) => {
-    if (!selectedIds.length) return;
-    await setBulkSellerProductCategory(selectedIds, category);
-    const map = await getSellerProductMetaMap(sourceProducts.map((item) => item.id));
-    setMetaMap(map);
-    Alert.alert("Updated", `Applied ${category} to ${selectedIds.length} product(s).`);
-    setSelectionMode(false);
-    setSelectedIds([]);
-  };
-
-  const applyBulkVisibility = async (isActive: boolean) => {
-    if (!selectedIds.length || !workspace.hasVendor) return;
-    await Promise.all(selectedIds.map((id) => setProductActive(id, isActive)));
-    setSelectionMode(false);
-    setSelectedIds([]);
-  };
-
-  const openProductEditor = (productId: string) => {
+  const requireSetup = () => {
     if (!workspace.hasVendor) {
-      goToSetup();
-      return;
+      router.push(isOpenFlow ? "/sell/setup" : "/(market)/setup");
+      return true;
     }
-    router.push({ pathname: addProductRoute, params: { itemId: productId } });
+    return false;
   };
 
-  const toggleProductVisibility = async (productId: string, isActive: boolean) => {
-    if (!workspace.hasVendor) {
-      goToSetup();
-      return;
-    }
+  const toggleItem = async (itemId: string, current: boolean) => {
+    if (requireSetup()) return;
     try {
-      await setProductActive(productId, !isActive);
+      await setProductActive(itemId, !current);
     } catch (err: any) {
-      Alert.alert("Update failed", err?.message ?? "Could not update listing visibility.");
+      Alert.alert("Update failed", err?.message ?? "Could not update availability.");
     }
   };
 
-  const confirmDeleteProduct = (productId: string, productName: string) => {
-    if (!workspace.hasVendor) {
-      goToSetup();
-      return;
-    }
-    Alert.alert(
-      "Delete listing",
-      `Remove ${productName} from your listings? This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await archiveProduct(productId);
-            } catch (err: any) {
-              Alert.alert("Delete failed", err?.message ?? "Could not remove this listing.");
-            }
-          },
+  const editItem = (itemId: string) => {
+    if (requireSetup()) return;
+    router.push({ pathname: isOpenFlow ? "/sell/add-product" : "/(market)/add-product", params: { itemId } });
+  };
+
+  const removeItem = (itemId: string, name: string) => {
+    if (requireSetup()) return;
+    Alert.alert("Delete item", `Remove ${name} from menu?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await archiveProduct(itemId);
+          } catch (err: any) {
+            Alert.alert("Delete failed", err?.message ?? "Could not remove this item.");
+          }
         },
-      ],
-    );
+      },
+    ]);
+  };
+
+  const addItem = () => {
+    if (requireSetup()) return;
+    router.push(isOpenFlow ? "/sell/add-product" : "/(market)/add-product");
+  };
+
+  const renewItem = async (item: CatalogItemRow) => {
+    if (requireSetup()) return;
+    try {
+      await saveProduct({
+        itemId: item.id,
+        name: item.name,
+        description: item.description ?? null,
+        price_mwk: Number(item.price_mwk) || 0,
+        stock_qty: item.stock_qty ?? null,
+        channel: item.channel,
+        image_url: item.image_url ?? null,
+      });
+      Alert.alert("Listing renewed", "This item was moved forward in the marketplace feed.");
+    } catch (err: any) {
+      Alert.alert("Renew failed", err?.message ?? "Could not renew this listing.");
+    }
   };
 
   return (
     <SafeAreaView style={styles.root}>
-      <SoftPageGlow variant="home" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.topRow}>
-          <Text style={styles.pageTitle}>Edit listings</Text>
-          <View style={styles.topActions}>
-            <Pressable style={styles.iconCircle} onPress={() => inputRef.current?.focus()}>
-              <Search size={18} color="#0e2756" />
-            </Pressable>
-            <Pressable style={styles.iconCircle} onPress={() => (workspace.hasVendor ? router.push(addProductRoute) : goToSetup())}>
-              <CirclePlus size={18} color="#0e2756" />
-            </Pressable>
-            <Pressable
-              style={styles.iconCircle}
-              onPress={() =>
-                Alert.alert("Logout", "Leave the seller workspace?", [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Logout",
-                    style: "destructive",
-                    onPress: async () => {
-                      await signOut();
-                      router.replace("/(auth)/login");
-                    },
-                  },
-                ])
-              }
-            >
-              <LogOut size={18} color="#0e2756" />
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.toolbarRow}>
-          <Pressable style={[styles.smallAction, selectionMode && styles.smallActionActive]} onPress={() => {
-            setSelectionMode((current) => !current);
-            setSelectedIds([]);
-          }}>
-            <Text style={[styles.smallActionText, selectionMode && styles.smallActionTextActive]}>{selectionMode ? "Cancel selection" : "Bulk edit"}</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>{isRestaurantFlow ? "Menu" : "Products"}</Text>
+          <Pressable style={styles.addIcon} onPress={addItem}>
+            <CirclePlus size={20} color="#232c54" />
           </Pressable>
-          {selectionMode ? <Text style={styles.selectionText}>{selectedIds.length} selected</Text> : null}
         </View>
 
-        <View style={styles.searchShell}>
-          <Search size={16} color="#7d78a5" />
+        <View style={styles.searchCard}>
+          <Search size={17} color="#7a83a8" />
           <TextInput
-            ref={inputRef}
+            placeholder={isRestaurantFlow ? "Search menu items..." : "Search products..."}
+            placeholderTextColor="#9aa3bf"
+            style={styles.searchInput}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search products..."
-            placeholderTextColor="#9e98bc"
-            style={styles.searchInput}
           />
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          {(["all", "market", "food", "inactive"] as ProductFilter[]).map((value) => {
+        <View style={styles.filterRow}>
+          {(["all", "live", "hidden"] as FilterType[]).map((value) => {
             const active = filter === value;
-            const label = value === "all" ? "All" : value === "inactive" ? "Hidden" : value === "market" ? "Market" : "Food";
             return (
               <Pressable key={value} style={[styles.filterPill, active && styles.filterPillActive]} onPress={() => setFilter(value)}>
-                <Text style={[styles.filterText, active && styles.filterTextActive]}>{label}</Text>
+                <Text style={[styles.filterText, active && styles.filterTextActive]}>
+                  {value === "all" ? "All" : value === "live" ? "Available" : "Hidden"}
+                </Text>
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
 
-        {(workspace.hasVendor ? metrics.lowStockCount || metrics.outOfStockCount : true) ? (
-          <View style={styles.alertCard}>
-            <Text style={styles.alertTitle}>Inventory notices</Text>
-            {workspace.hasVendor ? (
-              <>
-                {metrics.outOfStockCount ? <Text style={styles.alertText}>{metrics.outOfStockCount} listing(s) are out of stock.</Text> : null}
-                {metrics.lowStockCount ? <Text style={styles.alertText}>{metrics.lowStockCount} listing(s) are running low.</Text> : null}
-              </>
+        <View style={styles.metricsRow}>
+          <MetricCard label="Live items" value={String(liveCount)} />
+          <MetricCard label="Hidden" value={String(hiddenCount)} />
+          <MetricCard label="Low stock" value={String(metrics.lowStockCount)} />
+        </View>
+
+        {!workspace.hasVendor ? (
+          <View style={styles.setupCard}>
+            <Text style={styles.setupTitle}>{isRestaurantFlow ? "Restaurant setup needed" : "Shop setup needed"}</Text>
+            <Text style={styles.setupSub}>{isRestaurantFlow ? "Finish setup before publishing menu items and receiving live orders." : "Finish setup before publishing products and receiving live orders."}</Text>
+            <Pressable style={styles.primaryBtn} onPress={() => router.push(isOpenFlow ? "/sell/setup" : "/(market)/setup")}>
+              <Text style={styles.primaryBtnText}>Go to setup</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.list}>
+            {filteredRows.length ? (
+              filteredRows.map((item) => (
+                (() => {
+                  const parsed = isRestaurantFlow ? parseFoodDescription(item.description) : { description: item.description ?? "", menuConfig: null };
+                  const menuSummary = summarizeFoodMenu(parsed.menuConfig);
+                  return (
+                    <View key={item.id} style={styles.itemCard}>
+                      <View style={styles.itemLeft}>
+                        {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.image} /> : <View style={styles.imageFallback} />}
+                        <View style={styles.itemCopy}>
+                          <Text style={styles.itemName}>{item.name}</Text>
+                          <Text style={styles.itemPrice}>
+                            {isRestaurantFlow && parsed.menuConfig ? "Starts at " : ""}
+                            {money(Number(item.price_mwk))}
+                          </Text>
+                          <Text style={styles.itemMeta}>{parsed.description?.trim() || "No description"}</Text>
+                          <Text style={styles.itemDates}>Listed {shortDate(item.created_at)} | Updated {shortDate(item.updated_at)}</Text>
+                          {isRestaurantFlow && menuSummary ? <Text style={styles.itemSummary}>{menuSummary}</Text> : null}
+                        </View>
+                      </View>
+
+                      <View style={styles.itemRight}>
+                        <Pressable style={[styles.availabilityPill, item.is_active ? styles.availabilityPillOn : styles.availabilityPillOff]} onPress={() => void toggleItem(item.id, item.is_active)}>
+                          <Text style={styles.availabilityText}>{item.is_active ? "ON" : "OFF"}</Text>
+                        </Pressable>
+                        <Pressable style={styles.renewBtn} onPress={() => void renewItem(item)}>
+                          <RefreshCw size={13} color="#2d416f" />
+                          <Text style={styles.renewBtnText}>Renew</Text>
+                        </Pressable>
+                        <View style={styles.inlineActions}>
+                          <Pressable style={styles.actionBtn} onPress={() => editItem(item.id)}>
+                            <PencilLine size={14} color="#3b4f80" />
+                          </Pressable>
+                          <Pressable style={styles.actionBtn} onPress={() => removeItem(item.id, item.name)}>
+                            <Trash2 size={14} color="#b64670" />
+                          </Pressable>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })()
+              ))
             ) : (
-              <>
-                <Text style={styles.alertText}>1 listing is out of stock.</Text>
-                <Text style={styles.alertText}>1 listing is running low.</Text>
-              </>
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>{isRestaurantFlow ? "No matching menu items" : "No matching products"}</Text>
+                <Text style={styles.emptySub}>{isRestaurantFlow ? "Try a different search or add a new menu item." : "Try a different search or add a new product."}</Text>
+              </View>
             )}
           </View>
-        ) : null}
+        )}
 
-        {selectionMode ? (
-          <View style={styles.bulkCard}>
-            <Text style={styles.bulkTitle}>Bulk actions</Text>
-            <View style={styles.bulkRow}>
-              <Pressable style={styles.bulkPill} onPress={() => void applyBulkCategory("Essentials")}>
-                <Text style={styles.bulkPillText}>Essentials</Text>
-              </Pressable>
-              <Pressable style={styles.bulkPill} onPress={() => void applyBulkCategory("Study")}>
-                <Text style={styles.bulkPillText}>Study</Text>
-              </Pressable>
-              <Pressable style={styles.bulkPill} onPress={() => void applyBulkCategory("Electronics")}>
-                <Text style={styles.bulkPillText}>Electronics</Text>
-              </Pressable>
-            </View>
-            <View style={styles.bulkRow}>
-              <Pressable style={styles.bulkPill} onPress={() => void applyBulkVisibility(false)}>
-                <Text style={styles.bulkPillText}>Hide selected</Text>
-              </Pressable>
-              <Pressable style={styles.bulkPill} onPress={() => void applyBulkVisibility(true)}>
-                <Text style={styles.bulkPillText}>Restore selected</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
-        <View style={styles.list}>
-          {rows.map((item) => {
-            const selected = selectedIds.includes(item.id);
-            const meta = metaMap[item.id];
-            const lowStock = item.is_active && item.stock_qty != null && item.stock_qty > 0 && item.stock_qty <= 5;
-            const outOfStock = item.is_active && item.stock_qty != null && item.stock_qty <= 0;
-            const badgeLabel = !item.is_active ? "Hidden" : outOfStock ? "Out of stock" : lowStock ? "Low stock" : "Live";
-            const badgeStyle = !item.is_active ? styles.badgeMuted : outOfStock ? styles.badgeDanger : lowStock ? styles.badgeWarning : styles.badgeSoft;
-
-            return (
-              <Pressable key={item.id} style={[styles.card, selectionMode && selected && styles.cardSelected]} onPress={() => (selectionMode ? toggleSelection(item.id) : undefined)}>
-                <View style={styles.cardGlowA} />
-                <View style={styles.cardGlowB} />
-                <View style={styles.cardBody}>
-                  <View style={styles.cardHead}>
-                    <View style={styles.cardText}>
-                      <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
-                      <Text style={styles.price}>{money(Number(item.price_mwk))}</Text>
-                      <Text style={styles.metaLine} numberOfLines={1}>
-                        {item.description?.trim() ? item.description : "Campus delivery around your store"}
-                      </Text>
-                      <Text style={styles.metaLine}>
-                        {item.channel === "food" ? "Food listing" : "Market listing"} | {item.stock_qty ?? "Open"} in stock
-                      </Text>
-                      {meta?.category ? <Text style={styles.categoryLine}>{meta.category}</Text> : null}
-                      {meta?.promotion?.active ? (
-                        <Text style={styles.promoLine}>
-                          {meta.promotion.title}: {meta.promotion.type === "percent" ? `${meta.promotion.value}% off` : `${money(meta.promotion.value)} off`}
-                        </Text>
-                      ) : null}
-                    </View>
-                    {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.productImage} /> : <View style={styles.imageFallback} />}
-                  </View>
-
-                  <View style={styles.progressTrack}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        { width: item.stock_qty == null ? "70%" : `${Math.max(10, Math.min(100, Math.round((Math.min(item.stock_qty, 12) / 12) * 100)))}%` },
-                      ]}
-                    />
-                  </View>
-
-                  <View style={styles.footerRow}>
-                    <View style={[styles.badge, badgeStyle]}>
-                      <Text
-                        style={[
-                          styles.badgeText,
-                          badgeStyle === styles.badgeDanger
-                            ? styles.badgeTextDanger
-                            : badgeStyle === styles.badgeWarning
-                              ? styles.badgeTextWarning
-                              : badgeStyle === styles.badgeMuted
-                                ? styles.badgeTextMuted
-                                : styles.badgeTextSoft,
-                        ]}
-                      >
-                        {badgeLabel}
-                      </Text>
-                    </View>
-
-                    <View style={styles.actionRow}>
-                      <Pressable
-                        style={styles.actionPill}
-                        onPress={() => openProductEditor(item.id)}
-                      >
-                        <PencilLine size={14} color="#0e2756" />
-                        <Text style={styles.actionText}>Edit</Text>
-                      </Pressable>
-                      <Pressable style={styles.actionPill} onPress={() => void toggleProductVisibility(item.id, item.is_active)}>
-                        <Text style={styles.actionText}>{item.is_active ? "Hide" : "Restore"}</Text>
-                      </Pressable>
-                      <Pressable style={[styles.actionPill, styles.deletePill]} onPress={() => confirmDeleteProduct(item.id, item.name)}>
-                        <Trash2 size={14} color="#b03c66" />
-                        <Text style={styles.deleteText}>Delete</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                </View>
-              </Pressable>
-            );
-          })}
-
-          {!rows.length ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No products found</Text>
-              <Text style={styles.emptySub}>Adjust the filter or add a new product to fill this shelf.</Text>
-            </View>
-          ) : null}
-        </View>
+        <Pressable style={styles.primaryBtn} onPress={addItem}>
+          <Text style={styles.primaryBtnText}>{isRestaurantFlow ? "+ Add Menu Item" : "+ Add Product"}</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+function MetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metricCard}>
+      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f6f8fc" },
-  content: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 122, gap: 14 },
-  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  pageTitle: { color: "#0e2756", fontSize: 30, fontWeight: "500", letterSpacing: -0.9 },
-  topActions: { flexDirection: "row", gap: 10 },
-  iconCircle: {
+  root: { flex: 1, backgroundColor: "#f1eff9" },
+  content: { padding: 18, paddingBottom: 126, gap: 14 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  title: { color: "#232c54", fontSize: 38, fontWeight: "900" },
+  addIcon: {
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: "rgba(255,255,255,0.98)",
-    borderWidth: 1,
-    borderColor: "#dfe8f5",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#dbe6f5",
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderWidth: 1,
+    borderColor: "#dde0f2",
   },
-  searchShell: {
+  searchCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#dde0f2",
+    backgroundColor: "rgba(255,255,255,0.95)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.98)",
-    borderWidth: 1,
-    borderColor: "#dfe8f5",
-    paddingHorizontal: 14,
-    paddingVertical: 13,
   },
-  searchInput: { flex: 1, color: "#0e2756", fontSize: 15, fontWeight: "500" },
-  toolbarRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  smallAction: { borderRadius: 999, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#dfe8f5", paddingHorizontal: 14, paddingVertical: 10 },
-  smallActionActive: { backgroundColor: "#102a54", borderColor: "#102a54" },
-  smallActionText: { color: "#0e2756", fontWeight: "700" },
-  smallActionTextActive: { color: "#fff" },
-  selectionText: { color: "#6b7c99", fontWeight: "700" },
-  filterRow: { gap: 10, paddingRight: 12 },
+  searchInput: { flex: 1, color: "#232c54", fontWeight: "700", fontSize: 15 },
+  filterRow: { flexDirection: "row", gap: 8 },
   filterPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.98)",
     borderWidth: 1,
-    borderColor: "#dfe8f5",
+    borderColor: "#d9deef",
+    backgroundColor: "#f8f9ff",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
   },
-  filterPillActive: { backgroundColor: "#102a54", borderColor: "#102a54" },
-  filterText: { color: "#6b7c99", fontSize: 16, fontWeight: "500" },
+  filterPillActive: { backgroundColor: "#273f73", borderColor: "#273f73" },
+  filterText: { color: "#63709a", fontWeight: "800", fontSize: 13 },
   filterTextActive: { color: "#fff" },
-  alertCard: {
-    borderRadius: 28,
-    padding: 18,
-    backgroundColor: "#fff4f8",
+  metricsRow: { flexDirection: "row", gap: 10 },
+  metricCard: {
+    flex: 1,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#ffd8e7",
-    shadowColor: "#f3d7e2",
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-    gap: 4,
+    borderColor: "#dde0f2",
+    backgroundColor: "rgba(255,255,255,0.95)",
+    alignItems: "center",
+    paddingVertical: 11,
+    gap: 2,
   },
-  alertTitle: { color: "#0e2756", fontSize: 18, fontWeight: "700" },
-  alertText: { color: "#8d5472", fontSize: 14, fontWeight: "500" },
-  list: { gap: 14 },
-  bulkCard: {
+  metricValue: { color: "#232c54", fontWeight: "900", fontSize: 19 },
+  metricLabel: { color: "#7480a3", fontWeight: "700", fontSize: 12 },
+  setupCard: {
     borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.98)",
     borderWidth: 1,
-    borderColor: "#dfe8f5",
+    borderColor: "#dde0f2",
+    backgroundColor: "rgba(255,255,255,0.97)",
     padding: 16,
     gap: 10,
   },
-  bulkTitle: { color: "#0e2756", fontSize: 16, fontWeight: "800" },
-  bulkRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  bulkPill: { borderRadius: 999, backgroundColor: "#eef4ff", paddingHorizontal: 14, paddingVertical: 10 },
-  bulkPillText: { color: "#0e2756", fontWeight: "700" },
-  card: {
-    position: "relative",
-    overflow: "hidden",
-    borderRadius: 30,
-    backgroundColor: "rgba(255,255,255,0.98)",
+  setupTitle: { color: "#232c54", fontSize: 20, fontWeight: "900" },
+  setupSub: { color: "#68749a", fontSize: 14, fontWeight: "700", lineHeight: 20 },
+  list: { gap: 10 },
+  itemCard: {
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#dfe8f5",
-    shadowColor: "#dbe6f5",
-    shadowOpacity: 0.2,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
+    borderColor: "#dde0f2",
+    backgroundColor: "rgba(255,255,255,0.97)",
+    padding: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
   },
-  cardSelected: { borderColor: "#ff0f64", borderWidth: 2 },
-  cardGlowA: { position: "absolute", top: -26, left: -18, width: 190, height: 160, borderRadius: 90, backgroundColor: "rgba(214,235,255,0.62)" },
-  cardGlowB: { position: "absolute", right: -30, bottom: -26, width: 200, height: 170, borderRadius: 100, backgroundColor: "rgba(255,233,242,0.62)" },
-  cardBody: { padding: 18, gap: 14 },
-  cardHead: { flexDirection: "row", gap: 16, alignItems: "center" },
-  cardText: { flex: 1, gap: 6 },
-  productName: { color: "#0e2756", fontSize: 20, fontWeight: "700" },
-  price: { color: "#1c3f76", fontSize: 16, fontWeight: "600" },
-  metaLine: { color: "#6b7c99", fontSize: 14, fontWeight: "500" },
-  categoryLine: { color: "#0e2756", fontSize: 13, fontWeight: "700" },
-  promoLine: { color: "#ff0f64", fontSize: 13, fontWeight: "700" },
-  productImage: { width: 118, height: 118, borderRadius: 26, backgroundColor: "#eef4ff" },
-  imageFallback: { width: 118, height: 118, borderRadius: 26, backgroundColor: "#eef4ff" },
-  progressTrack: { height: 12, borderRadius: 999, backgroundColor: "#edf3fb", overflow: "hidden" },
-  progressFill: { height: "100%", borderRadius: 999, backgroundColor: "#9ec4ff" },
-  footerRow: { gap: 12 },
-  badge: { alignSelf: "flex-start", paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999 },
-  badgeSoft: { backgroundColor: "#eef4ff" },
-  badgeWarning: { backgroundColor: "#fff0df" },
-  badgeDanger: { backgroundColor: "#fff0f6" },
-  badgeMuted: { backgroundColor: "#eef1f7" },
-  badgeText: { fontSize: 13, fontWeight: "600" },
-  badgeTextSoft: { color: "#23457b" },
-  badgeTextWarning: { color: "#9f6a20" },
-  badgeTextDanger: { color: "#c73a70" },
-  badgeTextMuted: { color: "#6b7c99" },
-  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  actionPill: {
-    minWidth: 104,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+  itemLeft: { flexDirection: "row", gap: 10, flex: 1 },
+  image: { width: 64, height: 64, borderRadius: 14, backgroundColor: "#eef2fb" },
+  imageFallback: { width: 64, height: 64, borderRadius: 14, backgroundColor: "#eef2fb" },
+  itemCopy: { flex: 1, gap: 3, justifyContent: "center" },
+  itemName: { color: "#232c54", fontSize: 18, fontWeight: "900" },
+  itemPrice: { color: "#415484", fontSize: 14, fontWeight: "800" },
+  itemMeta: { color: "#7b84aa", fontSize: 12, fontWeight: "700" },
+  itemDates: { color: "#8892b2", fontSize: 11, fontWeight: "700" },
+  itemSummary: { color: "#2d416f", fontSize: 12, fontWeight: "800", lineHeight: 17, marginTop: 2 },
+  itemRight: { alignItems: "flex-end", justifyContent: "space-between", gap: 10 },
+  availabilityPill: {
+    minWidth: 58,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.98)",
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+  availabilityPillOn: { backgroundColor: "#57a978" },
+  availabilityPillOff: { backgroundColor: "#a8afc7" },
+  availabilityText: { color: "#fff", fontSize: 12, fontWeight: "900" },
+  renewBtn: {
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#dfe8f5",
+    borderColor: "#d9deef",
+    backgroundColor: "#f8f9ff",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
+    gap: 5,
   },
-  actionText: { color: "#0e2756", fontSize: 15, fontWeight: "500" },
-  deletePill: { backgroundColor: "#fff5f8" },
-  deleteText: { color: "#c73a70", fontSize: 15, fontWeight: "500" },
-  emptyCard: { borderRadius: 30, padding: 22, backgroundColor: "rgba(255,255,255,0.98)", borderWidth: 1, borderColor: "#dfe8f5", gap: 6 },
-  emptyTitle: { color: "#0e2756", fontSize: 20, fontWeight: "700" },
-  emptySub: { color: "#6b7c99", fontSize: 14, lineHeight: 20 },
+  renewBtnText: { color: "#2d416f", fontSize: 12, fontWeight: "800" },
+  inlineActions: { flexDirection: "row", gap: 8 },
+  actionBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#d9deef",
+    backgroundColor: "#f8f9ff",
+  },
+  emptyCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#dde0f2",
+    backgroundColor: "rgba(255,255,255,0.97)",
+    padding: 18,
+    gap: 6,
+  },
+  emptyTitle: { color: "#232c54", fontSize: 18, fontWeight: "900" },
+  emptySub: { color: "#7b84aa", fontSize: 14, fontWeight: "700" },
+  primaryBtn: {
+    borderRadius: 18,
+    backgroundColor: "#2d416f",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 15,
+  },
+  primaryBtnText: { color: "#fff", fontSize: 16, fontWeight: "900" },
 });

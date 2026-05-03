@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Href, useRouter } from "expo-router";
 import PublicPageShell from "@/components/PublicPageShell";
@@ -9,7 +9,6 @@ import {
   PricingGoal,
   PricingPlan,
 } from "@/lib/pricingApi";
-import { useAuth } from "@/providers/AuthProvider";
 
 const AUDIENCE_OPTIONS: { id: PricingAudience; label: string }[] = [
   { id: "student", label: "Student" },
@@ -27,7 +26,6 @@ const GOAL_OPTIONS: { id: PricingGoal; label: string }[] = [
 
 export default function PricingPage() {
   const router = useRouter();
-  const { role } = useAuth();
   const [audience, setAudience] = useState<PricingAudience>("student");
   const [goals, setGoals] = useState<PricingGoal[]>(["budget"]);
   const [plans, setPlans] = useState<PricingPlan[]>(DEFAULT_PRICING_CONTENT.plans);
@@ -97,11 +95,6 @@ export default function PricingPage() {
             Tell us who you are and your goals, then we rank the best plan fit for you.
           </Text>
           {loadingRemote ? <Text style={{ color: "#5f6b85", fontSize: 12 }}>Syncing latest pricing data...</Text> : null}
-          {role === "admin" ? (
-            <Pressable onPress={() => router.push("/admin/pricing")} style={{ alignSelf: "flex-start", borderRadius: 999, backgroundColor: "#0e2756", paddingHorizontal: 12, paddingVertical: 7 }}>
-              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "900" }}>Open admin pricing editor</Text>
-            </Pressable>
-          ) : null}
 
           <View style={{ gap: 8 }}>
             <Text style={{ color: "#0e2756", fontSize: 13, fontWeight: "800" }}>I am a...</Text>

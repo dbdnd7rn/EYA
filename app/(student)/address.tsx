@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";

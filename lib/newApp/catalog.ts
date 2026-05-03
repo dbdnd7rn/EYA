@@ -8,7 +8,7 @@ function throwIfError(error: { message: string } | null) {
   if (error) throw new Error(error.message);
 }
 
-const DEV_CATALOG_KEY = "pamaketi_dev_catalog_items_v1";
+const DEV_CATALOG_KEY = "eya_dev_catalog_items_v1";
 
 async function getDevCatalogItems(): Promise<CatalogItemRow[]> {
   const raw = await AsyncStorage.getItem(DEV_CATALOG_KEY);

@@ -5,11 +5,11 @@ type Props = {
   onComplete: () => void;
 };
 
-const LETTERS = ["p", "a", "m", "a", "k", "e", "t", "i"] as const;
+const LETTERS = ["E", "Y", "A"] as const;
 const NAVY = "#102a54";
 const PINK = "#ff1f6a";
 
-export default function PaLevelLaunchAnimation({ onComplete }: Props) {
+export default function EyaLaunchAnimation({ onComplete }: Props) {
   const letterAnim = useRef(LETTERS.map(() => new Animated.Value(0))).current;
   const containerFade = useRef(new Animated.Value(1)).current;
   const logoScale = useRef(new Animated.Value(0.98)).current;
@@ -81,7 +81,7 @@ export default function PaLevelLaunchAnimation({ onComplete }: Props) {
               key={`${letter}-${index}`}
               style={[
                 styles.letter,
-                { color: index < 2 ? NAVY : PINK, opacity, transform: [{ translateX }] },
+                { color: index === 1 ? PINK : NAVY, opacity, transform: [{ translateX }] },
               ]}
             >
               {letter}

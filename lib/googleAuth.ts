@@ -1,22 +1,52 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { makeRedirectUri } from "expo-auth-session";
+import * as Linking from "expo-linking";
+import Constants from "expo-constants";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase";
 import { ensureProfileRole } from "@/lib/authProfile";
+import { rememberPendingGoogleAuthContext, type AuthScreen } from "@/lib/authFeedback";
+import { ENV, isConfiguredAdminEmail } from "@/lib/env";
 import { createVendor, listMyVendors } from "@/lib/newApp/vendors";
 
 WebBrowser.maybeCompleteAuthSession();
 
-type RoleChoice = "student" | "vendor" | "landlord" | "agent";
+type RoleChoice = "student" | "vendor" | "landlord" | "agent" | "admin";
 
 const PENDING_ROLE_KEY = "auth.pending_google_role";
 
 function redirectTo() {
-  return makeRedirectUri({
-    scheme: "pamaketi",
+  if (ENV.AUTH_REDIRECT_URL) return ENV.AUTH_REDIRECT_URL;
+
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.location?.origin) {
+      return `${window.location.origin.replace(/\/+$/, "")}/auth/callback`;
+    }
+    if (ENV.WEB_BASE_URL) {
+      return `${ENV.WEB_BASE_URL.replace(/\/+$/, "")}/auth/callback`;
+    }
+  }
+
+  const isExpoGo = Constants.executionEnvironment === "storeClient" || Constants.appOwnership === "expo";
+  if (isExpoGo) {
+    return Linking.createURL("auth/callback");
+  }
+
+  const nativeRedirect = "eya://auth/callback";
+  const generated = makeRedirectUri({
+    scheme: "eya",
     path: "auth/callback",
+    native: nativeRedirect,
+    preferLocalhost: false,
   });
+
+  // Guard against localhost callbacks in native OAuth flows.
+  if (Platform.OS !== "web" && /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?/i.test(generated)) {
+    return nativeRedirect;
+  }
+
+  return generated;
 }
 
 function mergeUrlParams(url: string) {
@@ -36,24 +66,24 @@ function mergeUrlParams(url: string) {
 
 async function ensureSellerVendor(ownerId: string, fullName: string) {
   const existing = await listMyVendors(ownerId);
-  const current = existing.find((row) => row.supports_market) ?? existing[0] ?? null;
+  const current = existing.find((row) => row.supports_food) ?? null;
   if (current) return current;
 
   try {
     return await createVendor(ownerId, {
-      name: fullName || "Seller Shop",
-      description: "Campus seller storefront",
-      supports_market: true,
-      supports_food: false,
+      name: fullName || "Restaurant",
+      description: "Campus restaurant storefront",
+      supports_market: false,
+      supports_food: true,
       campus: null,
       area: null,
       city: null,
     });
   } catch {
     const retry = await listMyVendors(ownerId);
-    const resolved = retry.find((row) => row.supports_market) ?? retry[0] ?? null;
+    const resolved = retry.find((row) => row.supports_food) ?? null;
     if (resolved) return resolved;
-    throw new Error("Could not create or load seller shop. Please retry.");
+    throw new Error("Could not create or load restaurant profile. Please retry.");
   }
 }
 
@@ -74,6 +104,7 @@ async function finalizeRoleSetup(role: RoleChoice | null) {
   } = await supabase.auth.getUser();
 
   if (!user) return;
+  if (role === "admin" && !isConfiguredAdminEmail(user.email)) return;
 
   const resolvedRole = await ensureProfileRole(user, role);
   if (resolvedRole === "vendor") {
@@ -94,19 +125,42 @@ export async function completeGoogleAuthFromUrl(url: string) {
   if (authError) throw new Error(authError);
 
   const code = params.get("code");
-  if (!code) throw new Error("Google sign-in did not return an authorization code.");
+  const accessToken = params.get("access_token");
+  const refreshToken = params.get("refresh_token");
 
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error) throw error;
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) throw error;
+  } else if (accessToken && refreshToken) {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) throw error;
+  } else {
+    throw new Error("Google sign-in did not return a valid session.");
+  }
 
   const pendingRole = await consumePendingRole();
   await finalizeRoleSetup(pendingRole);
 }
 
-export async function signInWithGoogle(role: RoleChoice) {
-  await rememberPendingRole(role);
+export async function signInWithGoogle(role: RoleChoice | null = null, screen: AuthScreen = "login") {
+  if (role === "admin") {
+    throw new Error("Admin accounts are provisioned manually. Use the approved admin email and password.");
+  }
+
+  await rememberPendingGoogleAuthContext({ role: role ?? "student", screen });
+  if (role) {
+    await rememberPendingRole(role);
+  } else {
+    await AsyncStorage.removeItem(PENDING_ROLE_KEY);
+  }
 
   const redirectUri = redirectTo();
+  if (__DEV__) {
+    console.log("[google-auth] redirectUri:", redirectUri);
+  }
 
   if (Platform.OS === "web") {
     const { error } = await supabase.auth.signInWithOAuth({
@@ -115,7 +169,7 @@ export async function signInWithGoogle(role: RoleChoice) {
         redirectTo: redirectUri,
         queryParams: {
           access_type: "offline",
-          prompt: "consent",
+          prompt: "select_account consent",
         },
       },
     });
@@ -135,7 +189,7 @@ export async function signInWithGoogle(role: RoleChoice) {
       skipBrowserRedirect: true,
       queryParams: {
         access_type: "offline",
-        prompt: "consent",
+        prompt: "select_account consent",
       },
     },
   });
@@ -149,14 +203,26 @@ export async function signInWithGoogle(role: RoleChoice) {
     await AsyncStorage.removeItem(PENDING_ROLE_KEY);
     throw new Error("Google sign-in could not be started.");
   }
+  if (__DEV__) {
+    console.log("[google-auth] authorizeUrl:", data.url);
+  }
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
   if (result.type !== "success") {
-    await AsyncStorage.removeItem(PENDING_ROLE_KEY);
-    return { redirected: false as const, cancelled: true as const };
+    // Some native environments still complete session asynchronously even when
+    // openAuthSession reports cancellation. Confirm before treating as cancelled.
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      await AsyncStorage.removeItem(PENDING_ROLE_KEY);
+      return { redirected: false as const, cancelled: true as const };
+    }
+    const pendingRole = await consumePendingRole();
+    await finalizeRoleSetup(pendingRole);
+    return { redirected: false as const, cancelled: false as const };
   }
 
   await completeGoogleAuthFromUrl(result.url);
   return { redirected: false as const, cancelled: false as const };
 }
-

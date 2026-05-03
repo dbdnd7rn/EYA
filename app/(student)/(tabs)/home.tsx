@@ -1,8 +1,8 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Animated, Easing, ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BedDouble, ChevronRight, Clock3, MapPin, MessageCircle, Mic, Search, ShoppingBag, Sparkles, Star, UtensilsCrossed, Wallet2 } from "lucide-react-native";
+import { BedDouble, ChevronRight, Clock3, MapPin, Mic, Search, ShoppingBag, Sparkles, Star, UtensilsCrossed } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { supabase } from "@/lib/supabase";
@@ -10,6 +10,7 @@ import { listCatalogItems } from "@/lib/newApp/catalog";
 import { supabaseNewApp } from "@/lib/supabaseNewApp";
 import { useAuth } from "@/providers/AuthProvider";
 import { locationMatchScore, usePreferredLocation } from "@/providers/PreferredLocationProvider";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 type Mode = "stay" | "market" | "food";
 
@@ -23,7 +24,7 @@ type FeaturedCard = {
   image: string;
   status?: "Open" | "Closed";
   cta: string;
-  href: "/(palevel)/(tabs)/rooms" | "/(student)/(tabs)/marketplace" | "/(food)/(tabs)/food";
+  href: "/(eya)/(tabs)/rooms" | "/(student)/(tabs)/marketplace" | "/(food)/(tabs)/food";
 };
 
 type VendorMini = {
@@ -76,7 +77,7 @@ const FALLBACK_FEATURED_CARDS: FeaturedCard[] = [
     image: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80",
     status: "Open",
     cta: "Browse rooms",
-    href: "/(palevel)/(tabs)/rooms",
+    href: "/(eya)/(tabs)/rooms",
   },
   {
     id: "s2",
@@ -88,7 +89,7 @@ const FALLBACK_FEATURED_CARDS: FeaturedCard[] = [
     image: "https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=1200&q=80",
     status: "Open",
     cta: "View",
-    href: "/(palevel)/(tabs)/rooms",
+    href: "/(eya)/(tabs)/rooms",
   },
   {
     id: "m1",
@@ -124,7 +125,7 @@ function ratingFromId(id: string) {
   return v.toFixed(1);
 }
 
-function safeLocation(...parts: Array<string | null | undefined>) {
+function safeLocation(...parts: (string | null | undefined)[]) {
   const location = parts.map((p) => (p ?? "").trim()).filter(Boolean);
   return location[0] || "Near campus";
 }
@@ -160,7 +161,7 @@ async function loadFeaturedCards(): Promise<FeaturedCard[]> {
     image: r.image_urls?.[0] || "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80",
     status: "Open",
     cta: "Browse rooms",
-    href: "/(palevel)/(tabs)/rooms",
+    href: "/(eya)/(tabs)/rooms",
   }));
 
   const markets: FeaturedCard[] = marketRows.map((r) => {
@@ -290,6 +291,7 @@ function discoveryCardFromFeatured(card: FeaturedCard, index: number): Discovery
 export default function StudentHomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { theme } = useStudentTheme();
   const preferredLocation = usePreferredLocation().location;
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
@@ -425,76 +427,51 @@ export default function StudentHomeScreen() {
     () => [...stayCards.slice(0, 2), ...mixedCards.slice(0, 4)].map((card, index) => discoveryCardFromFeatured(card, index)),
     [mixedCards, stayCards],
   );
-  const continueCards = useMemo(() => {
-    const sequence = [stayCards[0], mixedCards[0], stayCards[1]].filter(Boolean) as FeaturedCard[];
-    return sequence.map((card, index) => ({
-      ...card,
-      chip:
-        card.mode === "stay"
-          ? index === 0
-            ? "Picked for your area"
-            : "Ready to revisit"
-          : card.mode === "food"
-            ? "Dinner in one tap"
-            : "Still trending",
-    }));
-  }, [mixedCards, stayCards]);
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
         <View style={styles.skeletonWrap}>
-          <View style={[styles.skeletonCard, { height: 120 }]} />
-          <View style={[styles.skeletonCard, { height: 72 }]} />
-          <View style={[styles.skeletonCard, { height: 120 }]} />
-          <View style={[styles.skeletonCard, { height: 240 }]} />
+          <View style={[styles.skeletonCard, { height: 120, backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { height: 72, backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { height: 120, backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { height: 240, backgroundColor: theme.surfaceMuted }]} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root}>
-      <SoftPageGlow />
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
             <View style={styles.greetingBlock}>
-              <Text style={styles.greeting}>{greetingLabel},</Text>
+              <Text style={[styles.greeting, { color: theme.heading }]}>{greetingLabel},</Text>
               <View style={styles.greetingRow}>
-                <Text style={styles.greeting}>{displayName}</Text>
+                <Text style={[styles.greeting, { color: theme.heading }]}>{displayName}</Text>
                 <Animated.Text style={[styles.waveEmoji, { transform: [{ rotate: waveRotation }] }]}>{"\u{1F44B}"}</Animated.Text>
               </View>
             </View>
-            <Text style={styles.sub}>Search for rooms, food, products...</Text>
+            <Text style={[styles.sub, { color: theme.textMuted }]}>Search for rooms, food, products...</Text>
           </View>
-          <View style={styles.avatar}>
+          <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
             <Text style={styles.avatarText}>{avatarInitials}</Text>
           </View>
         </View>
 
-        <View style={styles.searchBar}>
-          <Search size={20} color="#7d86a0" />
+        <View style={[styles.searchBar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Search size={20} color={theme.textSoft} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: theme.text }]}
             value={q}
             onChangeText={setQ}
             placeholder="Search for rooms, food, products..."
-            placeholderTextColor="#9ea7c0"
+            placeholderTextColor={theme.textSoft}
           />
-          <Mic size={20} color="#7d86a0" />
+          <Mic size={20} color={theme.textSoft} />
         </View>
-
-        <Pressable style={styles.inboxStrip} onPress={() => router.push("/(student)/(tabs)/messages")}>
-          <View style={styles.inboxIconWrap}>
-            <MessageCircle size={20} color="#5a63a2" />
-          </View>
-          <View style={styles.inboxCopy}>
-            <Text style={styles.inboxTitle}>Inbox</Text>
-            <Text style={styles.inboxSub}>Chat with sellers and landlords</Text>
-          </View>
-          <ChevronRight size={20} color="#8a94af" />
-        </Pressable>
 
         <View style={styles.categoryRow}>
           <CategoryCard
@@ -502,7 +479,7 @@ export default function StudentHomeScreen() {
             text="Find rooms"
             icon={<BedDouble size={26} color="#688ac2" />}
             bg={["#dceeff", "#eff4ff"]}
-            onPress={() => router.push("/(palevel)/(tabs)/rooms")}
+            onPress={() => router.push("/(eya)/(tabs)/rooms")}
           />
           <CategoryCard
             title="Market"
@@ -547,39 +524,7 @@ export default function StudentHomeScreen() {
           ))}
         </ScrollView>
 
-        <SectionHeader title="Continue where you left off" subtitle="Resume the places you were checking out" accent="*" onPress={() => router.push("/(palevel)/(tabs)/rooms")} />
-        <View style={styles.resumeStack}>
-          {continueCards.map((card, index) => (
-            <Pressable key={`${card.id}-resume`} style={[styles.resumeCard, index > 0 && styles.resumeCardCompact]} onPress={() => router.push(card.href)}>
-              <ImageBackground source={{ uri: card.image }} style={styles.resumeImage} imageStyle={styles.resumeImageImg}>
-                <View style={styles.resumeOverlay} />
-                <View style={styles.resumeContent}>
-                  <Text style={styles.resumeChip}>{card.chip}</Text>
-                  <View style={styles.resumeCopy}>
-                    <Text numberOfLines={2} style={styles.resumeTitle}>{card.title}</Text>
-                    <Text numberOfLines={1} style={styles.resumeSubtitle}>
-                      {card.mode === "stay" ? card.subtitle : compactPriceFromSubtitle(card.subtitle)}
-                    </Text>
-                    <View style={styles.resumeMetaRow}>
-                      {card.mode === "food" ? <Clock3 size={14} color="#f4f6ff" /> : <MapPin size={14} color="#f4f6ff" />}
-                      <Text numberOfLines={1} style={styles.resumeMetaText}>
-                        {card.mode === "food" ? `${etaFromId(card.id)} away` : card.location}
-                      </Text>
-                      {card.mode !== "stay" ? (
-                        <>
-                          <Star size={13} color="#ffd166" fill="#ffd166" />
-                          <Text style={styles.resumeMetaText}>{card.rating}</Text>
-                        </>
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-              </ImageBackground>
-            </Pressable>
-          ))}
-        </View>
-
-        <SectionHeader title="Featured on EYA" subtitle="Top picks near you" accent="*" onPress={() => router.push("/(palevel)/(tabs)/rooms")} />
+        <SectionHeader title="Featured on EYA" subtitle="Top picks near you" accent="*" onPress={() => router.push("/(eya)/(tabs)/rooms")} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
           {stayCards.slice(0, 5).map((card, index) => (
             <Pressable key={card.id} onPress={() => router.push(card.href)}>
@@ -620,12 +565,13 @@ function CategoryCard({
   text: string;
   title: string;
 }) {
+  const { theme } = useStudentTheme();
   return (
-    <Pressable style={[styles.categoryCard, { backgroundColor: bg[1] }]} onPress={onPress}>
-      <View style={[styles.categoryGlow, { backgroundColor: bg[0] }]} />
-      <View style={styles.categoryIcon}>{icon}</View>
-      <Text style={styles.categoryTitle}>{title}</Text>
-      <Text style={styles.categoryText}>{text}</Text>
+    <Pressable style={[styles.categoryCard, { backgroundColor: theme.isDark ? theme.surface : bg[1], borderColor: theme.border }]} onPress={onPress}>
+      <View style={[styles.categoryGlow, { backgroundColor: theme.isDark ? theme.surfaceMuted : bg[0] }]} />
+      <View style={[styles.categoryIcon, theme.isDark ? { backgroundColor: theme.surfaceMuted } : null]}>{icon}</View>
+      <Text style={[styles.categoryTitle, { color: theme.text }]}>{title}</Text>
+      <Text style={[styles.categoryText, { color: theme.textMuted }]}>{text}</Text>
     </Pressable>
   );
 }
@@ -641,14 +587,15 @@ function SectionHeader({
   subtitle?: string;
   title: string;
 }) {
+  const { theme } = useStudentTheme();
   return (
     <View style={styles.sectionBlock}>
       <View>
-        <Text style={styles.sectionTitle}>{title} <Text style={styles.sectionAccent}>{accent}</Text></Text>
-        {subtitle ? <Text style={styles.sectionSub}>{subtitle}</Text> : null}
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>{title} <Text style={styles.sectionAccent}>{accent}</Text></Text>
+        {subtitle ? <Text style={[styles.sectionSub, { color: theme.textMuted }]}>{subtitle}</Text> : null}
       </View>
       <Pressable onPress={onPress}>
-        <ChevronRight size={22} color="#8a94af" />
+        <ChevronRight size={22} color={theme.textSoft} />
       </Pressable>
     </View>
   );
@@ -686,33 +633,6 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   searchInput: { flex: 1, color: "#13285f", fontSize: 16, fontWeight: "600" },
-  inboxStrip: {
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "#e7ebf5",
-    backgroundColor: "#fff",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    shadowColor: "#a4add0",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  inboxIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#eef1ff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  inboxCopy: { flex: 1, gap: 2 },
-  inboxTitle: { color: "#13285f", fontSize: 16, fontWeight: "900" },
-  inboxSub: { color: "#6e7892", fontSize: 13, fontWeight: "600" },
 
   categoryRow: { flexDirection: "row", gap: 12 },
   categoryCard: {
@@ -794,30 +714,6 @@ const styles = StyleSheet.create({
   discoveryMetaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   discoveryMetaText: { flex: 1, color: "#6c7595", fontSize: 13, fontWeight: "700" },
   discoveryDot: { width: 10, height: 10, borderRadius: 5 },
-
-  resumeStack: { gap: 12 },
-  resumeCard: { borderRadius: 30, overflow: "hidden", minHeight: 210 },
-  resumeCardCompact: { minHeight: 176 },
-  resumeImage: { minHeight: 210, justifyContent: "flex-end" },
-  resumeImageImg: { borderRadius: 30 },
-  resumeOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(9,13,26,0.28)" },
-  resumeContent: { padding: 16, gap: 14 },
-  resumeChip: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.9)",
-    color: "#223361",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    overflow: "hidden",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  resumeCopy: { gap: 5 },
-  resumeTitle: { color: "#fff", fontSize: 18, fontWeight: "900" },
-  resumeSubtitle: { color: "#f1f5ff", fontSize: 15, fontWeight: "800" },
-  resumeMetaRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  resumeMetaText: { color: "#f1f5ff", fontSize: 13, fontWeight: "700" },
 
   featureCard: { width: 296, height: 220, borderRadius: 28, overflow: "hidden", padding: 14, justifyContent: "space-between" },
   featureCardSmall: { width: 176 },

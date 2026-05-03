@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -63,7 +63,7 @@ export default function RoomsScreen() {
         if (isOnline) {
           const { data, error } = await supabase
             .from("listings")
-            .select("id, title, listing_type, campus, area, city, price_from, image_urls, created_at, visibility_rank")
+            .select("id, title, listing_type, campus, area, city, price_from, image_urls, created_at")
             .eq("is_active", true);
 
           if (error) throw error;

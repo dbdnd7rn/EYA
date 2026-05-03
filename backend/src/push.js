@@ -18,6 +18,7 @@ function uniqueTokens(rows) {
 }
 
 function resolvePushPriority(input) {
+  if (input.priority === "normal" || input.priority === "important") return input.priority;
   return input.playSound === false ? "normal" : "important";
 }
 
@@ -30,7 +31,7 @@ async function createInAppNotifications(userIds, input) {
     title: input.title,
     message: input.body,
     type: input.type || "system",
-    priority: input.playSound === false ? "normal" : "important",
+    priority: resolvePushPriority(input),
     data: input.data || {},
     is_read: false,
     pushed_at: new Date().toISOString(),
@@ -249,7 +250,7 @@ export async function notifyDriverAssigned(orderId, driverId) {
     title: "New delivery assigned",
     body: `${vendor?.name || "Campus vendor"} assigned you a ${order.channel} delivery${order.dropoff_notes ? ` to ${order.dropoff_notes}` : ""}.`,
     type: "delivery_assigned",
-    data: { orderId, role: "driver" },
+    data: { orderId, role: "agent" },
   });
 }
 

@@ -90,7 +90,11 @@ export default function PaySuccessPage() {
           <Text style={styles.heroLabel}>Payment complete</Text>
           <Text style={styles.heroAmount}>{formatMwk(total)}</Text>
           <Text style={styles.heroSub}>
-            {method === "wallet" ? "Wallet payment confirmed." : "Your payment was confirmed and the order handoff is ready."}
+            {method === "wallet"
+              ? "Wallet payment confirmed."
+              : method === "cash"
+                ? "Cash order confirmed. Pay the rider or restaurant during handoff."
+                : "Your payment was confirmed and the order handoff is ready."}
           </Text>
 
           <View style={styles.heroStatus}>
@@ -107,7 +111,7 @@ export default function PaySuccessPage() {
           </View>
           {txRef ? (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Order ref</Text>
+              <Text style={styles.detailLabel}>{method === "cash" ? "Cash ref" : "Order ref"}</Text>
               <Text style={styles.detailValue}>{txRef}</Text>
             </View>
           ) : null}
@@ -168,10 +172,10 @@ export default function PaySuccessPage() {
               <Truck size={18} color="#0f6d80" />
             </View>
             <View style={styles.trackCopy}>
-              <Text style={styles.sectionTitle}>{hasOrderHandoff ? "Track delivery" : "Continue"}</Text>
-              <Text style={styles.sectionSub}>
-                {hasOrderHandoff ? "Open the live order screen for rider updates and the same QR pass." : "Return to your orders and continue using the app."}
-              </Text>
+            <Text style={styles.sectionTitle}>{hasOrderHandoff ? "Track delivery" : "Continue"}</Text>
+            <Text style={styles.sectionSub}>
+              {hasOrderHandoff ? "Open the live order screen for rider updates and the same QR pass." : "Return to your orders and continue using the app."}
+            </Text>
             </View>
           </View>
 

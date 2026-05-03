@@ -19,13 +19,14 @@ import { ArrowLeft, ImagePlus, MapPin, Send } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import TopNav from "@/components/TopNav";
 import { encodeCallSignal, newCallId, parseCallSignal } from "@/lib/callSignals";
+import { notifyEnquiryParticipant, previewEnquiryText } from "@/lib/enquiryNotifications";
 import { goBackOrFallback } from "@/lib/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 
 type EnquiryStatus = "new" | "replied" | "closed";
 
-type MessageRow = {
+type ChatMessageRow = {
   id: string;
   enquiry_id: string;
   sender_id: string | null;
@@ -36,6 +37,7 @@ type MessageRow = {
   message_type: "text" | "image" | null;
   image_url: string | null;
   created_at: string;
+  localStatus?: "sending";
 };
 
 type ListingMini = {
@@ -52,6 +54,7 @@ type EnquiryJoinDb = {
   id: string;
   status: EnquiryStatus | null;
   landlord_id: string | null;
+  message: string | null;
   listing: ListingMini[] | ListingMini | null;
 };
 
@@ -59,25 +62,12 @@ type EnquiryJoin = {
   id: string;
   status: EnquiryStatus;
   landlord_id: string | null;
+  message: string | null;
   listing: ListingMini | null;
 };
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function fmtLastSeen(iso?: string | null, nowMs?: number) {
-  if (!iso) return "No activity yet";
-  const ts = new Date(iso).getTime();
-  if (!Number.isFinite(ts)) return "No activity yet";
-  const diffSec = Math.max(0, Math.floor(((nowMs ?? Date.now()) - ts) / 1000));
-  if (diffSec < 60) return `Last seen ${diffSec}s ago`;
-  const min = Math.floor(diffSec / 60);
-  if (min < 60) return `Last seen ${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `Last seen ${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  return `Last seen ${day}d ago`;
 }
 
 function initials(name?: string | null) {
@@ -112,7 +102,7 @@ async function uploadChatImageExpo(asset: { uri: string; fileName?: string | nul
   const form = new FormData();
   form.append("file", { uri: asset.uri, name: meta.name, type: meta.type } as any);
   form.append("upload_preset", uploadPreset);
-  form.append("folder", "palevel/chat");
+  form.append("folder", "eya/chat");
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
     method: "POST",
@@ -131,11 +121,10 @@ export default function StudentEnquiryChat() {
   const enquiryId = typeof params.enquiryId === "string" ? params.enquiryId : null;
 
   const [enquiry, setEnquiry] = useState<EnquiryJoin | null>(null);
-  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [messages, setMessages] = useState<ChatMessageRow[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [nowTick, setNowTick] = useState(Date.now());
 
   const scrollRef = useRef<ScrollView | null>(null);
 
@@ -153,13 +142,13 @@ export default function StudentEnquiryChat() {
   const callFlow = useMemo(() => {
     const signals = messages
       .map((m) => ({ m, signal: parseCallSignal(m.content) }))
-      .filter((x) => !!x.signal) as { m: MessageRow; signal: { kind: "invite" | "accept" | "decline"; callId: string } }[];
+      .filter((x) => !!x.signal) as { m: ChatMessageRow; signal: { kind: "invite" | "accept" | "decline"; callId: string } }[];
 
     const latestInvite = [...signals].reverse().find((x) => x.signal.kind === "invite");
     if (!latestInvite) return null;
 
     const inviteTime = new Date(latestInvite.m.created_at).getTime();
-    const expired = !Number.isFinite(inviteTime) ? false : nowTick - inviteTime > 120000;
+    const expired = !Number.isFinite(inviteTime) ? false : Date.now() - inviteTime > 120000;
     const response = signals.find(
       (x) =>
         x.signal.callId === latestInvite.signal.callId &&
@@ -173,20 +162,11 @@ export default function StudentEnquiryChat() {
       expired,
       responseKind: response?.signal.kind ?? null,
     };
-  }, [messages, nowTick, user?.id]);
+  }, [messages, user?.id]);
   const incomingRinging = !!callFlow && !callFlow.invitedByMe && !callFlow.expired && !callFlow.responseKind;
   const outgoingRinging = !!callFlow && callFlow.invitedByMe && !callFlow.expired && !callFlow.responseKind;
   const acceptedByOther = !!callFlow && callFlow.invitedByMe && callFlow.responseKind === "accept";
   const declinedByOther = !!callFlow && callFlow.invitedByMe && callFlow.responseKind === "decline";
-  const lastSeenLabel = useMemo(
-    () => fmtLastSeen(messages.length ? messages[messages.length - 1].created_at : null, nowTick),
-    [messages, nowTick],
-  );
-
-  useEffect(() => {
-    const t = setInterval(() => setNowTick(Date.now()), 1000 * 20);
-    return () => clearInterval(t);
-  }, []);
 
   const loadAll = async () => {
     if (!user || !enquiryId) return;
@@ -200,6 +180,7 @@ export default function StudentEnquiryChat() {
         id,
         status,
         landlord_id,
+        message,
         listing:listing_id (
           id,
           title,
@@ -225,7 +206,7 @@ export default function StudentEnquiryChat() {
     const safeStatus: EnquiryStatus =
       row.status === "new" || row.status === "replied" || row.status === "closed" ? row.status : "new";
 
-    setEnquiry({ id: row.id, status: safeStatus, landlord_id: row.landlord_id ?? null, listing });
+    setEnquiry({ id: row.id, status: safeStatus, landlord_id: row.landlord_id ?? null, message: row.message ?? null, listing });
 
     const { data: msgs } = await supabase
       .from("messages")
@@ -233,7 +214,7 @@ export default function StudentEnquiryChat() {
       .eq("enquiry_id", enquiryId)
       .order("created_at", { ascending: true });
 
-    setMessages((msgs ?? []) as MessageRow[]);
+    setMessages((msgs ?? []) as ChatMessageRow[]);
     setLoading(false);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
   };
@@ -252,8 +233,10 @@ export default function StudentEnquiryChat() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `enquiry_id=eq.${enquiryId}` },
         (payload) => {
-          const row = payload.new as MessageRow;
-          setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+          const row = payload.new as ChatMessageRow;
+          setMessages((prev) => {
+            return prev.some((m) => m.id === row.id) ? prev : [...prev, row];
+          });
           setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
         },
       )
@@ -269,8 +252,9 @@ export default function StudentEnquiryChat() {
     const studentId = user.id;
     const content = text.trim();
     if (!content) return;
-
+    setText("");
     setSending(true);
+
     const { data, error } = await supabase
       .from("messages")
       .insert({
@@ -287,14 +271,29 @@ export default function StudentEnquiryChat() {
       .single();
     setSending(false);
 
-    if (error) return;
+    if (error) {
+      setText(content);
+      Alert.alert("Send failed", error.message || "Could not send message.");
+      return;
+    }
     if (data) {
-      setMessages((prev) => (prev.some((m) => m.id === (data as MessageRow).id) ? prev : [...prev, data as MessageRow]));
+      setMessages((prev) => (prev.some((msg) => msg.id === (data as ChatMessageRow).id) ? prev : [...prev, data as ChatMessageRow]));
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
     }
     await supabase.from("enquiries").update({ status: "new" }).eq("id", enquiry.id).eq("student_id", studentId);
     setEnquiry((prev) => (prev ? { ...prev, status: "new" } : prev));
-    setText("");
+    void notifyEnquiryParticipant({
+      recipientId: enquiry.landlord_id,
+      recipientRole: "landlord",
+      enquiryId: enquiry.id,
+      listingId: enquiry.listing?.id ?? null,
+      listingTitle: enquiry.listing?.title ?? null,
+      title: "New student message",
+      message: `${hostelName}: ${previewEnquiryText(content)}`,
+      extraData: {
+        senderRole: "student",
+      },
+    });
   };
 
   const pickAndSendImage = async () => {
@@ -334,11 +333,23 @@ export default function StudentEnquiryChat() {
 
       if (error) throw new Error(error.message);
       if (data) {
-        setMessages((prev) => (prev.some((m) => m.id === (data as MessageRow).id) ? prev : [...prev, data as MessageRow]));
+        setMessages((prev) => (prev.some((m) => m.id === (data as ChatMessageRow).id) ? prev : [...prev, data as ChatMessageRow]));
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
       }
       await supabase.from("enquiries").update({ status: "new" }).eq("id", enquiry.id).eq("student_id", studentId);
       setEnquiry((prev) => (prev ? { ...prev, status: "new" } : prev));
+      void notifyEnquiryParticipant({
+        recipientId: enquiry.landlord_id,
+        recipientRole: "landlord",
+        enquiryId: enquiry.id,
+        listingId: enquiry.listing?.id ?? null,
+        listingTitle: enquiry.listing?.title ?? null,
+        title: "New student message",
+        message: `${hostelName}: Student sent a photo.`,
+        extraData: {
+          senderRole: "student",
+        },
+      });
     } catch (e: any) {
       const msg = String(e?.message ?? "Image upload failed.");
       if (msg.toLowerCase().includes("heic")) {
@@ -378,11 +389,30 @@ export default function StudentEnquiryChat() {
     }
 
     if (data) {
-      setMessages((prev) => (prev.some((m) => m.id === (data as MessageRow).id) ? prev : [...prev, data as MessageRow]));
+      setMessages((prev) => (prev.some((m) => m.id === (data as ChatMessageRow).id) ? prev : [...prev, data as ChatMessageRow]));
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
     }
     await supabase.from("enquiries").update({ status: "new" }).eq("id", enquiry.id).eq("student_id", studentId);
     setEnquiry((prev) => (prev ? { ...prev, status: "new" } : prev));
+    void notifyEnquiryParticipant({
+      recipientId: enquiry.landlord_id,
+      recipientRole: "landlord",
+      enquiryId: enquiry.id,
+      listingId: enquiry.listing?.id ?? null,
+      listingTitle: enquiry.listing?.title ?? null,
+      title: kind === "invite" ? "Incoming enquiry call" : "Enquiry call update",
+      message:
+        kind === "invite"
+          ? `${hostelName}: a student is calling you.`
+          : kind === "accept"
+            ? `${hostelName}: the student accepted the call.`
+            : `${hostelName}: the student declined the call.`,
+      priority: kind === "invite" ? "important" : "normal",
+      extraData: {
+        senderRole: "student",
+        callKind: kind,
+      },
+    });
     return true;
   };
 
@@ -421,7 +451,11 @@ export default function StudentEnquiryChat() {
   return (
     <SafeAreaView style={styles.root}>
       <TopNav title="Messages" />
-
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 12}
+      >
       <View style={styles.headerBar}>
         <Pressable onPress={() => goBackOrFallback(router, "/(student)/(tabs)/messages")} style={styles.backBtn}>
           <ArrowLeft size={18} color="#0e2756" />
@@ -447,11 +481,6 @@ export default function StudentEnquiryChat() {
         <Pressable style={[styles.callBtn, isClosed && { opacity: 0.5 }]} onPress={callNow} disabled={isClosed}>
           <Text style={styles.callBtnText}>Call</Text>
         </Pressable>
-      </View>
-
-      <View style={styles.lastSeenBar}>
-        <View style={styles.dotOnline} />
-        <Text style={styles.lastSeenText}>{lastSeenLabel}</Text>
       </View>
 
       {incomingRinging ? (
@@ -489,8 +518,24 @@ export default function StudentEnquiryChat() {
         </View>
       ) : null}
 
-      <ScrollView ref={scrollRef as any} contentContainerStyle={styles.chat}>
-        {displayMessages.length === 0 ? (
+      <ScrollView
+        ref={scrollRef as any}
+        style={styles.chatScroll}
+        contentContainerStyle={styles.chat}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {displayMessages.length === 0 && enquiry?.message?.trim() ? (
+          <View style={[styles.bubbleRow, styles.rowMine]}>
+            <View style={[styles.bubble, styles.bubbleMine]}>
+              <Text style={[styles.msgText, styles.msgTextMine]}>{enquiry.message.trim()}</Text>
+              <Text style={[styles.time, styles.timeMine]}>Enquiry</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {displayMessages.length === 0 && !enquiry?.message?.trim() ? (
           <View style={styles.emptyChatCard}>
             <Text style={styles.emptyChatTitle}>No messages yet</Text>
             <Text style={styles.emptyChatSub}>Start the conversation with the landlord.</Text>
@@ -514,7 +559,6 @@ export default function StudentEnquiryChat() {
         })}
       </ScrollView>
 
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.inputBar}>
           <Pressable style={styles.iconBtn} onPress={pickAndSendImage} disabled={sending || isClosed}>
             <ImagePlus size={18} color="#0e2756" />
@@ -528,6 +572,7 @@ export default function StudentEnquiryChat() {
             placeholderTextColor="#9aa3bd"
             editable={!isClosed}
             onSubmitEditing={sendText}
+            onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
             returnKeyType="send"
           />
 
@@ -546,6 +591,7 @@ export default function StudentEnquiryChat() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
+  flex: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   headerBar: {
     backgroundColor: "#fff",
@@ -592,18 +638,6 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   callBtnText: { color: "#b0003a", fontWeight: "900", fontSize: 12 },
-  lastSeenBar: {
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e7eaf6",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  dotOnline: { width: 8, height: 8, borderRadius: 99, backgroundColor: "#22c55e" },
-  lastSeenText: { color: "#5f6b85", fontWeight: "700", fontSize: 12 },
   callBannerIncoming: {
     backgroundColor: "#fff0f6",
     borderBottomWidth: 1,
@@ -653,6 +687,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   joinBtnText: { color: "#fff", fontWeight: "900", fontSize: 12 },
+  chatScroll: { flex: 1 },
   chat: { padding: 14, gap: 10, paddingBottom: 20 },
   emptyChatCard: {
     width: "100%",

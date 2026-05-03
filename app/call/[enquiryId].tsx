@@ -1,4 +1,4 @@
-﻿import React, { useMemo } from "react";
+import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -17,7 +17,7 @@ export default function InAppCallScreen() {
   const { user } = useAuth();
 
   const enquiryId = typeof params.enquiryId === "string" ? params.enquiryId : "";
-  const room = `pamaketi-enquiry-${enquiryId || "unknown"}`;
+  const room = `eya-enquiry-${enquiryId || "unknown"}`;
   const displayName =
     (user?.user_metadata?.full_name as string | undefined) ||
     (user?.email ? String(user.email).split("@")[0] : "EYA user");

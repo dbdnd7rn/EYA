@@ -23,6 +23,12 @@ function buildSellerSubject(item: MarketCard) {
   return `About: ${item.name}`;
 }
 
+function formatDateLabel(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "recently";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
   const router = useRouter();
   const { user } = useAuth();
@@ -129,6 +135,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
             <InfoLine icon={<Star size={14} color="#f5b940" fill="#f5b940" />} text={`Condition: New · ${item.rating.toFixed(1)} rated`} />
             <InfoLine icon={<Truck size={14} color="#0f6d80" />} text={`Delivery: Fast · ${deliver ? "30 mins" : "Pickup only"}`} />
             <InfoLine icon={<MapPin size={14} color="#0f6d80" />} text={`Location: ${item.area}, ${item.campus}`} />
+            <InfoLine icon={<CalendarClock size={14} color="#102a54" />} text={`Listed on ${formatDateLabel(item.listedAt)} | refreshed ${formatDateLabel(item.refreshedAt)}`} />
             <InfoLine icon={<ShieldCheck size={14} color="#0d7a37" />} text={`Seller: ${item.vendor} · Verified`} />
           </View>
 

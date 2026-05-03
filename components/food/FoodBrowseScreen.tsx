@@ -1,13 +1,14 @@
-﻿import React from "react";
+import React from "react";
 import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
 import {
+  ArrowLeft,
   Bell,
   Bike,
-  ChevronRight,
   Clock3,
   Flame,
+  Home,
   MapPin,
   MessageCircle,
   Search,
@@ -33,6 +34,23 @@ type CuisineCard = {
   label: string;
   icon: React.ReactNode;
   bg: string;
+};
+
+type FoodRestaurantPreview = {
+  vendorId: string;
+  name: string;
+  cuisine: string;
+  area: string;
+  campus: string;
+  etaMins: number;
+  deliveryFee: number;
+  startingPrice: number;
+  rating: number;
+  isOpen: boolean;
+  image: string;
+  menuCount: number;
+  menuPreview: string[];
+  summary: string;
 };
 
 const cuisineCards: CuisineCard[] = [
@@ -65,10 +83,34 @@ function etaBadge(eta: number) {
   return "Worth the wait";
 }
 
-function vendorMood(item: FoodCard) {
-  if (item.rating >= 4.7) return "Top rated";
-  if (item.deliveryFee <= 2200) return "Budget delivery";
-  return "Popular tonight";
+function toRestaurantPreviews(items: FoodCard[]): FoodRestaurantPreview[] {
+  const grouped = new Map<string, FoodCard[]>();
+  for (const item of items) {
+    const current = grouped.get(item.vendorId) ?? [];
+    current.push(item);
+    grouped.set(item.vendorId, current);
+  }
+
+  return Array.from(grouped.entries()).map(([vendorId, vendorItems]) => {
+    const lead = vendorItems[0];
+    const previews = vendorItems.slice(0, 3).map((item) => item.meal);
+    return {
+      vendorId,
+      name: lead.name,
+      cuisine: lead.cuisine,
+      area: lead.area,
+      campus: lead.campus,
+      etaMins: Math.min(...vendorItems.map((item) => item.etaMins)),
+      deliveryFee: Math.min(...vendorItems.map((item) => item.deliveryFee)),
+      startingPrice: Math.min(...vendorItems.map((item) => item.mealPrice)),
+      rating: lead.rating,
+      isOpen: vendorItems.some((item) => item.isOpen),
+      image: lead.image,
+      menuCount: vendorItems.length,
+      menuPreview: previews,
+      summary: previews.join(" · "),
+    };
+  });
 }
 
 function initials(fullName?: string | null, email?: string | null) {
@@ -81,6 +123,9 @@ function initials(fullName?: string | null, email?: string | null) {
 
 export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }: Props) {
   const router = useRouter();
+  const restaurantRoute = detailRoute === "/(student)/food/[id]" ? "/(student)/food/restaurant/[vendorId]" : "/(food)/restaurant/[vendorId]";
+  const ordersRoute = detailRoute === "/(student)/food/[id]" ? "/(student)/(tabs)/orders" : "/(food)/(tabs)/orders";
+  const homeRoute = "/(student)/(tabs)/home";
   const { user } = useAuth();
   const locationContext = usePreferredLocationOptional();
   const preferredLocation = locationContext?.location ?? null;
@@ -89,7 +134,6 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<FoodCard[]>([]);
-  const [selectedDelivery, setSelectedDelivery] = React.useState<Record<string, boolean>>({});
   const [campusFilter, setCampusFilter] = React.useState("All");
   const [cuisineFilter, setCuisineFilter] = React.useState("All");
   const [openNowOnly, setOpenNowOnly] = React.useState(false);
@@ -206,26 +250,29 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
 
   const filtered = React.useMemo(() => {
     const term = query.trim().toLowerCase();
-    return items
+    const filteredItems = items
       .filter((item) => {
-      if (campusFilter !== "All" && item.campus !== campusFilter) return false;
-      if (cuisineFilter !== "All" && item.cuisine !== cuisineFilter) return false;
-      if (openNowOnly && !item.isOpen) return false;
-      if (!term) return true;
-      return [item.name, item.cuisine, item.area, item.campus, item.meal, item.description].some((value) =>
-        value.toLowerCase().includes(term),
-      );
-    })
+        if (campusFilter !== "All" && item.campus !== campusFilter) return false;
+        if (cuisineFilter !== "All" && item.cuisine !== cuisineFilter) return false;
+        if (openNowOnly && !item.isOpen) return false;
+        if (!term) return true;
+        return [item.name, item.cuisine, item.area, item.campus, item.meal, item.description].some((value) =>
+          value.toLowerCase().includes(term),
+        );
+      })
       .sort(
         (a, b) =>
           locationMatchScore(preferredLocation, { area: b.area, campus: b.campus }) -
           locationMatchScore(preferredLocation, { area: a.area, campus: a.campus }),
       );
+    return toRestaurantPreviews(filteredItems).sort(
+      (a, b) =>
+        locationMatchScore(preferredLocation, { area: b.area, campus: b.campus }) -
+        locationMatchScore(preferredLocation, { area: a.area, campus: a.campus }),
+    );
   }, [campusFilter, cuisineFilter, items, openNowOnly, preferredLocation, query]);
 
   const featured = React.useMemo(() => filtered.slice(0, 3), [filtered]);
-  const selectedItems = React.useMemo(() => filtered.filter((item) => selectedDelivery[item.id]), [filtered, selectedDelivery]);
-  const firstSelected = selectedItems[0] ?? null;
   const locationTitle = preferredLocation?.city || preferredLocation?.campus || "Blantyre";
   const locationSub = preferredLocation ? formatPreferredLocation(preferredLocation) : "Auto-detecting your area";
 
@@ -246,7 +293,10 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topSection}>
-          <Text style={styles.brandTag}>EYA food</Text>
+          <View style={styles.brandRow}>
+            <BackHomeButton onPress={() => router.replace(homeRoute as any)} />
+            <Text style={styles.brandTag}>EYA food</Text>
+          </View>
           <View style={styles.topRow}>
             <Pressable style={styles.locationRow} onPress={() => router.push("/(student)/address")}>
               {profileAvatarUrl ? (
@@ -266,7 +316,7 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
             </Pressable>
             <View style={styles.headerActions}>
               <HeaderButton icon={<Bell size={20} color="#16315f" />} badge="2" onPress={() => router.push("/(student)/requests")} />
-              <HeaderButton icon={<Bike size={20} color="#0f6d80" />} badge="2" accent onPress={() => router.push("/(student)/(tabs)/orders")} />
+              <HeaderButton icon={<Bike size={20} color="#0f6d80" />} badge="2" accent onPress={() => router.push(ordersRoute as any)} />
             </View>
           </View>
 
@@ -354,9 +404,9 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featuredRow}>
               {featured.map((item) => (
                 <Pressable
-                  key={item.id}
+                  key={item.vendorId}
                   style={styles.featuredCard}
-                  onPress={() => router.push({ pathname: detailRoute, params: { id: item.id } })}
+                  onPress={() => router.push({ pathname: restaurantRoute, params: { vendorId: item.vendorId } })}
                 >
                   <Image source={{ uri: item.image }} style={styles.featuredImage} />
                   <View style={styles.featuredOverlay} />
@@ -366,7 +416,7 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
                   </View>
                   <View style={styles.featuredBottom}>
                     <Text style={styles.featuredName} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.featuredMeal} numberOfLines={1}>{item.meal}</Text>
+                    <Text style={styles.featuredMeal} numberOfLines={1}>{item.menuCount} menu items · {item.summary}</Text>
                     <View style={styles.featuredMeta}>
                       <MetaTag icon={<Star size={12} color="#f1b634" fill="#f1b634" />} label={item.rating.toFixed(1)} />
                       <MetaTag icon={<Clock3 size={12} color="#ffffff" />} label={`${item.etaMins} mins`} />
@@ -393,22 +443,20 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
           ) : (
             <View style={styles.listColumn}>
               {filtered.map((item) => {
-                const selected = !!selectedDelivery[item.id];
-                const total = item.mealPrice + (selected ? item.deliveryFee : 0);
                 return (
                   <Pressable
-                    key={item.id}
+                    key={item.vendorId}
                     style={styles.listCard}
-                    onPress={() => router.push({ pathname: detailRoute, params: { id: item.id } })}
+                    onPress={() => router.push({ pathname: restaurantRoute, params: { vendorId: item.vendorId } })}
                   >
                     <Image source={{ uri: item.image }} style={styles.listImage} />
                     <View style={styles.listBody}>
                       <View style={styles.listTopRow}>
                         <View style={styles.listTitleWrap}>
                           <Text style={styles.listName} numberOfLines={1}>{item.name}</Text>
-                          <Text style={styles.listSub} numberOfLines={1}>{item.meal}</Text>
+                          <Text style={styles.listSub} numberOfLines={1}>{item.menuCount} meals inside</Text>
                         </View>
-                        <Text style={styles.listPrice}>{kwacha(item.mealPrice)}</Text>
+                        <Text style={styles.listPrice}>From {kwacha(item.startingPrice)}</Text>
                       </View>
 
                       <View style={styles.metaWrap}>
@@ -417,24 +465,22 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
                         <MetaTag icon={<MapPin size={12} color="#17315d" />} label={`${item.area}, ${item.campus}`} dark />
                       </View>
 
-                      <Text style={styles.vendorMood}>{vendorMood(item)}</Text>
+                      <Text style={styles.vendorMood}>{item.summary || item.cuisine}</Text>
 
                       <View style={styles.cardFooter}>
                         <View>
-                          <Text style={styles.deliveryFee}>Delivery {kwacha(item.deliveryFee)}</Text>
-                          <Text style={styles.totalFee}>Total {kwacha(total)}</Text>
+                          <Text style={styles.deliveryFee}>Delivery from {kwacha(item.deliveryFee)}</Text>
+                          <Text style={styles.totalFee}>{item.menuPreview.join(" · ")}</Text>
                         </View>
                         <Pressable
-                          style={[styles.deliveryBtn, selected && styles.deliveryBtnActive]}
+                          style={[styles.deliveryBtn, styles.deliveryBtnActive]}
                           onPress={(event) => {
                             event.stopPropagation();
-                            setSelectedDelivery((current) => ({ ...current, [item.id]: !selected }));
+                            router.push({ pathname: restaurantRoute, params: { vendorId: item.vendorId } });
                           }}
                         >
-                          <Bike size={14} color={selected ? "#ffffff" : "#0f6d80"} />
-                          <Text style={[styles.deliveryBtnText, selected && styles.deliveryBtnTextActive]}>
-                            {selected ? "Selected" : "Deliver"}
-                          </Text>
+                          <Bike size={14} color="#ffffff" />
+                          <Text style={[styles.deliveryBtnText, styles.deliveryBtnTextActive]}>View menu</Text>
                         </Pressable>
                       </View>
                     </View>
@@ -445,36 +491,6 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
           )}
         </View>
       </ScrollView>
-
-      {firstSelected ? (
-        <View style={styles.floatBar}>
-          <View style={styles.floatCopy}>
-            <Text style={styles.floatTitle}>{selectedItems.length} meal{selectedItems.length > 1 ? "s" : ""} selected</Text>
-            <Text style={styles.floatSub}>{firstSelected.name} ready for checkout</Text>
-          </View>
-          <Pressable
-            style={styles.floatBtn}
-            onPress={() =>
-              router.push({
-                pathname: "/(student)/checkout",
-                params: {
-                  mode: "food",
-                  title: firstSelected.name,
-                  base: String(firstSelected.mealPrice),
-                  delivery: String(firstSelected.deliveryFee),
-                  item_id: firstSelected.id,
-                  vendor_id: firstSelected.vendorId,
-                  channel: "food",
-                  delivery_mode: "doorstep",
-                },
-              })
-            }
-          >
-            <Text style={styles.floatBtnText}>Checkout</Text>
-            <ChevronRight size={18} color="#ffffff" />
-          </Pressable>
-        </View>
-      ) : null}
     </SafeAreaView>
   );
 }
@@ -503,6 +519,20 @@ function HeaderButton({
       {icon}
       <View style={[styles.headerBadge, accent && styles.headerBadgeAccent]}>
         <Text style={styles.headerBadgeText}>{badge}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function BackHomeButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel="Back to home" hitSlop={10} style={styles.backHomeBtn} onPress={onPress}>
+      <View style={styles.backHomeTrail} />
+      <View style={styles.backHomeCore}>
+        <ArrowLeft size={19} color="#ffffff" strokeWidth={3} />
+      </View>
+      <View style={styles.backHomeBadge}>
+        <Home size={12} color="#0f6d80" strokeWidth={3} />
       </View>
     </Pressable>
   );
@@ -545,7 +575,38 @@ const styles = StyleSheet.create({
   skeletonSearch: { height: 58, borderRadius: 20, backgroundColor: "#d8e8ef" },
   skeletonCard: { height: 120, borderRadius: 24, backgroundColor: "#d8e8ef" },
   topSection: { gap: 14 },
-  brandTag: { color: "#16315f", fontSize: 16, fontWeight: "900", paddingHorizontal: 2 },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 2 },
+  brandTag: { color: "#16315f", fontSize: 16, fontWeight: "900" },
+  backHomeBtn: { width: 54, height: 38, justifyContent: "center" },
+  backHomeTrail: { position: "absolute", left: 19, width: 30, height: 8, borderRadius: 999, backgroundColor: "#ffd8c6" },
+  backHomeCore: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#16315f",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#ffffff",
+    shadowColor: "#16315f",
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+  },
+  backHomeBadge: {
+    position: "absolute",
+    right: 1,
+    bottom: 1,
+    width: 21,
+    height: 21,
+    borderRadius: 11,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#dbe6eb",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingHorizontal: 2 },
   locationRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#dcebef" },

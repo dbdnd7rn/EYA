@@ -1,5 +1,6 @@
 import { supabase, supabaseNewApp } from "./supabase.js";
 import { notifyCampusOrderCreated, notifyOrderDelivered, notifyPaymentState } from "./push.js";
+import { buildFoodOrderSnapshot } from "./foodMenu.js";
 
 function throwIfError(error) {
   if (error) throw new Error(error.message || "Database operation failed.");
@@ -125,7 +126,7 @@ export async function recordPaymentInitiation({ input, checkoutUrl, providerPayl
     user_id: userId,
     purpose,
     related_order_id: typeof metadata.related_order_id === "string" ? metadata.related_order_id : null,
-    project: input.project || "pa-level",
+    project: input.project || "eya",
     provider: "paychangu",
     method: typeof metadata.payment_method === "string" ? metadata.payment_method : "mpamba",
     reference: txRef,
@@ -337,7 +338,7 @@ async function walletTopupAlreadyCredited(payment) {
 async function getCatalogItemsByIds(itemIds) {
   const { data, error } = await supabaseNewApp
     .from("catalog_items")
-    .select("id, vendor_id, channel, name, price_mwk, is_active")
+    .select("id, vendor_id, channel, name, description, price_mwk, is_active")
     .in("id", itemIds);
   throwIfError(error);
   return new Map((data || []).map((row) => [row.id, row]));
@@ -358,7 +359,11 @@ async function prepareCampusMarketOrderDraft({ customerId, orderDraft }) {
     if (!item) throw new Error(`Catalog item not found: ${line.item_id}`);
     if (item.vendor_id !== orderDraft.vendor_id) throw new Error("All line items must belong to the same vendor.");
     if (item.channel !== orderDraft.channel) throw new Error("Line items do not match the declared order channel.");
-    return sum + Number(item.price_mwk) * Number(line.quantity || 0);
+    const foodSnapshot =
+      orderDraft.channel === "food"
+        ? buildFoodOrderSnapshot(item.name, item.price_mwk, item.description, line.food_customization)
+        : { unitPrice: Number(item.price_mwk) };
+    return sum + Number(foodSnapshot.unitPrice) * Number(line.quantity || 0);
   }, 0);
 
   const deliveryFee = Number(orderDraft.delivery_fee_mwk || 0);
@@ -387,12 +392,16 @@ async function prepareCampusMarketOrderDraft({ customerId, orderDraft }) {
   const orderItems = lines.map((line) => {
     const item = catalogById.get(line.item_id);
     const quantity = Number(line.quantity || 0);
+    const foodSnapshot =
+      orderDraft.channel === "food"
+        ? buildFoodOrderSnapshot(item.name, item.price_mwk, item.description, line.food_customization)
+        : { itemNameSnapshot: item.name, unitPrice: Number(item.price_mwk) };
     return {
       item_id: line.item_id,
-      item_name_snapshot: item.name,
+      item_name_snapshot: foodSnapshot.itemNameSnapshot,
       quantity,
-      unit_price_mwk: Number(item.price_mwk),
-      line_total_mwk: Number(item.price_mwk) * quantity,
+      unit_price_mwk: foodSnapshot.unitPrice,
+      line_total_mwk: foodSnapshot.unitPrice * quantity,
     };
   });
 
@@ -464,7 +473,7 @@ async function createCampusMarketWalletCheckoutFallback({ userId, email, orderDr
       user_id: customerId,
       purpose: "wallet_order_payment",
       related_order_id: orderId,
-      project: "pa-level",
+      project: "eya",
       provider: "wallet",
       method: null,
       reference: paymentReference,
@@ -699,6 +708,94 @@ export async function createCampusMarketWalletCheckout({ userId, email, orderDra
   };
 }
 
+export async function createCampusMarketCashCheckout({ userId, email, orderDraft, title, description }) {
+  const customerId = await resolveProfileUserId(userId, email);
+  if (!customerId) throw new Error("Cash checkout is missing a valid customer profile.");
+
+  const prepared = await prepareCampusMarketOrderDraft({ customerId, orderDraft });
+  const orderId = await insertCampusMarketOrder(prepared);
+  const handoff = createHandoffSecurity(orderId);
+  const paymentReference = `cash_${orderId}`;
+  const now = new Date().toISOString();
+
+  const { data: payment, error: paymentError } = await supabase
+    .from("payments")
+    .insert({
+      user_id: customerId,
+      purpose: "cash_order_payment",
+      related_order_id: orderId,
+      project: "eya",
+      provider: "cash",
+      method: "cash",
+      reference: paymentReference,
+      tx_ref: paymentReference,
+      currency: "MWK",
+      amount_mwk: Math.round(prepared.total),
+      title: title || "Cash order payment",
+      description: description || "Cash on delivery order",
+      customer_email: email || null,
+      status: "paid",
+      metadata: {
+        purpose: "campus_market_order",
+        payment_source: "cash",
+        payment_method: "cash",
+        payment_method_label: "Cash on Delivery",
+        settlement: "collect_on_delivery",
+        order: orderDraft,
+        handoff,
+      },
+      provider_payload: {
+        source: "cash",
+        settlement: "collect_on_delivery",
+      },
+      verified_at: now,
+      paid_at: now,
+    })
+    .select("id")
+    .single();
+  throwIfError(paymentError);
+
+  await appendPaymentEvent(payment.id, "cash_checkout", "paid", {
+    order_id: orderId,
+    settlement: "collect_on_delivery",
+  });
+
+  await upsertOrderHandoff({
+    orderId,
+    paymentId: payment.id,
+    handoff,
+  });
+
+  await notifyPaymentState(
+    {
+      id: payment.id,
+      user_id: customerId,
+      related_order_id: orderId,
+      status: "paid",
+      provider: "cash",
+      method: "cash",
+      amount_mwk: Math.round(prepared.total),
+      title: title || "Cash order payment",
+      description: description || "Cash on delivery order",
+      customer_email: email || null,
+      reference: paymentReference,
+      metadata: {
+        purpose: "campus_market_order",
+        payment_source: "cash",
+        payment_method: "cash",
+        payment_method_label: "Cash on Delivery",
+      },
+    },
+    "paid",
+  );
+  await notifyCampusOrderCreated(orderId);
+
+  return {
+    orderId,
+    payment: { id: payment.id, reference: paymentReference },
+  };
+}
+
 export async function getPaymentByRelatedOrderId(orderId) {
   const { data, error } = await supabase
     .from("payments")
@@ -733,6 +830,32 @@ export async function markHandoffVerified(orderId, verifier, proof) {
     throw new Error("Invalid delivery verification code.");
   }
 
+  const { data: delivery, error: deliveryLookupError } = await supabaseNewApp
+    .from("deliveries")
+    .select("order_id,status,driver_id,delivered_at")
+    .eq("order_id", orderId)
+    .maybeSingle();
+  throwIfError(deliveryLookupError);
+  if (!delivery) throw new Error("Delivery record not found.");
+
+  const deliveryStatus = String(delivery.status || "").toLowerCase();
+  if (!handoff.verified_at && deliveryStatus !== "arriving" && deliveryStatus !== "delivered") {
+    throw new Error("Delivery must be marked arriving before handoff verification.");
+  }
+
+  if (handoff.verified_at) {
+    return {
+      ...payment,
+      metadata: {
+        ...metadata,
+        handoff: {
+          ...asObject(metadata.handoff),
+          ...handoff,
+        },
+      },
+    };
+  }
+
   const nextMetadata = {
     ...metadata,
     handoff: {
@@ -757,7 +880,7 @@ export async function markHandoffVerified(orderId, verifier, proof) {
     handoff: nextMetadata.handoff,
   });
 
-  const { error: deliveryError } = await supabaseNewApp
+  const { error: deliveryUpdateError } = await supabaseNewApp
     .from("deliveries")
     .update({
       status: "delivered",
@@ -765,8 +888,8 @@ export async function markHandoffVerified(orderId, verifier, proof) {
       updated_at: new Date().toISOString(),
     })
     .eq("order_id", orderId);
-  if (deliveryError && !String(deliveryError.message || "").toLowerCase().includes("0 rows")) {
-    throw new Error(deliveryError.message);
+  if (deliveryUpdateError && !String(deliveryUpdateError.message || "").toLowerCase().includes("0 rows")) {
+    throw new Error(deliveryUpdateError.message);
   }
 
   const { error: orderError } = await supabaseNewApp

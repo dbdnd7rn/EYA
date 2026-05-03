@@ -1,4 +1,4 @@
-﻿/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,7 +17,6 @@ import {
 } from "react-native";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import MapView, { Marker } from "react-native-maps";
 import {
   Armchair,
   BadgeCheck,
@@ -45,7 +44,9 @@ import {
   Heart,
   Phone,
 } from "lucide-react-native";
+import RoomLocationMap from "@/components/RoomLocationMap";
 import { formatCacheTime, getCachedJson, setCachedJson } from "@/lib/offlineCache";
+import { notifyEnquiryParticipant, previewEnquiryText } from "@/lib/enquiryNotifications";
 import { getSavedStatusWithPending, queueOfflineSaveToggle } from "@/lib/savedRoomsOffline";
 import { supabase } from "@/lib/supabase";
 import { goBackOrFallback } from "@/lib/navigation";
@@ -189,6 +190,17 @@ function buildLandlordPrompt(listing: Listing) {
   return `Hi, is "${listing.title}" still available?`;
 }
 
+function toDialPhone(phone?: string | null) {
+  const clean = String(phone ?? "").trim();
+  if (!clean) return null;
+  return clean.startsWith("+") ? clean : `+${clean}`;
+}
+
+function toWhatsAppPhone(phone?: string | null) {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  return digits || null;
+}
+
 function safeNum(n: any) {
   const x = Number(n);
   return Number.isFinite(x) ? x : 0;
@@ -277,6 +289,8 @@ export default function RoomDetailsScreen() {
   const [isVerified, setIsVerified] = useState(false);
   const [verifLoading, setVerifLoading] = useState(false);
   const reveal = useRef(new Animated.Value(0)).current;
+  const sectionStep = 0.08;
+  const sectionWindow = 0.24;
 
   const photos = listing?.image_urls ?? [];
   const primaryPhoto = photos[0] ?? null;
@@ -294,6 +308,8 @@ export default function RoomDetailsScreen() {
   const occupancyLabel = listing?.occupancy_mode === "shared"
     ? `Shared - up to ${listing.students_per_room ?? "-"} students/room`
     : "Single - 1 student/room";
+  const dialPhone = toDialPhone(listing?.contact_phone);
+  const whatsappPhone = toWhatsAppPhone(listing?.contact_phone);
 
   const amenitySections = useMemo(() => {
     let remaining = showAllAmenities ? Number.MAX_SAFE_INTEGER : collapsedAmenitiesLimit;
@@ -318,14 +334,14 @@ export default function RoomDetailsScreen() {
 
   const sectionAnim = (index: number) => ({
     opacity: reveal.interpolate({
-      inputRange: [index * 0.12, index * 0.12 + 0.35],
+      inputRange: [index * sectionStep, index * sectionStep + sectionWindow],
       outputRange: [0, 1],
       extrapolate: "clamp",
     }),
     transform: [
       {
         translateY: reveal.interpolate({
-          inputRange: [index * 0.12, index * 0.12 + 0.35],
+          inputRange: [index * sectionStep, index * sectionStep + sectionWindow],
           outputRange: [16, 0],
           extrapolate: "clamp",
         }),
@@ -580,6 +596,9 @@ export default function RoomDetailsScreen() {
     }
     if (!uid || !listing?.landlord_id) return;
 
+    const trimmedMessage = enquiryText.trim();
+    if (!trimmedMessage) return;
+
     setSendingEnquiry(true);
 
     const { data, error } = await supabase
@@ -588,7 +607,7 @@ export default function RoomDetailsScreen() {
         student_id: uid,
         landlord_id: listing.landlord_id,
         listing_id: listing.id,
-        message: enquiryText.trim(),
+        message: trimmedMessage,
         status: "new",
       })
       .select()
@@ -602,6 +621,31 @@ export default function RoomDetailsScreen() {
     setEnquiryText("");
 
     if (data?.id) {
+      await Promise.allSettled([
+        supabase.from("messages").insert({
+          enquiry_id: data.id,
+          sender_id: uid,
+          receiver_id: listing.landlord_id,
+          sender_role: "student",
+          receiver_role: "landlord",
+          message_type: "text",
+          content: trimmedMessage,
+          image_url: null,
+        }),
+        notifyEnquiryParticipant({
+          recipientId: listing.landlord_id,
+          recipientRole: "landlord",
+          enquiryId: data.id,
+          listingId: listing.id,
+          listingTitle: listing.title,
+          title: "New room enquiry",
+          message: `${listing.title}: ${previewEnquiryText(trimmedMessage)}`,
+          extraData: {
+            senderRole: "student",
+          },
+        }),
+      ]);
+
       router.push({ pathname: "/(student)/chat/[enquiryId]", params: { enquiryId: data.id } });
     }
   };
@@ -882,33 +926,13 @@ export default function RoomDetailsScreen() {
               </Text>
 
               {listing.latitude != null && listing.longitude != null ? (
-                <View style={styles.mapCard}>
-                  <MapView
-                    style={styles.map}
-                    initialRegion={{
-                      latitude: listing.latitude,
-                      longitude: listing.longitude,
-                      latitudeDelta: 0.015,
-                      longitudeDelta: 0.015,
-                    }}
-                    scrollEnabled
-                    zoomEnabled
-                    rotateEnabled={false}
-                    pitchEnabled={false}
-                  >
-                    <Marker
-                      coordinate={{ latitude: listing.latitude, longitude: listing.longitude }}
-                      title={listing.title}
-                      description={[listing.area, listing.city, listing.campus].filter(Boolean).join(", ")}
-                    />
-                  </MapView>
-
-                  <View pointerEvents="box-none" style={styles.mapOverlay}>
-                    <Pressable style={styles.mapOverlayBtn} onPress={() => mapsHref && Linking.openURL(mapsHref)}>
-                      <Text style={styles.mapOverlayBtnText}>Open in Maps</Text>
-                    </Pressable>
-                  </View>
-                </View>
+                <RoomLocationMap
+                  latitude={listing.latitude}
+                  longitude={listing.longitude}
+                  title={listing.title}
+                  description={[listing.area, listing.city, listing.campus].filter(Boolean).join(", ")}
+                  mapsHref={mapsHref}
+                />
               ) : (
                 <View style={styles.mapPlaceholder}>
                   <Text style={styles.mapPlaceholderTitle}>Map location not available</Text>
@@ -1028,8 +1052,8 @@ export default function RoomDetailsScreen() {
 
                 {listing.contact_phone ? (
                   <>
-                    {(listing.contact_method === "call" || listing.contact_method === "both") && (
-                      <Pressable style={[styles.btnNavy, styles.btnSecondary]} onPress={() => Linking.openURL(`tel:+${listing.contact_phone}`)}>
+                    {(listing.contact_method === "call" || listing.contact_method === "both") && dialPhone && (
+                      <Pressable style={[styles.btnNavy, styles.btnSecondary]} onPress={() => Linking.openURL(`tel:${dialPhone}`)}>
                         <View style={styles.btnRow}>
                           <Phone size={15} color="#fff" />
                           <Text style={styles.btnText}>Call landlord</Text>
@@ -1037,8 +1061,8 @@ export default function RoomDetailsScreen() {
                       </Pressable>
                     )}
 
-                    {(listing.contact_method === "whatsapp" || listing.contact_method === "both") && (
-                      <Pressable style={styles.btnGreen} onPress={() => Linking.openURL(`https://wa.me/${listing.contact_phone}`)}>
+                    {(listing.contact_method === "whatsapp" || listing.contact_method === "both") && whatsappPhone && (
+                      <Pressable style={styles.btnGreen} onPress={() => Linking.openURL(`https://wa.me/${whatsappPhone}`)}>
                         <Text style={styles.btnText}>Chat on WhatsApp</Text>
                       </Pressable>
                     )}

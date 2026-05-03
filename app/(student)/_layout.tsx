@@ -1,19 +1,34 @@
 import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import StudentGuard from "@/components/StudentGuard";
 import { PreferredLocationProvider } from "@/providers/PreferredLocationProvider";
+import { StudentThemeProvider, useStudentTheme } from "@/providers/StudentThemeProvider";
+
+function StudentStack() {
+  const { mode } = useStudentTheme();
+
+  return (
+    <>
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: "fade_from_bottom",
+          animationDuration: 220,
+        }}
+      />
+    </>
+  );
+}
 
 export default function StudentLayout() {
   return (
     <StudentGuard>
-      <PreferredLocationProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            animation: "fade_from_bottom",
-            animationDuration: 220,
-          }}
-        />
-      </PreferredLocationProvider>
+      <StudentThemeProvider>
+        <PreferredLocationProvider>
+          <StudentStack />
+        </PreferredLocationProvider>
+      </StudentThemeProvider>
     </StudentGuard>
   );
 }

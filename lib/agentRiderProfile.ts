@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const AGENT_PROFILE_KEY = "pamaketi_agent_profile_v1";
+const AGENT_PROFILE_KEY = "eya_agent_profile_v1";
 
 export type AgentRiderProfile = {
   userId: string;

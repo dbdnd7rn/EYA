@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Image, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, CalendarClock, Heart, ImagePlus, MapPin, Send } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -41,7 +41,7 @@ async function uploadChatImage(asset: { uri: string; fileName?: string | null; m
   const form = new FormData();
   form.append("file", { uri: asset.uri, name: meta.name, type: meta.type } as any);
   form.append("upload_preset", uploadPreset);
-  form.append("folder", "pamaketi/vendor-chat");
+  form.append("folder", "eya/vendor-chat");
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form });
   const json = await res.json();
@@ -71,6 +71,7 @@ export default function StudentVendorChatPage() {
   const [messages, setMessages] = useState<VendorMessageRow[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const scrollRef = React.useRef<ScrollView | null>(null);
   const quickPrompts = [
     "Is this still available?",
     "Where are you located?",
@@ -273,102 +274,117 @@ export default function StudentVendorChatPage() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <View style={styles.headerBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={18} color="#0e2756" />
-        </Pressable>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 12}
+      >
+        <View style={styles.headerBar}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <ArrowLeft size={18} color="#0e2756" />
+          </Pressable>
 
-        <View style={styles.avatarWrap}>
-          <Text style={styles.avatarText}>{initials(title)}</Text>
-        </View>
-
-        <View style={styles.headerTextWrap}>
-          <Text numberOfLines={1} style={styles.hostelName}>{title}</Text>
-          <Text style={styles.locText}>{conversationSubject || vendor?.area || vendor?.campus || "Campus seller"}</Text>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.chat}>
-        {itemId ? (
-          <View style={styles.summaryCard}>
-            {itemImage ? <Image source={{ uri: itemImage }} style={styles.summaryImage} /> : null}
-            <View style={styles.summaryCopy}>
-              <Text style={styles.summaryTitle}>{itemName || conversationSubject || "Interested item"}</Text>
-              <Text style={styles.summaryPrice}>K{itemPrice.toLocaleString("en-MW")}</Text>
-              <Text style={styles.summaryMeta}>{itemCategory} • {vendorName || title}</Text>
-            </View>
-            <Pressable
-              style={styles.summaryBtn}
-              onPress={() => router.push({ pathname: "/(student)/market/[id]", params: { id: itemId } })}
-            >
-              <Text style={styles.summaryBtnText}>View item</Text>
-            </Pressable>
+          <View style={styles.avatarWrap}>
+            <Text style={styles.avatarText}>{initials(title)}</Text>
           </View>
-        ) : null}
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promptRow}>
-          {quickPrompts.map((prompt) => (
-            <Pressable key={prompt} style={styles.promptChip} onPress={() => setDraft(prompt)}>
-              <Text style={styles.promptChipText}>{prompt}</Text>
-            </Pressable>
-          ))}
+          <View style={styles.headerTextWrap}>
+            <Text numberOfLines={1} style={styles.hostelName}>{title}</Text>
+            <Text style={styles.locText}>{conversationSubject || vendor?.area || vendor?.campus || "Campus seller"}</Text>
+          </View>
+        </View>
+
+        <ScrollView
+          ref={scrollRef as any}
+          style={styles.chatScroll}
+          contentContainerStyle={styles.chat}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        >
+          {itemId ? (
+            <View style={styles.summaryCard}>
+              {itemImage ? <Image source={{ uri: itemImage }} style={styles.summaryImage} /> : null}
+              <View style={styles.summaryCopy}>
+                <Text style={styles.summaryTitle}>{itemName || conversationSubject || "Interested item"}</Text>
+                <Text style={styles.summaryPrice}>K{itemPrice.toLocaleString("en-MW")}</Text>
+                <Text style={styles.summaryMeta}>{itemCategory} • {vendorName || title}</Text>
+              </View>
+              <Pressable
+                style={styles.summaryBtn}
+                onPress={() => router.push({ pathname: "/(student)/market/[id]", params: { id: itemId } })}
+              >
+                <Text style={styles.summaryBtnText}>View item</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promptRow}>
+            {quickPrompts.map((prompt) => (
+              <Pressable key={prompt} style={styles.promptChip} onPress={() => setDraft(prompt)}>
+                <Text style={styles.promptChipText}>{prompt}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          {messages.map((m) => {
+            const mine = m.sender_role === "customer";
+            return (
+              <View key={m.id} style={[styles.bubbleRow, mine ? styles.rowMine : styles.rowOther]}>
+                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+                  {m.message_type === "image" && m.image_url ? (
+                    <Image source={{ uri: m.image_url }} style={styles.chatImage} resizeMode="cover" />
+                  ) : (
+                    <Text style={[styles.msgText, mine ? styles.msgTextMine : styles.msgTextOther]}>{m.content}</Text>
+                  )}
+                  <Text style={[styles.time, mine ? styles.timeMine : styles.timeOther]}>{fmtTime(m.created_at)}</Text>
+                </View>
+              </View>
+            );
+          })}
+
+          {itemId ? (
+            <View style={styles.flowRow}>
+              <Pressable style={styles.flowBtn} onPress={markInterested}>
+                <Heart size={16} color="#0f6d80" />
+                <Text style={styles.flowBtnText}>Mark as interested</Text>
+              </Pressable>
+              <Pressable style={styles.flowBtnWarm} onPress={arrangePickup}>
+                <MapPin size={16} color="#102a54" />
+                <Text style={styles.flowBtnWarmText}>Arrange pickup</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </ScrollView>
 
-        {messages.map((m) => {
-          const mine = m.sender_role === "customer";
-          return (
-            <View key={m.id} style={[styles.bubbleRow, mine ? styles.rowMine : styles.rowOther]}>
-              <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
-                {m.message_type === "image" && m.image_url ? (
-                  <Image source={{ uri: m.image_url }} style={styles.chatImage} resizeMode="cover" />
-                ) : (
-                  <Text style={[styles.msgText, mine ? styles.msgTextMine : styles.msgTextOther]}>{m.content}</Text>
-                )}
-                <Text style={[styles.time, mine ? styles.timeMine : styles.timeOther]}>{fmtTime(m.created_at)}</Text>
-              </View>
-            </View>
-          );
-        })}
+        <View style={styles.inputBar}>
+          <Pressable style={styles.iconBtn} onPress={sendImage} disabled={sending}>
+            <ImagePlus size={18} color="#0e2756" />
+          </Pressable>
 
-        {itemId ? (
-          <View style={styles.flowRow}>
-            <Pressable style={styles.flowBtn} onPress={markInterested}>
-              <Heart size={16} color="#0f6d80" />
-              <Text style={styles.flowBtnText}>Mark as interested</Text>
-            </Pressable>
-            <Pressable style={styles.flowBtnWarm} onPress={arrangePickup}>
-              <MapPin size={16} color="#102a54" />
-              <Text style={styles.flowBtnWarmText}>Arrange pickup</Text>
-            </Pressable>
-          </View>
-        ) : null}
-      </ScrollView>
+          <TextInput
+            style={styles.textInput}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Type a message..."
+            placeholderTextColor="#9aa3bd"
+            onSubmitEditing={sendText}
+            onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
+            returnKeyType="send"
+          />
 
-      <View style={styles.inputBar}>
-        <Pressable style={styles.iconBtn} onPress={sendImage} disabled={sending}>
-          <ImagePlus size={18} color="#0e2756" />
-        </Pressable>
-
-        <TextInput
-          style={styles.textInput}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Type a message..."
-          placeholderTextColor="#9aa3bd"
-          onSubmitEditing={sendText}
-          returnKeyType="send"
-        />
-
-        <Pressable style={[styles.sendBtn, sending && { opacity: 0.6 }]} onPress={sendText} disabled={sending}>
-          <Send size={16} color="#fff" />
-        </Pressable>
-      </View>
+          <Pressable style={[styles.sendBtn, sending && { opacity: 0.6 }]} onPress={sendText} disabled={sending}>
+            <Send size={16} color="#fff" />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
+  flex: { flex: 1 },
   headerBar: {
     backgroundColor: "#fff",
     borderBottomWidth: 1,
@@ -385,6 +401,7 @@ const styles = StyleSheet.create({
   headerTextWrap: { flex: 1, minWidth: 0 },
   hostelName: { color: "#0e2756", fontWeight: "900", fontSize: 15 },
   locText: { color: "#5f6b85", fontWeight: "600", fontSize: 12 },
+  chatScroll: { flex: 1 },
   chat: { padding: 14, gap: 10, paddingBottom: 20 },
   summaryCard: {
     borderRadius: 24,

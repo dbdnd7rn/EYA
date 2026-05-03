@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,86 +10,52 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 import {
-  BriefcaseBusiness,
-  ChevronDown,
   Eye,
   EyeOff,
-  House,
   LockKeyhole,
   Mail,
   Phone,
-  Search,
   UserRound,
-  UtensilsCrossed,
 } from "lucide-react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { supabase } from "@/lib/supabase";
-import { createVendor, listMyVendors } from "@/lib/newApp/vendors";
 import { ENV } from "@/lib/env";
+import { consumeAuthFeedback } from "@/lib/authFeedback";
+import { signInWithGoogle } from "@/lib/googleAuth";
 import { useAuth } from "@/providers/AuthProvider";
 import EyaWordmark from "@/components/brand/EyaWordmark";
 import GoogleMark from "@/components/brand/GoogleMark";
-import { signInWithGoogle } from "@/lib/googleAuth";
-
-type RoleChoice = "student" | "vendor" | "landlord" | "agent";
-
-const ROLE_OPTIONS: {
-  value: RoleChoice;
-  label: string;
-  buttonLabel: string;
-  Icon: typeof UserRound;
-}[] = [
-  { value: "student", label: "Student", buttonLabel: "Student", Icon: Search },
-  { value: "agent", label: "Agent", buttonLabel: "Agent", Icon: BriefcaseBusiness },
-  { value: "vendor", label: "Restaurant", buttonLabel: "Restaurant", Icon: UtensilsCrossed },
-  { value: "landlord", label: "Landlord", buttonLabel: "Landlord", Icon: House },
-];
-
-async function ensureSellerVendor(ownerId: string, fullName: string) {
-  const existing = await listMyVendors(ownerId);
-  const current = existing.find((row) => row.supports_market) ?? existing[0] ?? null;
-  if (current) return current;
-
-  try {
-    return await createVendor(ownerId, {
-      name: fullName || "Seller Shop",
-      description: "Campus seller storefront",
-      supports_market: true,
-      supports_food: false,
-      campus: null,
-      area: null,
-      city: null,
-    });
-  } catch {
-    const retry = await listMyVendors(ownerId);
-    const resolved = retry.find((row) => row.supports_market) ?? retry[0] ?? null;
-    if (resolved) return resolved;
-    throw new Error("Could not create or load seller shop. Please retry.");
-  }
-}
 
 export default function SignupScreen() {
   const { signInDev } = useAuth();
-  const params = useLocalSearchParams<{ role?: string }>();
-  const initialRole = params.role === "vendor" || params.role === "landlord" || params.role === "agent" ? params.role : "student";
-
-  const [roleChoice, setRoleChoice] = useState<RoleChoice>(initialRole);
-  const [showRoles, setShowRoles] = useState(true);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
-  const selectedRole = ROLE_OPTIONS.find((item) => item.value === roleChoice) ?? ROLE_OPTIONS[0];
+  useEffect(() => {
+    let active = true;
+
+    const hydrateFeedback = async () => {
+      const feedback = await consumeAuthFeedback("signup");
+      if (!active || !feedback) return;
+      setErrorMsg(feedback.error ?? null);
+      setInfoMsg(feedback.info ?? null);
+    };
+
+    void hydrateFeedback();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const submit = async () => {
     setErrorMsg(null);
@@ -103,7 +68,7 @@ export default function SignupScreen() {
 
     try {
       if (ENV.DEV_AUTH_MODE) {
-        await signInDev({ email: email.trim() || `${roleChoice}@local.dev`, role: roleChoice });
+        await signInDev({ email: email.trim() || "student@local.dev", role: "student" });
         router.replace("/redirect");
         return;
       }
@@ -119,7 +84,7 @@ export default function SignupScreen() {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
             phone: phone.trim(),
-            role: roleChoice,
+            role: "student",
           },
         },
       });
@@ -140,7 +105,7 @@ export default function SignupScreen() {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
             phone: phone.trim() || null,
-            role: roleChoice,
+            role: "student",
             onboarded: true,
             updated_at: new Date().toISOString(),
           };
@@ -151,14 +116,6 @@ export default function SignupScreen() {
             if (updateRes.error) {
               setErrorMsg(`Account created but role setup failed: ${updateRes.error.message}. Please retry login.`);
               return;
-            }
-          }
-
-          if (roleChoice === "vendor") {
-            try {
-              await ensureSellerVendor(uid, fullName);
-            } catch (vendorError: any) {
-              console.warn("Seller shop setup deferred after signup:", vendorError?.message ?? vendorError);
             }
           }
         }
@@ -181,7 +138,7 @@ export default function SignupScreen() {
     setGoogleLoading(true);
 
     try {
-      const result = await signInWithGoogle(roleChoice);
+      const result = await signInWithGoogle(null, "signup");
       if (!result.redirected && !result.cancelled) {
         router.replace("/redirect");
       }
@@ -203,7 +160,7 @@ export default function SignupScreen() {
               </View>
 
               <Text style={styles.title}>Create your EYA account</Text>
-              <Text style={styles.subtitle}>Choose your role, then create your account.</Text>
+              <Text style={styles.subtitle}>Create your user account first. Add other workspaces later from profile.</Text>
 
               {ENV.DEV_AUTH_MODE ? (
                 <View style={styles.infoBox}>
@@ -213,34 +170,12 @@ export default function SignupScreen() {
 
               <Text style={styles.sectionLabel}>Sign up as</Text>
 
-              <Pressable style={styles.selectButton} onPress={() => setShowRoles((value) => !value)}>
+              <View style={styles.selectButton}>
                 <View style={styles.inputIconWrap}>
                   <UserRound size={22} color="#4a5b87" />
                 </View>
-                <Text style={styles.selectButtonText}>{selectedRole.buttonLabel || "Select Role"}</Text>
-                <ChevronDown size={24} color="#4a5b87" style={{ transform: [{ rotate: showRoles ? "180deg" : "0deg" }] }} />
-              </Pressable>
-
-              {showRoles ? (
-                <View style={styles.roleMenu}>
-                  {ROLE_OPTIONS.map(({ value, label, Icon }, index) => {
-                    const selected = value === roleChoice;
-                    return (
-                      <Pressable
-                        key={value}
-                        onPress={() => {
-                          setRoleChoice(value);
-                          setShowRoles(false);
-                        }}
-                        style={[styles.roleRow, index < ROLE_OPTIONS.length - 1 && styles.roleRowBorder, selected && styles.roleRowSelected]}
-                      >
-                        <Icon size={22} color={selected ? "#102968" : "#566788"} />
-                        <Text style={[styles.roleText, selected && styles.roleTextSelected]}>{label}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
+                <Text style={styles.selectButtonText}>User</Text>
+              </View>
 
               <View style={styles.inputStack}>
                 <View style={styles.inlineInputs}>
@@ -342,11 +277,7 @@ export default function SignupScreen() {
                 <View style={styles.orLine} />
               </View>
 
-              <Pressable
-                style={styles.googleButton}
-                onPress={handleGoogleSignup}
-                disabled={googleLoading || loading}
-              >
+              <Pressable style={styles.googleButton} onPress={handleGoogleSignup} disabled={googleLoading || loading}>
                 <View style={styles.googleBadge}>
                   <GoogleMark size={22} />
                 </View>
@@ -355,7 +286,7 @@ export default function SignupScreen() {
 
               <Text style={styles.loginPrompt}>
                 Already have an account?{" "}
-                <Text style={styles.loginLink} onPress={() => router.push({ pathname: "/(auth)/login", params: { role: roleChoice } })}>
+                <Text style={styles.loginLink} onPress={() => router.push("/(auth)/login")}>
                   Log In
                 </Text>
               </Text>

@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -16,7 +16,7 @@ export default function ForgotPasswordScreen() {
     setLoading(true);
 
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: "pamaketi://auth/callback?type=recovery",
+      redirectTo: "eya://auth/callback?type=recovery",
     });
 
     setLoading(false);

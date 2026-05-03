@@ -1,4 +1,4 @@
-﻿import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 export type PricingAudience = "student" | "landlord" | "vendor" | "restaurant";
 export type PricingGoal = "budget" | "growth" | "delivery" | "trust";

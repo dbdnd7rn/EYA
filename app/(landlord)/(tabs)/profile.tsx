@@ -19,7 +19,6 @@ import {
   CreditCard,
   Ellipsis,
   House,
-  LogOut,
   Settings,
   Shield,
 } from "lucide-react-native";
@@ -90,7 +89,7 @@ function Notice({ tone, text }: { tone: "error" | "ok"; text: string }) {
 }
 
 export default function LandlordProfileScreen() {
-  const { user, signOut } = useAuth();
+  const { user, role, setActiveRole } = useAuth();
   const { unreadCount } = useNotificationInbox();
   const router = useRouter();
 
@@ -106,6 +105,7 @@ export default function LandlordProfileScreen() {
 
   const displayEmail = profile?.email ?? user?.email ?? "-";
   const avatarUrl = profile?.avatar_url ?? null;
+  const isAdmin = role === "admin" || user?.user_metadata?.role === "admin";
 
   const derivedName = useMemo(() => {
     const joined =
@@ -142,11 +142,6 @@ export default function LandlordProfileScreen() {
         if (!profileData) {
           setErr("Could not load profile.");
           setLoading(false);
-          return;
-        }
-
-        if (profileData.role !== "landlord" && profileData.role !== "admin") {
-          router.replace("/onboarding");
           return;
         }
 
@@ -222,33 +217,55 @@ export default function LandlordProfileScreen() {
   const openQuickActions = () => {
     Alert.alert("Quick actions", "Choose what to open.", [
       { text: "My listings", onPress: () => router.push("/(landlord)/(tabs)/listings") },
-      { text: "Enquiries", onPress: () => router.push("/(landlord)/(tabs)/enquiries") },
+      { text: "Notifications", onPress: () => router.push("/(landlord)/notifications") },
       { text: "Cancel", style: "cancel" },
     ]);
   };
 
   const openSecurity = () => {
-    Alert.alert(
-      "Account security",
-      "Password and email access are managed through your login account. Use Settings here to update your landlord contact details.",
-    );
+    router.push({
+      pathname: "/support",
+      params: {
+        type: "message_us",
+        subject: "Landlord account security",
+        prefill: "I need help securing, recovering, or updating my landlord account access.",
+      },
+    } as any);
   };
 
-  const logout = () => {
-    Alert.alert("Log out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
+  const openWorkspaceSwitch = () => {
+    Alert.alert("Switch workspace", "Move around the app without logging out.", [
+      ...(isAdmin
+        ? [
+            {
+              text: "Admin portal",
+              onPress: () => void openAdminPortal(),
+            },
+          ]
+        : []),
       {
-        text: "Log out",
-        style: "destructive",
+        text: "User section",
         onPress: async () => {
-          try {
-            await signOut();
-          } finally {
-            router.replace("/(auth)/login");
-          }
+          await setActiveRole("student");
+          router.replace("/(student)/(tabs)/account");
         },
       },
+      {
+        text: "Manage roles",
+        onPress: () => router.push({ pathname: "/onboarding", params: { role: "landlord" } }),
+      },
+      { text: "Cancel", style: "cancel" },
     ]);
+  };
+
+  const openAdminPortal = async () => {
+    await setActiveRole("admin");
+    router.replace("/admin" as any);
+  };
+
+  const goBackToUserSection = async () => {
+    await setActiveRole("student");
+    router.replace("/(student)/(tabs)/account");
   };
 
   if (loading) {
@@ -336,6 +353,22 @@ export default function LandlordProfileScreen() {
             onPress={() => setEditorOpen((current) => !current)}
             subtitle={editorOpen ? "Hide profile editor" : "Edit profile and landlord tools"}
           />
+          <MenuRow
+            accent="#fff4ea"
+            icon={<House size={20} color="#9f5b1f" />}
+            label="Switch workspace"
+            onPress={openWorkspaceSwitch}
+            subtitle="Go back to the user section or manage roles"
+          />
+          {isAdmin ? (
+            <MenuRow
+              accent="#f8f5ec"
+              icon={<Shield size={20} color="#111827" />}
+              label="Admin Portal"
+              onPress={() => void openAdminPortal()}
+              subtitle="Return to platform control"
+            />
+          ) : null}
         </View>
 
         {editorOpen ? (
@@ -383,9 +416,9 @@ export default function LandlordProfileScreen() {
           </View>
         ) : null}
 
-        <Pressable style={styles.logoutPill} onPress={logout}>
-          <LogOut size={16} color="#ff0f64" />
-          <Text style={styles.logoutPillText}>Log Out</Text>
+        <Pressable style={styles.userSectionPill} onPress={() => void goBackToUserSection()}>
+          <House size={16} color="#3354b8" />
+          <Text style={styles.userSectionPillText}>Go back to User section</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -661,20 +694,20 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 13,
   },
-  logoutPill: {
+  userSectionPill: {
     alignSelf: "center",
     minHeight: 50,
     borderRadius: 999,
-    backgroundColor: "#fff0f6",
+    backgroundColor: "#eef1ff",
     borderWidth: 1,
-    borderColor: "#ffd2e5",
+    borderColor: "#dbe3ff",
     paddingHorizontal: 18,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
-  logoutPillText: {
-    color: "#ff0f64",
+  userSectionPillText: {
+    color: "#3354b8",
     fontSize: 15,
     fontWeight: "900",
   },

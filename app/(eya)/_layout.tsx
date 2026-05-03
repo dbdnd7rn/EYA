@@ -1,10 +1,13 @@
 import { Stack } from "expo-router";
 import StudentGuard from "@/components/StudentGuard";
+import { StudentThemeProvider } from "@/providers/StudentThemeProvider";
 
 export default function StudentLayout() {
   return (
     <StudentGuard>
-      <Stack screenOptions={{ headerShown: false }} />
+      <StudentThemeProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </StudentThemeProvider>
     </StudentGuard>
   );
 }

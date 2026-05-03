@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import { config, getCancelUrl, getSuccessUrl } from "./config.js";
 
@@ -55,11 +56,11 @@ export function buildCheckoutPayload(input) {
     callback_url: getSuccessUrl(),
     return_url: getCancelUrl(),
     customization: {
-      title: input.title || "Pa-Level payment",
+      title: input.title || "EYA payment",
       description: input.description || "Checkout payment",
     },
     meta: {
-      project: input.project || "pa-level",
+      project: input.project || "eya",
       ...(input.meta && typeof input.meta === "object" ? input.meta : {}),
     },
   };
