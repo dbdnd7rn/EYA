@@ -1,4 +1,5 @@
 import { ENV } from "@/lib/env";
+import { supabase } from "@/lib/supabase";
 
 export type AdminOrderStatus = "pending" | "accepted" | "preparing" | "picked_up" | "on_the_way" | "delivered" | "cancelled";
 export type AdminDeliveryStatus = "searching" | "assigned" | "picked_up" | "arriving" | "delivered" | "failed" | "cancelled";
@@ -205,6 +206,104 @@ async function parseJson<T>(res: Response) {
     throw new Error(payload?.message || `Request failed (${res.status}).`);
   }
   return payload;
+}
+
+function isMissingEndpointError(error: unknown) {
+  return error instanceof Error && /\(404\)|not found/i.test(error.message);
+}
+
+async function listBroadcastRecipientIds(audienceRole: AdminBroadcastAudience) {
+  const pageSize = 1000;
+  const ids = new Set<string>();
+
+  for (let from = 0; ; from += pageSize) {
+    let query = supabase.from("profiles").select("id").range(from, from + pageSize - 1);
+    if (audienceRole !== "all") query = query.eq("role", audienceRole);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    (data ?? []).forEach((row) => {
+      const id = (row as { id?: string | null }).id;
+      if (id) ids.add(id);
+    });
+
+    if (!data || data.length < pageSize) break;
+  }
+
+  return [...ids];
+}
+
+async function broadcastViaSupabaseRpc(input: {
+  title: string;
+  message: string;
+  audienceRole: AdminBroadcastAudience;
+  priority?: "normal" | "important";
+  type?: string;
+}) {
+  const { data, error } = await supabase.rpc("admin_broadcast_notification", {
+    p_title: input.title,
+    p_message: input.message,
+    p_audience_role: input.audienceRole,
+    p_priority: input.priority ?? "normal",
+    p_type: input.type ?? "admin_notice",
+  });
+
+  if (error) throw error;
+
+  const payload = (data ?? {}) as { status?: string; sent_to?: number; audience_role?: AdminBroadcastAudience };
+  return {
+    status: payload.status ?? "success",
+    sent_to: Number(payload.sent_to ?? 0),
+    audience_role: payload.audience_role ?? input.audienceRole,
+  };
+}
+
+async function broadcastViaClientInsert(input: {
+  title: string;
+  message: string;
+  audienceRole: AdminBroadcastAudience;
+  priority?: "normal" | "important";
+  type?: string;
+}) {
+  const userIds = await listBroadcastRecipientIds(input.audienceRole);
+  const rows = userIds.map((userId) => ({
+    user_id: userId,
+    title: input.title,
+    message: input.message,
+    type: input.type ?? "admin_notice",
+    priority: input.priority ?? "normal",
+    data: {
+      audienceRole: input.audienceRole,
+      broadcast: true,
+    },
+    is_read: false,
+  }));
+
+  if (rows.length) {
+    const { error } = await supabase.from("notifications").insert(rows);
+    if (error) throw error;
+  }
+
+  return {
+    status: "success",
+    sent_to: userIds.length,
+    audience_role: input.audienceRole,
+  };
+}
+
+async function broadcastViaSupabase(input: {
+  title: string;
+  message: string;
+  audienceRole: AdminBroadcastAudience;
+  priority?: "normal" | "important";
+  type?: string;
+}) {
+  try {
+    return await broadcastViaSupabaseRpc(input);
+  } catch {
+    return broadcastViaClientInsert(input);
+  }
 }
 
 export async function listAdminOrders(input: {
@@ -678,16 +777,29 @@ export async function broadcastAdminNotification(input: {
     return { status: "success", sent_to: 0, audience_role: input.audienceRole };
   }
 
-  const res = await fetch(backendUrl("/api/admin/broadcast"), {
-    method: "POST",
-    headers: adminHeaders({ userId: input.userId, accessToken: input.accessToken, json: true }),
-    body: JSON.stringify({
-      title: input.title,
-      message: input.message,
-      audience_role: input.audienceRole,
-      priority: input.priority ?? "normal",
-      type: input.type ?? "system",
-    }),
-  });
-  return parseJson<{ status: string; sent_to: number; audience_role: AdminBroadcastAudience }>(res);
+  try {
+    const res = await fetch(backendUrl("/api/admin/broadcast"), {
+      method: "POST",
+      headers: adminHeaders({ userId: input.userId, accessToken: input.accessToken, json: true }),
+      body: JSON.stringify({
+        title: input.title,
+        message: input.message,
+        audience_role: input.audienceRole,
+        priority: input.priority ?? "normal",
+        type: input.type ?? "system",
+      }),
+    });
+    return await parseJson<{ status: string; sent_to: number; audience_role: AdminBroadcastAudience }>(res);
+  } catch (error) {
+    if (isMissingEndpointError(error)) {
+      return broadcastViaSupabase({
+        title: input.title,
+        message: input.message,
+        audienceRole: input.audienceRole,
+        priority: input.priority,
+        type: input.type,
+      });
+    }
+    throw error;
+  }
 }
