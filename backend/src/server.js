@@ -94,6 +94,25 @@ async function listBroadcastRecipientIds(audience) {
   const pageSize = 1000;
   const ids = new Set();
 
+  async function addAuthUserIds() {
+    for (let page = 1; ; page += 1) {
+      const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: pageSize });
+      if (error) throw new Error(error.message);
+
+      const users = data?.users || [];
+      for (const user of users) {
+        if (user?.id) ids.add(user.id);
+      }
+
+      if (users.length < pageSize) break;
+    }
+  }
+
+  if (audience === "all") {
+    await addAuthUserIds();
+    return [...ids];
+  }
+
   for (let from = 0; ; from += pageSize) {
     let query = supabase.from("profiles").select("id,role").range(from, from + pageSize - 1);
     if (audience !== "all") query = query.eq("role", audience);
@@ -106,6 +125,25 @@ async function listBroadcastRecipientIds(audience) {
     }
 
     if (!data || data.length < pageSize) break;
+  }
+
+  if (audience === "student") {
+    const nonStudentProfileIds = new Set();
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase.from("profiles").select("id,role").neq("role", "student").range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+
+      for (const row of data || []) {
+        if (row?.id) nonStudentProfileIds.add(row.id);
+      }
+
+      if (!data || data.length < pageSize) break;
+    }
+
+    await addAuthUserIds();
+    for (const id of nonStudentProfileIds) {
+      ids.delete(id);
+    }
   }
 
   return [...ids];
@@ -1888,7 +1926,12 @@ app.post("/api/admin/broadcast", async (req, res) => {
       });
     }
 
-    return res.json({ status: "success", sent_to: userIds.length, audience_role: audience });
+    return res.json({
+      status: "success",
+      sent_to: userIds.length,
+      audience_role: audience,
+      recipient_source: audience === "all" || audience === "student" ? "auth_users" : "profiles",
+    });
   } catch (error) {
     return sendError(res, 403, error instanceof Error ? error.message : "Could not send broadcast.");
   }

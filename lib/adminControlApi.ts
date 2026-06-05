@@ -143,6 +143,14 @@ export type AdminUserSummary = {
 
 export type AdminBroadcastAudience = AdminUserSummary["role"] | "all";
 
+type AdminBroadcastResponse = {
+  status: string;
+  sent_to: number;
+  audience_role: AdminBroadcastAudience;
+  push_sent?: number;
+  recipient_source?: string;
+};
+
 export type AdminStaffInviteInput = {
   email: string;
   fullName?: string | null;
@@ -251,11 +259,12 @@ async function broadcastViaSupabaseRpc(input: {
 
   if (error) throw error;
 
-  const payload = (data ?? {}) as { status?: string; sent_to?: number; audience_role?: AdminBroadcastAudience };
+  const payload = (data ?? {}) as Partial<AdminBroadcastResponse>;
   return {
     status: payload.status ?? "success",
     sent_to: Number(payload.sent_to ?? 0),
     audience_role: payload.audience_role ?? input.audienceRole,
+    recipient_source: payload.recipient_source,
   };
 }
 
@@ -289,6 +298,7 @@ async function broadcastViaClientInsert(input: {
     status: "success",
     sent_to: userIds.length,
     audience_role: input.audienceRole,
+    recipient_source: "profiles",
   };
 }
 
@@ -789,7 +799,21 @@ export async function broadcastAdminNotification(input: {
         type: input.type ?? "system",
       }),
     });
-    return await parseJson<{ status: string; sent_to: number; audience_role: AdminBroadcastAudience }>(res);
+    const result = await parseJson<AdminBroadcastResponse>(res);
+    const expectedRecipients = await listBroadcastRecipientIds(input.audienceRole).catch(() => []);
+    const sentTo = Number(result.sent_to ?? 0);
+    const profileRecipientShortfall = expectedRecipients.length > 0 && sentTo < expectedRecipients.length;
+    const profileOnlyAllBroadcast = input.audienceRole === "all" && result.recipient_source !== "auth_users" && sentTo <= 1;
+    if (profileRecipientShortfall || profileOnlyAllBroadcast) {
+      return broadcastViaSupabase({
+        title: input.title,
+        message: input.message,
+        audienceRole: input.audienceRole,
+        priority: input.priority,
+        type: input.type,
+      });
+    }
+    return result;
   } catch (error) {
     if (isMissingEndpointError(error)) {
       return broadcastViaSupabase({
