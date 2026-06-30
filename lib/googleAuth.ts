@@ -14,6 +14,10 @@ WebBrowser.maybeCompleteAuthSession();
 
 type RoleChoice = "student" | "vendor" | "landlord" | "agent" | "admin";
 
+type GoogleAuthResult =
+  | { redirected: true; cancelled?: false }
+  | { redirected: false; cancelled: boolean };
+
 const PENDING_ROLE_KEY = "auth.pending_google_role";
 
 function redirectTo() {
@@ -98,6 +102,10 @@ async function rememberPendingRole(role: RoleChoice) {
   await AsyncStorage.setItem(PENDING_ROLE_KEY, role);
 }
 
+async function forgetPendingRole() {
+  await AsyncStorage.removeItem(PENDING_ROLE_KEY);
+}
+
 async function finalizeRoleSetup(role: RoleChoice | null) {
   const {
     data: { user },
@@ -119,6 +127,20 @@ async function finalizeRoleSetup(role: RoleChoice | null) {
   }
 }
 
+async function finalizeExistingSession() {
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  if (error) throw error;
+  if (!session?.user) return false;
+
+  const pendingRole = await consumePendingRole();
+  await finalizeRoleSetup(pendingRole);
+  return true;
+}
+
 export async function completeGoogleAuthFromUrl(url: string) {
   const params = mergeUrlParams(url);
   const authError = params.get("error_description") || params.get("error");
@@ -130,7 +152,14 @@ export async function completeGoogleAuthFromUrl(url: string) {
 
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) throw error;
+    if (error) {
+      // The deep-link callback can sometimes finish first on mobile. If that
+      // already created a Supabase session, treat OAuth as successful instead
+      // of showing a false failure to the user.
+      const recovered = await finalizeExistingSession();
+      if (!recovered) throw error;
+      return;
+    }
   } else if (accessToken && refreshToken) {
     const { error } = await supabase.auth.setSession({
       access_token: accessToken,
@@ -138,14 +167,16 @@ export async function completeGoogleAuthFromUrl(url: string) {
     });
     if (error) throw error;
   } else {
-    throw new Error("Google sign-in did not return a valid session.");
+    const recovered = await finalizeExistingSession();
+    if (!recovered) throw new Error("Google sign-in did not return a valid session.");
+    return;
   }
 
   const pendingRole = await consumePendingRole();
   await finalizeRoleSetup(pendingRole);
 }
 
-export async function signInWithGoogle(role: RoleChoice | null = null, screen: AuthScreen = "login") {
+export async function signInWithGoogle(role: RoleChoice | null = null, screen: AuthScreen = "login"): Promise<GoogleAuthResult> {
   if (role === "admin") {
     throw new Error("Admin accounts are provisioned manually. Use the approved admin email and password.");
   }
@@ -154,7 +185,7 @@ export async function signInWithGoogle(role: RoleChoice | null = null, screen: A
   if (role) {
     await rememberPendingRole(role);
   } else {
-    await AsyncStorage.removeItem(PENDING_ROLE_KEY);
+    await forgetPendingRole();
   }
 
   const redirectUri = redirectTo();
@@ -175,11 +206,11 @@ export async function signInWithGoogle(role: RoleChoice | null = null, screen: A
     });
 
     if (error) {
-      await AsyncStorage.removeItem(PENDING_ROLE_KEY);
+      await forgetPendingRole();
       throw error;
     }
 
-    return { redirected: true as const };
+    return { redirected: true };
   }
 
   const { data, error } = await supabase.auth.signInWithOAuth({
@@ -195,12 +226,12 @@ export async function signInWithGoogle(role: RoleChoice | null = null, screen: A
   });
 
   if (error) {
-    await AsyncStorage.removeItem(PENDING_ROLE_KEY);
+    await forgetPendingRole();
     throw error;
   }
 
   if (!data?.url) {
-    await AsyncStorage.removeItem(PENDING_ROLE_KEY);
+    await forgetPendingRole();
     throw new Error("Google sign-in could not be started.");
   }
   if (__DEV__) {
@@ -209,20 +240,15 @@ export async function signInWithGoogle(role: RoleChoice | null = null, screen: A
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
   if (result.type !== "success") {
-    // Some native environments still complete session asynchronously even when
-    // openAuthSession reports cancellation. Confirm before treating as cancelled.
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
-      await AsyncStorage.removeItem(PENDING_ROLE_KEY);
-      return { redirected: false as const, cancelled: true as const };
-    }
-    const pendingRole = await consumePendingRole();
-    await finalizeRoleSetup(pendingRole);
-    return { redirected: false as const, cancelled: false as const };
+    // Some native environments still complete the Supabase session through the
+    // deep-link route even when the browser result says cancel/dismiss.
+    const recovered = await finalizeExistingSession();
+    if (recovered) return { redirected: false, cancelled: false };
+
+    await forgetPendingRole();
+    return { redirected: false, cancelled: true };
   }
 
   await completeGoogleAuthFromUrl(result.url);
-  return { redirected: false as const, cancelled: false as const };
+  return { redirected: false, cancelled: false };
 }
