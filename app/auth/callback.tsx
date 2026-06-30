@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
@@ -13,8 +13,20 @@ import { completeGoogleAuthFromUrl } from "@/lib/googleAuth";
 export default function AuthCallbackScreen() {
   const params = useLocalSearchParams<{ code?: string; type?: string; error?: string; error_description?: string }>();
   const currentUrl = Linking.useURL();
+  const handledRef = useRef(false);
 
   useEffect(() => {
+    const hasAuthPayload = Boolean(
+      params.code ||
+        params.error ||
+        params.error_description ||
+        currentUrl?.includes("code=") ||
+        currentUrl?.includes("error="),
+    );
+
+    if (!hasAuthPayload || handledRef.current) return;
+    handledRef.current = true;
+
     const run = async () => {
       const type = typeof params.type === "string" ? params.type : null;
       const authError =
@@ -63,7 +75,7 @@ export default function AuthCallbackScreen() {
     };
 
     void run();
-  }, [currentUrl, params, params.error, params.type]);
+  }, [currentUrl, params.code, params.error, params.error_description, params.type]);
 
   return (
     <View className="flex-1 items-center justify-center bg-white">
