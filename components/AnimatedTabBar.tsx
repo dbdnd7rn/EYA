@@ -1,6 +1,7 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   Easing,
   interpolateColor,
@@ -34,6 +35,7 @@ type Props = BottomTabBarProps & {
 type TabBadge = string | number | undefined;
 
 export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleTabNames }: Props) {
+  const insets = useSafeAreaInsets();
   const activeRouteKey = state.routes[state.index]?.key;
   const visibleRoutes = React.useMemo(
     () =>
@@ -70,7 +72,7 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
   }));
 
   return (
-    <View pointerEvents="box-none" style={styles.safeArea}>
+    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: Math.max(10, insets.bottom + 8) }]}>
       <View
         onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
         style={[
@@ -89,7 +91,7 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
             styles.indicator,
             indicatorStyle,
             {
-              width: Math.max(tabWidth - 10, 0),
+              width: Math.max(tabWidth - 8, 0),
               backgroundColor: theme.indicatorColor,
               shadowColor: theme.glowColor,
             },
@@ -226,8 +228,10 @@ function TabBarItem({
       ]}
     >
       <Pressable
-        accessibilityRole="button"
-        accessibilityState={isFocused ? { selected: true } : {}}
+        accessibilityLabel={`${label} tab`}
+        accessibilityRole="tab"
+        accessibilityState={isFocused ? { selected: true } : { selected: false }}
+        hitSlop={8}
         onLongPress={onLongPress}
         onPressIn={() => {
           pressedScale.value = withTiming(0.95, { duration: 80 });
@@ -255,7 +259,7 @@ function TabBarItem({
           </View>
         ) : null}
         {!hideLabel ? (
-          <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
+          <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1} allowFontScaling={false}>
             {label}
           </Animated.Text>
         ) : null}
@@ -287,20 +291,19 @@ export function renderAnimatedTabBar(theme: AnimatedTabTheme, visibleTabNames?: 
 const styles = StyleSheet.create({
   safeArea: {
     position: "absolute",
-    left: 12,
-    right: 12,
-    bottom: 12,
+    left: 10,
+    right: 10,
   },
   shell: {
     overflow: "hidden",
-    borderRadius: 34,
+    borderRadius: 32,
     borderWidth: 1,
-    minHeight: 82,
+    minHeight: 78,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 7,
     shadowOpacity: 0.18,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
@@ -312,10 +315,10 @@ const styles = StyleSheet.create({
   },
   indicator: {
     position: "absolute",
-    top: 8,
-    bottom: 8,
-    left: 5,
-    borderRadius: 28,
+    top: 7,
+    bottom: 7,
+    left: 4,
+    borderRadius: 27,
     shadowOpacity: 0.28,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 0 },
@@ -323,7 +326,8 @@ const styles = StyleSheet.create({
   },
   itemWrap: {
     flex: 1,
-    borderRadius: 28,
+    minWidth: 0,
+    borderRadius: 27,
     shadowOffset: { width: 0, height: 0 },
   },
   itemWrapFloating: {
@@ -332,13 +336,13 @@ const styles = StyleSheet.create({
     marginTop: -34,
   },
   pressable: {
-    minHeight: 66,
-    borderRadius: 28,
+    minHeight: 64,
+    borderRadius: 27,
     alignItems: "center",
     justifyContent: "center",
-    gap: 3,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    gap: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 7,
   },
   pressableFloating: {
     width: 88,
@@ -359,8 +363,8 @@ const styles = StyleSheet.create({
   },
   badgeWrap: {
     position: "absolute",
-    top: 8,
-    right: 16,
+    top: 7,
+    right: 12,
     minWidth: 20,
     height: 20,
     borderRadius: 10,
@@ -377,8 +381,9 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   label: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "900",
-    letterSpacing: 0.1,
+    letterSpacing: 0,
+    textAlign: "center",
   },
 });
