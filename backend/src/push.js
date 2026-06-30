@@ -69,7 +69,9 @@ export async function sendPushNotificationsToUsers(userIds, input) {
   const targets = uniqueUserIds(userIds);
   if (!targets.length) return { sent: 0 };
 
-  await createInAppNotifications(targets, input);
+  if (!input.skipInApp) {
+    await createInAppNotifications(targets, input);
+  }
 
   const tokenRows = await getPushTokensForUsers(targets);
   const tokens = uniqueTokens(tokenRows);

@@ -48,6 +48,7 @@ export type CatalogItemRow = {
   price_mwk: number;
   stock_qty: number | null;
   image_url: string | null;
+  image_urls: string[] | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -150,6 +151,7 @@ export type CatalogItemCreateInput = {
   price_mwk: number;
   stock_qty?: number | null;
   image_url?: string | null;
+  image_urls?: string[] | null;
 };
 
 export type CatalogItemUpdateInput = Partial<Omit<CatalogItemCreateInput, "vendor_id" | "channel" | "name" | "price_mwk">> & {

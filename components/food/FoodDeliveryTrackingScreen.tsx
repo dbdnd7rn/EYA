@@ -1,5 +1,5 @@
 import React from "react";
-import { ActivityIndicator, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowLeft,
@@ -31,6 +31,22 @@ export default function FoodDeliveryTrackingScreen({ fallbackRoute }: Props) {
   const from = params.from ?? "Vendor pickup";
   const to = params.to ?? "Campus residence";
   const eta = params.eta ?? "18 min";
+  const riderName = handoffLoading ? "Loading rider..." : handoff?.rider?.name || "Rider not assigned";
+  const riderPhone = handoff?.rider?.phone?.trim() || "";
+  const riderSub = riderPhone ? riderPhone : handoff?.rider ? "Phone not available" : "Tracking updates will show once an agent is assigned.";
+
+  const callRider = async () => {
+    if (!riderPhone) {
+      Alert.alert("Rider phone unavailable", "A rider phone number has not been assigned to this order yet.");
+      return;
+    }
+
+    try {
+      await Linking.openURL(`tel:${riderPhone.replace(/[^\d+]/g, "")}`);
+    } catch {
+      Alert.alert("Call failed", "Could not open the phone dialer on this device.");
+    }
+  };
 
   const progress = [
     { title: "Order confirmed", note: "Kitchen received your order and started prep.", done: true },
@@ -142,7 +158,7 @@ export default function FoodDeliveryTrackingScreen({ fallbackRoute }: Props) {
 
                 <Text style={styles.invoiceTitle}>{handoff.invoice.title ?? "Food order"}</Text>
                 <Text style={styles.invoiceMeta}>
-                  {handoff.invoice.line_items.map((line) => `${line.quantity}x ${line.item_name_snapshot}`).join(" · ") || "Delivery order"}
+                  {handoff.invoice.line_items.map((line) => `${line.quantity}x ${line.item_name_snapshot}`).join(" - ") || "Delivery order"}
                 </Text>
                 <Text style={styles.invoiceMeta}>{handoff.invoice.delivery_address ?? to}</Text>
               </View>
@@ -193,7 +209,7 @@ export default function FoodDeliveryTrackingScreen({ fallbackRoute }: Props) {
             </View>
             <View style={styles.riderCopy}>
               <Text style={styles.sectionTitle}>Rider details</Text>
-              <Text style={styles.riderSub}>Mphatso Banda | Bike | PB 2331</Text>
+              <Text style={styles.riderSub}>{riderName} | {riderSub}</Text>
             </View>
           </View>
 
@@ -202,7 +218,7 @@ export default function FoodDeliveryTrackingScreen({ fallbackRoute }: Props) {
             <MetaTile label="Destination" value={to} />
           </View>
 
-          <Pressable style={styles.callBtn}>
+          <Pressable style={[styles.callBtn, !riderPhone && styles.callBtnMuted]} onPress={callRider}>
             <Phone size={16} color="#ffffff" />
             <Text style={styles.callBtnText}>Call rider</Text>
             <ChevronRight size={18} color="#ffffff" />
@@ -435,5 +451,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
+  callBtnMuted: { backgroundColor: "#8aa4ad" },
   callBtnText: { color: "#ffffff", fontWeight: "900", fontSize: 14 },
 });

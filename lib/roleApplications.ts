@@ -59,8 +59,43 @@ async function writeDevApplications(rows: RoleApplication[]) {
   try {
     await AsyncStorage.setItem(DEV_APPLICATIONS_KEY, JSON.stringify(rows));
   } catch {
-    // Local role applications are a dev-mode convenience.
+    // Local role applications keep the admission flow usable when Supabase is unavailable.
   }
+}
+
+function readErrorText(error: unknown) {
+  if (!error) return "";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object") {
+    const value = error as { code?: unknown; details?: unknown; hint?: unknown; message?: unknown };
+    return [value.code, value.message, value.details, value.hint]
+      .filter((part) => typeof part === "string" && part.trim().length > 0)
+      .join(" ");
+  }
+  return String(error);
+}
+
+export function isRoleApplicationsUnavailableError(error: unknown) {
+  const text = readErrorText(error).toLowerCase();
+  if (!text) return false;
+
+  const missingTable =
+    text.includes("role_applications") &&
+    (text.includes("schema cache") ||
+      text.includes("could not find") ||
+      text.includes("does not exist") ||
+      text.includes("relation") ||
+      text.includes("not found"));
+
+  return (
+    missingTable ||
+    text.includes("network request failed") ||
+    text.includes("failed to fetch") ||
+    text.includes("fetch failed") ||
+    text.includes("networkerror") ||
+    text.includes("load failed")
+  );
 }
 
 function normalizeApplication(row: any): RoleApplication {
@@ -80,6 +115,42 @@ function normalizeApplication(row: any): RoleApplication {
     created_at: row.created_at ?? nowIso(),
     updated_at: row.updated_at ?? nowIso(),
   };
+}
+
+function applicationWorkspaceKey(row: Pick<RoleApplication, "user_id" | "target_role" | "application_kind">) {
+  return `${row.user_id}:${row.target_role}:${row.application_kind}`;
+}
+
+function isSamePendingApplication(row: RoleApplication, input: SubmitInput) {
+  return (
+    row.user_id === input.userId &&
+    row.target_role === input.targetRole &&
+    row.application_kind === input.applicationKind &&
+    row.status === "pending"
+  );
+}
+
+function sortApplications(rows: RoleApplication[]) {
+  return [...rows].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+}
+
+function mergeRoleApplications(remoteRows: RoleApplication[], localRows: RoleApplication[]) {
+  const merged: RoleApplication[] = [];
+  const remoteWorkspaceKeys = new Set(remoteRows.filter((row) => row.status !== "declined").map(applicationWorkspaceKey));
+  const seenIds = new Set<string>();
+
+  for (const row of [...remoteRows, ...localRows]) {
+    if (seenIds.has(row.id)) continue;
+    if (localRows.includes(row) && remoteWorkspaceKeys.has(applicationWorkspaceKey(row)) && row.status === "pending") continue;
+    seenIds.add(row.id);
+    merged.push(row);
+  }
+
+  return sortApplications(merged);
+}
+
+function isLocalApplicationId(id: string) {
+  return id.startsWith("dev-") || id.startsWith("local-");
 }
 
 function applicationRoleLabel(row: Pick<RoleApplication, "application_kind" | "target_role">) {
@@ -134,39 +205,61 @@ async function notifyApplicantAboutReview(row: RoleApplication) {
   }
 }
 
-export async function submitRoleApplication(input: SubmitInput) {
-  if (ENV.DEV_AUTH_MODE) {
-    const rows = await readDevApplications();
-    const existing = rows.find(
-      (row) =>
-        row.user_id === input.userId &&
-        row.target_role === input.targetRole &&
-        row.application_kind === input.applicationKind &&
-        row.status === "pending",
-    );
-    if (existing) return existing;
+async function submitLocalRoleApplication(input: SubmitInput, idPrefix = "local", options?: { notifyAdmins?: boolean }) {
+  const rows = await readDevApplications();
+  const existing = rows.find((row) => isSamePendingApplication(row, input));
+  if (existing) return normalizeApplication(existing);
 
-    const row: RoleApplication = {
-      id: `dev-${Date.now()}`,
-      user_id: input.userId,
-      target_role: input.targetRole,
-      application_kind: input.applicationKind,
-      status: "pending",
-      payload: input.payload,
-      applicant_name: input.applicantName ?? null,
-      applicant_email: input.applicantEmail ?? null,
-      applicant_phone: input.applicantPhone ?? null,
-      admin_note: null,
-      reviewed_by: null,
-      reviewed_at: null,
-      created_at: nowIso(),
-      updated_at: nowIso(),
-    };
-    await writeDevApplications([row, ...rows]);
-    await notifyAdminsAboutApplication(row);
-    return row;
-  }
+  const timestamp = nowIso();
+  const row: RoleApplication = {
+    id: `${idPrefix}-${Date.now()}`,
+    user_id: input.userId,
+    target_role: input.targetRole,
+    application_kind: input.applicationKind,
+    status: "pending",
+    payload: input.payload,
+    applicant_name: input.applicantName ?? null,
+    applicant_email: input.applicantEmail ?? null,
+    applicant_phone: input.applicantPhone ?? null,
+    admin_note: null,
+    reviewed_by: null,
+    reviewed_at: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+  await writeDevApplications([row, ...rows]);
+  if (options?.notifyAdmins) await notifyAdminsAboutApplication(row);
+  return row;
+}
 
+async function reviewLocalRoleApplication(input: {
+  applicationId: string;
+  status: Extract<RoleApplicationStatus, "approved" | "declined">;
+  adminUserId: string;
+  adminNote?: string | null;
+}) {
+  const reviewedAt = nowIso();
+  const rows = await readDevApplications();
+  const nextRows = rows.map((row) =>
+    row.id === input.applicationId
+      ? {
+          ...row,
+          status: input.status,
+          admin_note: input.adminNote ?? null,
+          reviewed_by: input.adminUserId,
+          reviewed_at: reviewedAt,
+          updated_at: reviewedAt,
+        }
+      : row,
+  );
+  await writeDevApplications(nextRows);
+  const updated = nextRows.find((row) => row.id === input.applicationId);
+  if (!updated) throw new Error("Application not found.");
+  await notifyApplicantAboutReview(updated);
+  return updated;
+}
+
+async function submitRemoteRoleApplication(input: SubmitInput) {
   const { data, error } = await supabase
     .from("role_applications")
     .insert({
@@ -184,17 +277,48 @@ export async function submitRoleApplication(input: SubmitInput) {
 
   if (error) {
     if (error.code === "23505") {
-      throw new Error("You already have a pending application for this workspace.");
+      const { data: existing, error: existingError } = await supabase
+        .from("role_applications")
+        .select("*")
+        .eq("user_id", input.userId)
+        .eq("target_role", input.targetRole)
+        .eq("application_kind", input.applicationKind)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!existingError && existing) return normalizeApplication(existing);
+      throw new Error("This application is already pending admin review.");
     }
     throw error;
   }
-  return normalizeApplication(data);
+
+  const row = normalizeApplication(data);
+  await notifyAdminsAboutApplication(row);
+  return row;
+}
+
+export async function submitRoleApplication(input: SubmitInput) {
+  if (ENV.DEV_AUTH_MODE) {
+    return submitLocalRoleApplication(input, "dev", { notifyAdmins: true });
+  }
+
+  try {
+    return await submitRemoteRoleApplication(input);
+  } catch (error) {
+    if (isRoleApplicationsUnavailableError(error)) {
+      return submitLocalRoleApplication(input, "local", { notifyAdmins: true });
+    }
+    throw error;
+  }
 }
 
 export async function listMyRoleApplications(userId: string) {
+  const localRows = (await readDevApplications()).filter((row) => row.user_id === userId).map(normalizeApplication);
+
   if (ENV.DEV_AUTH_MODE) {
-    const rows = await readDevApplications();
-    return rows.filter((row) => row.user_id === userId).map(normalizeApplication);
+    return sortApplications(localRows);
   }
 
   const { data, error } = await supabase
@@ -203,13 +327,18 @@ export async function listMyRoleApplications(userId: string) {
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
-  if (error) throw error;
-  return (data ?? []).map(normalizeApplication);
+  if (error) {
+    if (isRoleApplicationsUnavailableError(error)) return sortApplications(localRows);
+    throw error;
+  }
+  return mergeRoleApplications((data ?? []).map(normalizeApplication), localRows);
 }
 
 export async function listRoleApplicationsForAdmin() {
+  const localRows = (await readDevApplications()).map(normalizeApplication);
+
   if (ENV.DEV_AUTH_MODE) {
-    return (await readDevApplications()).map(normalizeApplication);
+    return sortApplications(localRows);
   }
 
   const { data, error } = await supabase
@@ -218,8 +347,11 @@ export async function listRoleApplicationsForAdmin() {
     .order("created_at", { ascending: false })
     .limit(240);
 
-  if (error) throw error;
-  return (data ?? []).map(normalizeApplication);
+  if (error) {
+    if (isRoleApplicationsUnavailableError(error)) return sortApplications(localRows);
+    throw error;
+  }
+  return mergeRoleApplications((data ?? []).map(normalizeApplication), localRows);
 }
 
 export async function reviewRoleApplication(input: {
@@ -228,28 +360,11 @@ export async function reviewRoleApplication(input: {
   adminUserId: string;
   adminNote?: string | null;
 }) {
-  const reviewedAt = nowIso();
-  if (ENV.DEV_AUTH_MODE) {
-    const rows = await readDevApplications();
-    const nextRows = rows.map((row) =>
-      row.id === input.applicationId
-        ? {
-            ...row,
-            status: input.status,
-            admin_note: input.adminNote ?? null,
-            reviewed_by: input.adminUserId,
-            reviewed_at: reviewedAt,
-            updated_at: reviewedAt,
-          }
-        : row,
-    );
-    await writeDevApplications(nextRows);
-    const updated = nextRows.find((row) => row.id === input.applicationId);
-    if (!updated) throw new Error("Application not found.");
-    await notifyApplicantAboutReview(updated);
-    return updated;
+  if (ENV.DEV_AUTH_MODE || isLocalApplicationId(input.applicationId)) {
+    return reviewLocalRoleApplication(input);
   }
 
+  const reviewedAt = nowIso();
   const { data, error } = await supabase
     .from("role_applications")
     .update({
@@ -262,8 +377,51 @@ export async function reviewRoleApplication(input: {
     .select("*")
     .single();
 
-  if (error) throw error;
-  return normalizeApplication(data);
+  if (error) {
+    if (isRoleApplicationsUnavailableError(error)) return reviewLocalRoleApplication(input);
+    throw error;
+  }
+  const row = normalizeApplication(data);
+  await notifyApplicantAboutReview(row);
+  return row;
+}
+
+export async function syncLocalRoleApplications(userId?: string | null) {
+  if (ENV.DEV_AUTH_MODE) return { synced: 0 };
+
+  const rows = await readDevApplications();
+  const localPendingRows = rows
+    .filter((row) => isLocalApplicationId(row.id))
+    .filter((row) => row.status === "pending")
+    .filter((row) => !userId || row.user_id === userId)
+    .map(normalizeApplication);
+
+  if (!localPendingRows.length) return { synced: 0 };
+
+  let nextRows = [...rows];
+  let synced = 0;
+
+  for (const row of localPendingRows) {
+    try {
+      await submitRemoteRoleApplication({
+        userId: row.user_id,
+        targetRole: row.target_role,
+        applicationKind: row.application_kind,
+        payload: row.payload,
+        applicantName: row.applicant_name,
+        applicantEmail: row.applicant_email,
+        applicantPhone: row.applicant_phone,
+      });
+    } catch {
+      continue;
+    }
+
+    nextRows = nextRows.filter((entry) => entry.id !== row.id);
+    synced += 1;
+  }
+
+  if (synced > 0) await writeDevApplications(nextRows);
+  return { synced };
 }
 
 export async function hasApprovedWorkspaceRole(userId: string, role: AppRole) {

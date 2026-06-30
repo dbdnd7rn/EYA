@@ -95,7 +95,7 @@ function isCompletedOrder(order: OrderRow, delivery: DeliveryRow | undefined) {
 
 function buildItemSummary(items: OrderItemRow[]) {
   if (!items.length) return "Order items unavailable";
-  return items.map((item) => `${item.quantity}x ${item.item_name_snapshot}`).join(" · ");
+  return items.map((item) => `${item.quantity}x ${item.item_name_snapshot}`).join(" - ");
 }
 
 export default function OrdersScreen() {
@@ -361,7 +361,7 @@ export default function OrdersScreen() {
                   </View>
 
                   <View style={styles.actionRow}>
-                    <Pressable style={[styles.softBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }]} onPress={() => router.push(row.mode === "food" ? "/(food)/(tabs)/food" : "/(student)/(tabs)/marketplace")}>
+                    <Pressable style={[styles.softBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }]} onPress={() => router.push((row.mode === "food" ? "/(food)/(tabs)/food" : "/(student)/market") as any)}>
                       <Text style={[styles.softBtnText, { color: theme.text }]}>Reorder</Text>
                     </Pressable>
                     {row.deliveryStatus ? (
@@ -377,7 +377,7 @@ export default function OrdersScreen() {
                         <Text style={[styles.softBtnText, { color: theme.text }]}>View delivery</Text>
                       </Pressable>
                     ) : (
-                      <Pressable style={[styles.softBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }]} onPress={() => router.push(row.mode === "food" ? "/(food)/(tabs)/food" : "/(student)/(tabs)/marketplace")}>
+                      <Pressable style={[styles.softBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.borderSoft }]} onPress={() => router.push((row.mode === "food" ? "/(food)/(tabs)/food" : "/(student)/market") as any)}>
                         <Text style={[styles.softBtnText, { color: theme.text }]}>View details</Text>
                       </Pressable>
                     )}
@@ -397,7 +397,7 @@ export default function OrdersScreen() {
               <Pressable style={[styles.emptyBtn, { backgroundColor: theme.accent }]} onPress={() => router.push("/(food)/(tabs)/food")}>
                 <Text style={styles.emptyBtnText}>Order food</Text>
               </Pressable>
-              <Pressable style={[styles.emptyBtn, { backgroundColor: theme.accent }]} onPress={() => router.push("/(student)/(tabs)/marketplace")}>
+              <Pressable style={[styles.emptyBtn, { backgroundColor: theme.accent }]} onPress={() => router.push("/(student)/market" as any)}>
                 <Text style={styles.emptyBtnText}>Browse market</Text>
               </Pressable>
             </View>

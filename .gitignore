@@ -20,3 +20,5 @@ credentials/
 dist/
 builds/
 .codex-*.log
+.codex-*.exit.txt
+.codex-logs/

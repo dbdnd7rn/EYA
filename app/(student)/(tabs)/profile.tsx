@@ -1,21 +1,23 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Image,
   Pressable,
   SafeAreaView,
-  Share,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { Camera, LogOut, Mail, Phone, Shield, User2 } from "lucide-react-native";
+import { BadgeCheck, Camera, CheckCircle2, Mail, Phone, Sparkles, User2 } from "lucide-react-native";
+import SoftPageGlow from "@/components/SoftPageGlow";
 import TopNav from "@/components/TopNav";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
@@ -50,6 +52,12 @@ function initials(fullName?: string | null) {
 
 function normalizeRole(role?: string | null): ProfileRole {
   return role === "landlord" || role === "admin" ? role : "student";
+}
+
+function profileRoleLabel(role: ProfileRole) {
+  if (role === "admin") return "Admin";
+  if (role === "landlord") return "Landlord";
+  return "User";
 }
 
 function getUploadFileMeta(asset: { uri: string; fileName?: string | null; mimeType?: string | null }) {
@@ -88,11 +96,13 @@ async function uploadAvatarExpo(asset: { uri: string; fileName?: string | null; 
 
 export default function StudentProfileScreen() {
   const router = useRouter();
-  const { user, role: authRole, signOut, loading: authLoading } = useAuth();
+  const { user, role: authRole, loading: authLoading } = useAuth();
+  const { width } = useWindowDimensions();
+  const reveal = useRef(new Animated.Value(0)).current;
+  const isNarrow = width < 640;
 
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
-  const [savingPassword, setSavingPassword] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const [email, setEmail] = useState("");
@@ -102,9 +112,6 @@ export default function StudentProfileScreen() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
-
-  const [oldPassword, setOldPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [fullNameForAvatar, setFullNameForAvatar] = useState<string | null>(null);
@@ -117,6 +124,17 @@ export default function StudentProfileScreen() {
   useEffect(() => {
     if (!authLoading && !user) router.replace("/(auth)/login");
   }, [authLoading, user, router]);
+
+  useEffect(() => {
+    if (authLoading || loading) return;
+    reveal.setValue(0);
+    Animated.timing(reveal, {
+      toValue: 1,
+      duration: 460,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [authLoading, loading, reveal]);
 
   useEffect(() => {
     if (!user) return;
@@ -257,62 +275,19 @@ export default function StudentProfileScreen() {
     }
   };
 
-  const onUpdatePassword = async () => {
-    if (!user) return;
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    try {
-      if (!oldPassword.trim()) throw new Error("Enter your old password.");
-      if (!newPassword.trim()) throw new Error("Enter a new password.");
-      if (newPassword.trim().length < 6) throw new Error("New password must be at least 6 characters.");
-
-      setSavingPassword(true);
-
-      const { error: reErr } = await supabase.auth.signInWithPassword({
-        email: user.email || email,
-        password: oldPassword.trim(),
-      });
-      if (reErr) throw new Error("Old password is incorrect.");
-
-      const { error: pwErr } = await supabase.auth.updateUser({ password: newPassword.trim() });
-      if (pwErr) throw pwErr;
-
-      setOldPassword("");
-      setNewPassword("");
-      setSuccessMsg("Password updated successfully.");
-    } catch (e: any) {
-      setErrorMsg(e?.message || "Failed to update password.");
-    } finally {
-      setSavingPassword(false);
-    }
-  };
-
-  const handleLogout = () => {
-    Alert.alert("Log out", "Log out of your account?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log out",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await signOut();
-          } finally {
-            router.replace("/(auth)/login");
-          }
-        },
-      },
-    ]);
-  };
-
   const displayName = `${firstName || "User"} ${lastName || ""}`.trim();
-  const appLink = "https://eya.vercel.app";
-  const roleLabel = "User";
-
-  const shareReferral = async () => {
-    await Share.share({
-      message: `Join me on EYA to find student accommodation. Get the app here: ${appLink}`,
-    });
+  const roleLabel = profileRoleLabel(role);
+  const profileComplete = Boolean(firstName.trim() && phone.trim() && avatarUrl);
+  const revealStyle = {
+    opacity: reveal,
+    transform: [
+      {
+        translateY: reveal.interpolate({
+          inputRange: [0, 1],
+          outputRange: [18, 0],
+        }),
+      },
+    ],
   };
 
   if (authLoading || loading) {
@@ -328,46 +303,70 @@ export default function StudentProfileScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      <SoftPageGlow variant="account" />
       <TopNav title="Profile" />
-      <ScrollView contentContainerStyle={styles.content}>
+      <Animated.ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} style={revealStyle}>
         <View style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <View style={styles.heroLeft}>
-              <View style={styles.avatarWrap}>
-                {avatarUrl ? (
-                  <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
-                ) : (
-                  <View style={styles.avatarFallback}>
-                    <Text style={styles.avatarFallbackText}>{initials(fullNameForAvatar ?? displayName)}</Text>
-                  </View>
-                )}
+          <View pointerEvents="none" style={styles.heroArt}>
+            <View style={styles.heroPanel} />
+            <View style={styles.heroRibbon} />
+            <View style={styles.heroMiniPanel} />
+          </View>
 
-                <Pressable style={styles.cameraBtn} onPress={pickAvatar}>
-                  <Camera size={14} color="#0e2756" />
-                </Pressable>
-              </View>
+          <View style={styles.heroKickerRow}>
+            <View style={styles.heroKicker}>
+              <Sparkles size={15} color="#ff0f64" />
+              <Text style={styles.heroLabel}>Profile center</Text>
+            </View>
+            <View style={styles.profileStatePill}>
+              <BadgeCheck size={14} color="#168653" />
+              <Text style={styles.profileStateText}>Active</Text>
+            </View>
+          </View>
 
-              <View style={styles.heroText}>
-                <Text style={styles.heroLabel}>User Profile</Text>
-                <Text style={styles.heroName}>{displayName || "User"}</Text>
-                <View style={styles.heroEmailRow}>
-                  <Mail size={14} color="#5b6887" />
-                  <Text numberOfLines={1} style={styles.heroEmail}>{email || "-"}</Text>
+          <View style={[styles.heroMain, isNarrow && styles.heroMainStack]}>
+            <View style={styles.avatarStage}>
+              <View style={styles.avatarRing}>
+                <View style={styles.avatarWrap}>
+                  {avatarUrl ? (
+                    <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+                  ) : (
+                    <View style={styles.avatarFallback}>
+                      <Text style={styles.avatarFallbackText}>{initials(fullNameForAvatar ?? displayName)}</Text>
+                    </View>
+                  )}
+
+                  <Pressable style={styles.cameraBtn} onPress={pickAvatar}>
+                    {uploadingAvatar ? <ActivityIndicator size="small" color="#ff0f64" /> : <Camera size={15} color="#0e2756" />}
+                  </Pressable>
                 </View>
               </View>
             </View>
 
-            <View style={styles.heroRight}>
-              {uploadingAvatar ? (
-                <View style={styles.heroPill}>
-                  <Text style={styles.heroPillText}>Uploading picture...</Text>
-                </View>
-              ) : null}
-              <View style={styles.heroPill}>
-                <Text style={styles.heroPillText}>
-                  Role: <Text style={styles.heroPillStrong}>{roleLabel}</Text>
-                </Text>
+            <View style={styles.heroText}>
+              <Text style={styles.heroName}>{displayName || "User"}</Text>
+              <Text style={styles.heroSub}>Manage the details students and workspace teams use to recognize you.</Text>
+              <View style={styles.heroEmailRow}>
+                <Mail size={15} color="#5b6887" />
+                <Text numberOfLines={1} style={styles.heroEmail}>{email || "-"}</Text>
               </View>
+            </View>
+          </View>
+
+          <View style={styles.heroChips}>
+            <View style={styles.heroChip}>
+              <User2 size={14} color="#5e73dd" />
+              <Text style={styles.heroChipText}>Role: {roleLabel}</Text>
+            </View>
+            <View style={styles.heroChip}>
+              <Mail size={14} color="#5e73dd" />
+              <Text style={styles.heroChipText}>Email ready</Text>
+            </View>
+            <View style={[styles.heroChip, profileComplete ? styles.heroChipDone : styles.heroChipTodo]}>
+              <CheckCircle2 size={14} color={profileComplete ? "#168653" : "#9a6a00"} />
+              <Text style={[styles.heroChipText, profileComplete ? styles.heroChipDoneText : styles.heroChipTodoText]}>
+                {profileComplete ? "Profile complete" : "Add photo and phone"}
+              </Text>
             </View>
           </View>
 
@@ -385,8 +384,13 @@ export default function StudentProfileScreen() {
 
         <View style={styles.sectionCard}>
           <View style={styles.sectionHead}>
-            <User2 size={18} color="#ff0f64" />
-            <Text style={styles.sectionTitle}>Personal info</Text>
+            <View style={styles.sectionIcon}>
+              <User2 size={18} color="#ff0f64" />
+            </View>
+            <View style={styles.sectionCopy}>
+              <Text style={styles.sectionTitle}>Personal info</Text>
+              <Text style={styles.sectionSub}>Keep your contact details accurate for orders, rooms and support.</Text>
+            </View>
           </View>
 
           <View style={styles.formGroup}>
@@ -403,7 +407,7 @@ export default function StudentProfileScreen() {
             <Text style={styles.helpText}>Changing email requires confirmation via link sent to your email.</Text>
           </View>
 
-          <View style={styles.row2}>
+          <View style={[styles.row2, isNarrow && styles.rowStacked]}>
             <View style={styles.col}>
               <Text style={styles.label}>First name</Text>
               <TextInput
@@ -442,138 +446,190 @@ export default function StudentProfileScreen() {
           </View>
 
           <Pressable style={[styles.primaryBtn, savingProfile && styles.btnDisabled]} onPress={onSaveProfile} disabled={savingProfile}>
+            <CheckCircle2 size={17} color="#ffffff" />
             <Text style={styles.primaryBtnText}>{savingProfile ? "Saving..." : "Save changes"}</Text>
           </Pressable>
         </View>
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHead}>
-            <Shield size={18} color="#ff0f64" />
-            <Text style={styles.sectionTitle}>Security</Text>
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Old password</Text>
-            <TextInput
-              style={styles.input}
-              value={oldPassword}
-              onChangeText={setOldPassword}
-              secureTextEntry
-              placeholder="Enter old password"
-              placeholderTextColor="#9aa3bd"
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>New password</Text>
-            <TextInput
-              style={styles.input}
-              value={newPassword}
-              onChangeText={setNewPassword}
-              secureTextEntry
-              placeholder="New password (min 6 chars)"
-              placeholderTextColor="#9aa3bd"
-            />
-          </View>
-
-          <Pressable
-            style={[styles.darkBtn, savingPassword && styles.btnDisabled]}
-            onPress={onUpdatePassword}
-            disabled={savingPassword}
-          >
-            <Text style={styles.darkBtnText}>{savingPassword ? "Updating..." : "Update password"}</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Refer friends</Text>
-          <Text style={styles.accountSub}>Share the app link so friends can install and join EYA.</Text>
-          <View style={styles.referralPill}>
-            <Text style={styles.referralLabel}>App link</Text>
-            <Text style={styles.referralCode}>{appLink}</Text>
-          </View>
-          <Pressable style={styles.primaryBtn} onPress={shareReferral}>
-            <Text style={styles.primaryBtnText}>Share app link</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Account</Text>
-          <Text style={styles.accountSub}>Log out from this device.</Text>
-
-          <Pressable style={styles.logoutBtn} onPress={handleLogout}>
-            <LogOut size={16} color="#b42318" />
-            <Text style={styles.logoutBtnText}>Log out</Text>
-          </Pressable>
-        </View>
-
         <Text style={styles.footerMeta}>EYA - Everything You Access</Text>
-      </ScrollView>
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f6f7fb" },
+  root: { flex: 1, backgroundColor: "#f4f2fb" },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 16, gap: 14, paddingBottom: 30 },
+  content: { padding: 14, gap: 14, paddingBottom: 110 },
 
   heroCard: {
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    padding: 16,
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "#e7ecfa",
+    padding: 18,
     shadowColor: "#0e2756",
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 3,
   },
-  heroTop: { gap: 12 },
-  heroLeft: { flexDirection: "row", gap: 12, alignItems: "center" },
+  heroArt: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  heroPanel: {
+    position: "absolute",
+    top: -42,
+    right: -36,
+    width: 190,
+    height: 136,
+    borderRadius: 34,
+    backgroundColor: "rgba(94,115,221,0.10)",
+    transform: [{ rotate: "-14deg" }],
+  },
+  heroRibbon: {
+    position: "absolute",
+    right: 30,
+    top: 96,
+    width: 124,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,15,100,0.08)",
+    transform: [{ rotate: "-16deg" }],
+  },
+  heroMiniPanel: {
+    position: "absolute",
+    right: 22,
+    bottom: 24,
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: "rgba(22,134,83,0.08)",
+    transform: [{ rotate: "18deg" }],
+  },
+  heroKickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 16,
+  },
+  heroKicker: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,15,100,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,15,100,0.16)",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  profileStatePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: "#ecfbf2",
+    borderWidth: 1,
+    borderColor: "#ccefd9",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  profileStateText: { color: "#168653", fontSize: 12, fontWeight: "900" },
+  heroMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  heroMainStack: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+  },
+  avatarStage: {
+    width: 112,
+    height: 112,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarRing: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 1,
+    borderColor: "#dfe6fb",
+    backgroundColor: "#f8faff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   avatarWrap: { position: "relative" },
-  avatarImg: { width: 80, height: 80, borderRadius: 40, backgroundColor: "#eef1fb" },
+  avatarImg: { width: 92, height: 92, borderRadius: 46, backgroundColor: "#eef1fb" },
   avatarFallback: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 92,
+    height: 92,
+    borderRadius: 46,
     backgroundColor: "#0e2756",
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarFallbackText: { color: "#fff", fontWeight: "900", fontSize: 22 },
+  avatarFallbackText: { color: "#fff", fontWeight: "900", fontSize: 24 },
   cameraBtn: {
     position: "absolute",
-    right: -4,
-    bottom: -4,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    right: -5,
+    bottom: 0,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#e7eaf6",
+    borderColor: "#dfe6fb",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#0e2756",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
-  heroText: { flex: 1, minWidth: 0 },
+  heroText: { flex: 1, minWidth: 0, gap: 6 },
   heroLabel: {
     color: "#ff0f64",
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "900",
     textTransform: "uppercase",
-    letterSpacing: 1.2,
+    letterSpacing: 0.8,
   },
-  heroName: { marginTop: 3, color: "#0e2756", fontSize: 22, fontWeight: "900" },
-  heroEmailRow: { marginTop: 6, flexDirection: "row", alignItems: "center", gap: 6 },
-  heroEmail: { flex: 1, color: "#5b6887", fontSize: 13, fontWeight: "600" },
-  heroRight: { gap: 8 },
-  heroPill: {
-    alignSelf: "flex-start",
-    backgroundColor: "#f6f7fb",
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  heroName: { color: "#0e2756", fontSize: 28, fontWeight: "900", lineHeight: 34 },
+  heroSub: { color: "#6e7892", fontSize: 13, fontWeight: "700", lineHeight: 19, maxWidth: 520 },
+  heroEmailRow: { flexDirection: "row", alignItems: "center", gap: 7, minWidth: 0 },
+  heroEmail: { flex: 1, color: "#5b6887", fontSize: 14, fontWeight: "800" },
+  heroChips: {
+    marginTop: 16,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
-  heroPillText: { color: "#5b6887", fontSize: 12, fontWeight: "600" },
-  heroPillStrong: { color: "#0e2756", fontWeight: "800" },
+  heroChip: {
+    minHeight: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#e6ecfa",
+    backgroundColor: "#f8faff",
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  heroChipDone: { backgroundColor: "#ecfbf2", borderColor: "#ccefd9" },
+  heroChipTodo: { backgroundColor: "#fff8e8", borderColor: "#f7df9c" },
+  heroChipText: { color: "#5b6887", fontSize: 12, fontWeight: "900" },
+  heroChipDoneText: { color: "#168653" },
+  heroChipTodoText: { color: "#9a6a00" },
 
   noticeBox: { marginTop: 12, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1 },
   noticeErr: { borderColor: "#fecdd3", backgroundColor: "#fff1f2" },
@@ -582,79 +638,70 @@ const styles = StyleSheet.create({
   noticeOkText: { color: "#15803d", fontWeight: "700", fontSize: 13 },
 
   sectionCard: {
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    padding: 16,
-    gap: 12,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: "#e7ecfa",
+    padding: 18,
+    gap: 14,
     shadowColor: "#0e2756",
     shadowOpacity: 0.08,
-    shadowRadius: 16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 2,
   },
-  sectionHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  sectionTitle: { color: "#0e2756", fontSize: 18, fontWeight: "900" },
-  formGroup: { gap: 6 },
-  row2: { flexDirection: "row", gap: 10 },
-  col: { flex: 1, gap: 6 },
-  label: { color: "#0e2756", fontSize: 12, fontWeight: "800" },
+  sectionHead: { flexDirection: "row", alignItems: "center", gap: 10 },
+  sectionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#ffd0df",
+    backgroundColor: "#fff1f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionCopy: { flex: 1, minWidth: 0 },
+  sectionTitle: { color: "#0e2756", fontSize: 20, fontWeight: "900" },
+  sectionSub: { color: "#6e7892", fontSize: 12, fontWeight: "700", lineHeight: 17, marginTop: 2 },
+  formGroup: { gap: 7 },
+  row2: { flexDirection: "row", gap: 12 },
+  rowStacked: { flexDirection: "column" },
+  col: { flex: 1, gap: 7, minWidth: 0 },
+  label: { color: "#0e2756", fontSize: 12, fontWeight: "900" },
   labelRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  helpText: { color: "#5b6887", fontSize: 11, fontWeight: "600" },
+  helpText: { color: "#6e7892", fontSize: 11, fontWeight: "700", lineHeight: 16 },
   input: {
     borderWidth: 1,
-    borderColor: "#d9deef",
-    backgroundColor: "#f9fafc",
+    borderColor: "#dce3f5",
+    backgroundColor: "#f9fbff",
     borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: 15,
+    paddingVertical: 13,
     color: "#0e2756",
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: "700",
+    minHeight: 50,
   },
   primaryBtn: {
     marginTop: 4,
     backgroundColor: "#ff0f64",
-    borderRadius: 16,
+    borderRadius: 18,
+    minHeight: 54,
     paddingVertical: 13,
+    paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
-  },
-  primaryBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
-  darkBtn: {
-    marginTop: 2,
-    backgroundColor: "#0e2756",
-    borderRadius: 16,
-    paddingVertical: 13,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  darkBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
-  btnDisabled: { opacity: 0.6 },
-  accountSub: { color: "#5b6887", fontSize: 13, marginTop: -6 },
-  logoutBtn: {
-    marginTop: 4,
-    alignSelf: "flex-start",
     flexDirection: "row",
-    alignItems: "center",
     gap: 8,
-    backgroundColor: "#fef2f2",
-    borderWidth: 1,
-    borderColor: "#fecaca",
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    shadowColor: "#ff0f64",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
   },
-  logoutBtnText: { color: "#b42318", fontWeight: "800", fontSize: 13 },
-  referralPill: {
-    backgroundColor: "#f6f7fb",
-    borderWidth: 1,
-    borderColor: "#e1e4ef",
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    gap: 2,
-  },
-  referralLabel: { color: "#5b6887", fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
-  referralCode: { color: "#0e2756", fontWeight: "900", fontSize: 18, letterSpacing: 0.4 },
-  footerMeta: { textAlign: "center", color: "#9aa3bd", fontSize: 11, marginTop: 4, fontWeight: "600" },
+  primaryBtnText: { color: "#fff", fontWeight: "900", fontSize: 15 },
+  btnDisabled: { opacity: 0.6 },
+  footerMeta: { textAlign: "center", color: "#8a94af", fontSize: 11, marginTop: 2, fontWeight: "800" },
 });
 
 

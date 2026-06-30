@@ -1,6 +1,7 @@
 import { supabase, supabaseNewApp } from "./supabase.js";
 import { notifyCampusOrderCreated, notifyOrderDelivered, notifyPaymentState } from "./push.js";
 import { buildFoodOrderSnapshot } from "./foodMenu.js";
+import { issueTicketOrderFromPayment } from "./tickets.js";
 
 function throwIfError(error) {
   if (error) throw new Error(error.message || "Database operation failed.");
@@ -602,6 +603,12 @@ async function finalizePayment(payment, verifyPayload) {
     return { payment, finalized: true };
   }
 
+  if (payment.status === "paid" && purpose === "ticket_order") {
+    const ticketResult = await issueTicketOrderFromPayment(payment, verifyPayload);
+    await appendPaymentEvent(payment.id, "verify", "paid", verifyPayload);
+    return { payment, finalized: ticketResult.finalized };
+  }
+
   if (payment.status === "paid" && payment.related_order_id) {
     await appendPaymentEvent(payment.id, "verify", "paid", verifyPayload);
     return { payment, finalized: true };
@@ -646,6 +653,10 @@ async function finalizePayment(payment, verifyPayload) {
 
   await appendPaymentEvent(payment.id, "verify", "paid", verifyPayload);
   await notifyPaymentState(data, "paid");
+  if (purpose === "ticket_order") {
+    const ticketResult = await issueTicketOrderFromPayment(data, verifyPayload);
+    return { payment: data, finalized: ticketResult.finalized };
+  }
   if (purpose === "campus_market_order" && relatedOrderId) {
     await upsertOrderHandoff({
       orderId: relatedOrderId,

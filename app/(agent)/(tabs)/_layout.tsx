@@ -3,8 +3,9 @@ import { StyleSheet, Text, View } from "react-native";
 import { Tabs } from "expo-router";
 import { Truck, User } from "lucide-react-native";
 import { createTabScreenOptions, renderAnimatedTabBar } from "@/components/AnimatedTabBar";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
-const theme = {
+const LIGHT_AGENT_TAB_THEME = {
   activeColor: "#1d275f",
   inactiveColor: "#5e688f",
   backgroundColor: "rgba(255,255,255,0.94)",
@@ -19,8 +20,26 @@ const theme = {
 } as const;
 
 export default function AgentTabsLayout() {
+  const { theme } = useStudentTheme();
+  const tabTheme = theme.isDark
+    ? {
+        activeColor: "#ffffff",
+        inactiveColor: "#9caac2",
+        backgroundColor: "rgba(9,15,27,0.96)",
+        borderColor: "#2a3d5c",
+        indicatorColor: "rgba(116,214,155,0.18)",
+        glowColor: "#74d69b",
+        sceneBackgroundColor: theme.background,
+        floatingTabName: "dashboard",
+        floatingTabBackgroundColor: "#2c8a72",
+        floatingTabBorderColor: "#0f1727",
+        floatingTabShadowColor: "#2c8a72",
+        blurTint: "dark" as const,
+      }
+    : LIGHT_AGENT_TAB_THEME;
+
   return (
-    <Tabs screenOptions={createTabScreenOptions(theme)} tabBar={renderAnimatedTabBar(theme, ["deliveries", "dashboard", "profile"])}>
+    <Tabs screenOptions={createTabScreenOptions(tabTheme)} tabBar={renderAnimatedTabBar(tabTheme, ["deliveries", "dashboard", "profile"])}>
       <Tabs.Screen name="deliveries" options={{ title: "Deliveries", tabBarIcon: ({ color }) => <Truck color={color} /> }} />
       <Tabs.Screen name="dashboard" options={{ title: "Online", tabBarIcon: ({ focused }) => <OnlineTabIcon focused={focused} /> }} />
       <Tabs.Screen name="earnings" options={{ href: null }} />

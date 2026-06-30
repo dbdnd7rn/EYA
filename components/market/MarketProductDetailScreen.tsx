@@ -1,7 +1,7 @@
 import React from "react";
-import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowLeft, CalendarClock, ChevronRight, Heart, MapPin, MessageCircle, ShieldCheck, Star, Truck } from "lucide-react-native";
+import { ArrowLeft, CalendarClock, ChevronLeft, ChevronRight, Heart, MapPin, MessageCircle, ShieldCheck, Star, Truck, X } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
 import { getMarketCardById, listMarketCards, type MarketCard } from "@/lib/newApp/browse";
 import { goBackOrFallback } from "@/lib/navigation";
@@ -9,7 +9,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { ensureMarketInterest } from "@/lib/marketInterest";
 
 type Props = {
-  fallbackRoute: "/(market)/(tabs)/marketplace" | "/(student)/(tabs)/marketplace";
+  fallbackRoute: "/(market)/(tabs)/marketplace" | "/(student)/(tabs)/marketplace" | "/(student)/market";
 };
 
 function buildSellerPrompt(item: MarketCard) {
@@ -32,13 +32,15 @@ function formatDateLabel(value: string) {
 export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
   const router = useRouter();
   const { user } = useAuth();
-  const isStudentView = fallbackRoute === "/(student)/(tabs)/marketplace";
+  const isStudentView = fallbackRoute !== "/(market)/(tabs)/marketplace";
   const params = useLocalSearchParams<{ id?: string }>();
   const [item, setItem] = React.useState<MarketCard | null>(null);
   const [similar, setSimilar] = React.useState<MarketCard[]>([]);
   const [deliver, setDeliver] = React.useState(true);
   const [liked, setLiked] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = React.useState(0);
+  const [photoViewerOpen, setPhotoViewerOpen] = React.useState(false);
 
   React.useEffect(() => {
     let active = true;
@@ -60,6 +62,10 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
     };
   }, [params.id]);
 
+  React.useEffect(() => {
+    setSelectedPhotoIndex(0);
+  }, [params.id]);
+
   if (loading) {
     return (
       <SafeAreaView style={styles.root}>
@@ -76,7 +82,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>Item unavailable</Text>
           <Text style={styles.emptySub}>This product is no longer available. Please browse other listings.</Text>
-          <Pressable style={styles.outlineBtn} onPress={() => router.push(fallbackRoute)}>
+          <Pressable style={styles.outlineBtn} onPress={() => router.push(fallbackRoute as any)}>
             <Text style={styles.outlineBtnText}>Back to market</Text>
           </Pressable>
         </View>
@@ -85,6 +91,15 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
   }
 
   const total = item.price + (deliver ? item.deliveryFee : 0);
+  const photos = item.images?.length ? item.images : [item.image];
+  const activePhotoIndex = Math.min(selectedPhotoIndex, Math.max(photos.length - 1, 0));
+  const selectedPhoto = photos[activePhotoIndex] ?? item.image;
+  const openPhotoViewer = (index = activePhotoIndex) => {
+    setSelectedPhotoIndex(index);
+    setPhotoViewerOpen(true);
+  };
+  const showPreviousPhoto = () => setSelectedPhotoIndex((current) => (current + photos.length - 1) % photos.length);
+  const showNextPhoto = () => setSelectedPhotoIndex((current) => (current + 1) % photos.length);
 
   const ensureInterest = async (mode: "chat" | "request") => {
     if (!user) {
@@ -114,7 +129,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topRow}>
-          <Pressable style={styles.iconBtn} onPress={() => goBackOrFallback(router, fallbackRoute)}>
+          <Pressable style={styles.iconBtn} onPress={() => goBackOrFallback(router, fallbackRoute as any)}>
             <ArrowLeft size={18} color="#0b3d4f" />
           </Pressable>
           <Text style={styles.screenTitle} numberOfLines={1}>{item.name}</Text>
@@ -123,20 +138,46 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
           </Pressable>
         </View>
 
-        <View style={styles.heroCard}>
-          <Image source={{ uri: item.image }} style={styles.heroImage} />
-        </View>
+        <Pressable
+          accessibilityRole="imagebutton"
+          accessibilityLabel="Open product image"
+          style={styles.heroCard}
+          onPress={() => openPhotoViewer(activePhotoIndex)}
+        >
+          <Image source={{ uri: selectedPhoto }} style={styles.heroImage} />
+          {photos.length > 1 ? (
+            <View style={styles.photoCountBadge}>
+              <Text style={styles.photoCountText}>{activePhotoIndex + 1}/{photos.length}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+        {photos.length > 1 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbnailRow}>
+            {photos.map((photo, index) => {
+              const active = index === activePhotoIndex;
+              return (
+                <Pressable
+                  key={`${photo}-${index}`}
+                  style={[styles.thumbnail, active && styles.thumbnailActive]}
+                  onPress={() => openPhotoViewer(index)}
+                >
+                  <Image source={{ uri: photo }} style={styles.thumbnailImage} />
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : null}
 
         <View style={styles.infoCard}>
           <Text style={styles.itemName}>{item.name}</Text>
           <Text style={styles.price}>{kwacha(item.price)}</Text>
 
           <View style={styles.statRow}>
-            <InfoLine icon={<Star size={14} color="#f5b940" fill="#f5b940" />} text={`Condition: New · ${item.rating.toFixed(1)} rated`} />
-            <InfoLine icon={<Truck size={14} color="#0f6d80" />} text={`Delivery: Fast · ${deliver ? "30 mins" : "Pickup only"}`} />
+            <InfoLine icon={<Star size={14} color="#f5b940" fill="#f5b940" />} text={`Condition: New - ${item.rating.toFixed(1)} rated`} />
+            <InfoLine icon={<Truck size={14} color="#0f6d80" />} text={`Delivery: Fast - ${deliver ? "30 mins" : "Pickup only"}`} />
             <InfoLine icon={<MapPin size={14} color="#0f6d80" />} text={`Location: ${item.area}, ${item.campus}`} />
             <InfoLine icon={<CalendarClock size={14} color="#102a54" />} text={`Listed on ${formatDateLabel(item.listedAt)} | refreshed ${formatDateLabel(item.refreshedAt)}`} />
-            <InfoLine icon={<ShieldCheck size={14} color="#0d7a37" />} text={`Seller: ${item.vendor} · Verified`} />
+            <InfoLine icon={<ShieldCheck size={14} color="#0d7a37" />} text={`Seller: ${item.vendor} - Verified`} />
           </View>
 
           <View style={styles.divider} />
@@ -149,7 +190,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
               style={styles.shopBtn}
               onPress={() =>
                 router.push({
-                  pathname: fallbackRoute === "/(market)/(tabs)/marketplace" ? "/(market)/shop/[vendorId]" : "/(student)/market/shop/[vendorId]",
+                  pathname: isStudentView ? "/(student)/market/shop/[vendorId]" : "/(market)/shop/[vendorId]",
                   params: { vendorId: item.vendorId },
                 })
               }
@@ -226,7 +267,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
           <Pressable style={[styles.deliveryPill, deliver && styles.deliveryPillActive]} onPress={() => setDeliver((current) => !current)}>
             <Truck size={15} color={deliver ? "#fff" : "#0f6d80"} />
             <Text style={[styles.deliveryPillText, deliver && styles.deliveryPillTextActive]}>
-              {deliver ? `Delivery added · ${kwacha(item.deliveryFee)}` : "Add doorstep delivery"}
+              {deliver ? `Delivery added - ${kwacha(item.deliveryFee)}` : "Add doorstep delivery"}
             </Text>
           </Pressable>
         </View>
@@ -239,7 +280,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
                 <Pressable
                   key={product.id}
                   style={styles.similarItem}
-                  onPress={() => router.push({ pathname: fallbackRoute === "/(market)/(tabs)/marketplace" ? "/(market)/item/[id]" : "/(student)/market/[id]", params: { id: product.id } })}
+                  onPress={() => router.push({ pathname: isStudentView ? "/(student)/market/[id]" : "/(market)/item/[id]", params: { id: product.id } })}
                 >
                   <Image source={{ uri: product.image }} style={styles.similarImage} />
                   <Text style={styles.similarName} numberOfLines={2}>{product.name}</Text>
@@ -274,9 +315,50 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
             })
           }
         >
-          <Text style={styles.ctaText}>Payments coming soon</Text>
+          <Text style={styles.ctaText}>Checkout</Text>
         </Pressable>
       </View>
+
+      <Modal visible={photoViewerOpen} animationType="fade" transparent onRequestClose={() => setPhotoViewerOpen(false)}>
+        <SafeAreaView style={styles.photoViewer}>
+          <View style={styles.photoViewerTopBar}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close image viewer" style={styles.photoViewerIconBtn} onPress={() => setPhotoViewerOpen(false)}>
+              <X size={20} color="#ffffff" />
+            </Pressable>
+            <Text style={styles.photoViewerTitle} numberOfLines={1}>{item.name}</Text>
+            <View style={styles.photoViewerCountBadge}>
+              <Text style={styles.photoViewerCountText}>{activePhotoIndex + 1}/{photos.length}</Text>
+            </View>
+          </View>
+
+          <View style={styles.photoViewerImageWrap}>
+            {photos.length > 1 ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Previous image" style={[styles.photoViewerNavBtn, styles.photoViewerNavLeft]} onPress={showPreviousPhoto}>
+                <ChevronLeft size={24} color="#ffffff" />
+              </Pressable>
+            ) : null}
+            <Image source={{ uri: selectedPhoto }} style={styles.photoViewerImage} resizeMode="contain" />
+            {photos.length > 1 ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Next image" style={[styles.photoViewerNavBtn, styles.photoViewerNavRight]} onPress={showNextPhoto}>
+                <ChevronRight size={24} color="#ffffff" />
+              </Pressable>
+            ) : null}
+          </View>
+
+          {photos.length > 1 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoViewerThumbRow}>
+              {photos.map((photo, index) => {
+                const active = index === activePhotoIndex;
+                return (
+                  <Pressable key={`viewer-${photo}-${index}`} style={[styles.photoViewerThumb, active && styles.photoViewerThumbActive]} onPress={() => setSelectedPhotoIndex(index)}>
+                    <Image source={{ uri: photo }} style={styles.photoViewerThumbImage} />
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : null}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -318,6 +400,87 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   heroImage: { width: "100%", height: 300 },
+  photoViewer: { flex: 1, backgroundColor: "#050b12" },
+  photoViewerTopBar: {
+    minHeight: 58,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  photoViewerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.13)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoViewerTitle: { flex: 1, color: "#ffffff", fontSize: 15, fontWeight: "900", textAlign: "center" },
+  photoViewerCountBadge: {
+    minWidth: 40,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.13)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 9,
+  },
+  photoViewerCountText: { color: "#ffffff", fontSize: 12, fontWeight: "900" },
+  photoViewerImageWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  photoViewerImage: { width: "100%", height: "100%" },
+  photoViewerNavBtn: {
+    position: "absolute",
+    zIndex: 2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(0,0,0,0.42)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoViewerNavLeft: { left: 12 },
+  photoViewerNavRight: { right: 12 },
+  photoViewerThumbRow: { gap: 10, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 18 },
+  photoViewerThumb: {
+    width: 64,
+    height: 58,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.18)",
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+  photoViewerThumbActive: { borderColor: "#ffffff" },
+  photoViewerThumbImage: { width: "100%", height: "100%" },
+  photoCountBadge: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
+    borderRadius: 999,
+    backgroundColor: "rgba(11,61,79,0.84)",
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+  },
+  photoCountText: { color: "#ffffff", fontSize: 12, fontWeight: "900" },
+  thumbnailRow: { gap: 10, paddingHorizontal: 2, paddingVertical: 2, paddingRight: 12 },
+  thumbnail: {
+    width: 78,
+    height: 72,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: "transparent",
+    overflow: "hidden",
+    backgroundColor: "#dbeef3",
+  },
+  thumbnailActive: { borderColor: "#0f6d80" },
+  thumbnailImage: { width: "100%", height: "100%" },
   infoCard: {
     borderRadius: 22,
     backgroundColor: "#fcfeff",

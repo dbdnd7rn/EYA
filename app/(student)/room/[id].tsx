@@ -646,7 +646,7 @@ export default function RoomDetailsScreen() {
         }),
       ]);
 
-      router.push({ pathname: "/(student)/chat/[enquiryId]", params: { enquiryId: data.id } });
+      router.push({ pathname: "/(student)/chat/[enquiryId]", params: { enquiryId: data.id, from: "rooms" } });
     }
   };
 
@@ -820,7 +820,7 @@ export default function RoomDetailsScreen() {
                 {verifLoading ? <Text style={styles.smallMuted}>Checking verification...</Text> : null}
               </View>
               <Text style={styles.title}>{listing.title}</Text>
-              <Text style={styles.muted}>{[listing.area, listing.city, listing.campus].filter(Boolean).join(" â€¢ ") || "Location on enquiry"}</Text>
+              <Text style={styles.muted}>{[listing.area, listing.city, listing.campus].filter(Boolean).join(" - ") || "Location on enquiry"}</Text>
               <View style={styles.quickStatsRow}>
                 <View style={styles.quickStat}>
                   <Text style={styles.quickStatLabel}>Price</Text>
@@ -922,7 +922,7 @@ export default function RoomDetailsScreen() {
             <Animated.View style={[styles.card, sectionAnim(5)]}>
               <Text style={styles.sectionTitle}>Location</Text>
               <Text style={styles.sectionSub}>
-                {[listing.area, listing.city, listing.campus].filter(Boolean).join(" â€¢ ") || "Location on enquiry"}
+                {[listing.area, listing.city, listing.campus].filter(Boolean).join(" - ") || "Location on enquiry"}
               </Text>
 
               {listing.latitude != null && listing.longitude != null ? (

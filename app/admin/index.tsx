@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -15,6 +16,8 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 import {
   ArrowDown,
   ArrowUp,
@@ -23,6 +26,7 @@ import {
   Briefcase,
   Building2,
   CalendarDays,
+  Camera,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -33,14 +37,21 @@ import {
   Clock3,
   CreditCard,
   EllipsisVertical,
+  Eye,
   Flag,
   Headphones,
   Home,
+  KeyRound,
+  LogOut,
+  Mail,
   MapPin,
   Megaphone,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
+  Phone,
   Plus,
+  Save,
   Search,
   ShieldAlert,
   ShieldCheck,
@@ -50,6 +61,7 @@ import {
   Store,
   Tag,
   Ticket,
+  Trash2,
   Truck,
   User,
   UserCheck,
@@ -58,11 +70,13 @@ import {
   UtensilsCrossed,
   Wallet,
   WalletCards,
+  X,
   XCircle,
 } from "lucide-react-native";
 import {
   assignAdminDriver,
   broadcastAdminNotification,
+  deleteAdminCatalogItem,
   inviteAdminStaff,
   listAdminCatalogItems,
   listAdminHousingListings,
@@ -103,6 +117,7 @@ type TicketFilter = "Open" | "Urgent" | "Resolved";
 type ReviewFilter = "Rooms" | "Market" | "Food" | "Reports";
 type UserFilter = "All" | "Users" | "Landlords" | "Restaurants" | "Sellers" | "Agents";
 type UserStatusFilter = "All" | "Verified" | "Pending" | "Suspended";
+type UserWorkflow = "Admissions" | "Directory" | "Staff";
 type Tone = "blue" | "green" | "orange" | "purple" | "red" | "neutral";
 type TrendDirection = "up" | "down";
 type TrustReport = Awaited<ReturnType<typeof listTrustSafetyReportsForAdmin>>[number];
@@ -110,13 +125,53 @@ type AdminMetrics = {
   paidRevenue: number;
   weeklyRevenue: number;
   failedPayments: number;
+  pendingPayments: number;
   activeOrders: number;
   activeDeliveries: number;
+  delayedOrders: number;
+  unassignedOrders: number;
   pendingApplications: number;
   openTickets: number;
+  urgentTickets: number;
   pendingReviews: number;
+  flaggedReviews: number;
+  approvedReviewsToday: number;
   totalUsers: number;
   newUsers: number;
+};
+
+type AdminProfile = {
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  avatarUrl: string | null;
+};
+
+type AdminProfileNotice = {
+  type: "success" | "error";
+  text: string;
+};
+
+type DetailSheetRow = {
+  label: string;
+  value: string | number | null | undefined;
+};
+
+type DetailSheetSection = {
+  title: string;
+  rows: DetailSheetRow[];
+};
+
+type DetailSheetData = {
+  title: string;
+  kicker: string;
+  subtitle?: string | null;
+  icon: IconComponent;
+  tone: Tone;
+  summary?: DetailSheetRow[];
+  sections: DetailSheetSection[];
 };
 
 type DriverOption = {
@@ -171,6 +226,15 @@ type DemoReviewItem = {
   status: "pending" | "flagged" | "approved" | "needs_details";
 };
 
+type CatalogListingDraft = {
+  name: string;
+  description: string;
+  priceMwk: string;
+  stockQty: string;
+  imageUrl: string;
+  isActive: boolean;
+};
+
 const COLORS = {
   navy: "#061f63",
   muted: "#7683a3",
@@ -188,6 +252,7 @@ const REVIEW_FILTERS: ReviewFilter[] = ["Rooms", "Market", "Food", "Reports"];
 const ORDER_FILTERS: OrderFilter[] = ["All", "Active", "Issues", "Completed"];
 const TICKET_FILTERS: TicketFilter[] = ["Open", "Urgent", "Resolved"];
 const STATUS_FILTERS: UserStatusFilter[] = ["All", "Verified", "Pending", "Suspended"];
+const USER_WORKFLOWS: UserWorkflow[] = ["Admissions", "Directory", "Staff"];
 const BROADCAST_AUDIENCES: { label: string; value: AdminBroadcastAudience; icon: IconComponent }[] = [
   { label: "All users", value: "all", icon: Users },
   { label: "Users", value: "student", icon: User },
@@ -202,184 +267,6 @@ const USER_FILTERS: { label: UserFilter; icon?: IconComponent }[] = [
   { label: "Restaurants", icon: UtensilsCrossed },
   { label: "Sellers", icon: Store },
   { label: "Agents", icon: UserCheck },
-];
-
-const SAMPLE_ORDERS: DemoOrder[] = [
-  {
-    id: "EYA-ORD-7842",
-    merchant: "Chitenje Grill",
-    customer: "John Banda",
-    location: "Chitenje Campus",
-    type: "food",
-    total: 6500,
-    status: "preparing",
-    createdAt: "Today, 4:35 PM",
-  },
-  {
-    id: "EYA-ORD-7841",
-    merchant: "Campus Mart",
-    customer: "Grace Phiri",
-    location: "Polytechnic Campus",
-    type: "market",
-    total: 12800,
-    status: "on_the_way",
-    createdAt: "Today, 4:10 PM",
-  },
-  {
-    id: "EYA-ORD-7840",
-    merchant: "Lecture Room B205",
-    customer: "Mike Kalenga",
-    location: "Main Campus",
-    type: "room",
-    total: 3000,
-    status: "awaiting_agent",
-    createdAt: "Today, 3:45 PM",
-  },
-  {
-    id: "EYA-ORD-7839",
-    merchant: "Stationery Hub",
-    customer: "Patricia Msewa",
-    location: "Chancellor College",
-    type: "market",
-    total: 4200,
-    status: "issue",
-    createdAt: "Today, 3:20 PM",
-  },
-  {
-    id: "EYA-ORD-7838",
-    merchant: "Cafe 247",
-    customer: "Blessing Nyirenda",
-    location: "Science Campus",
-    type: "food",
-    total: 5750,
-    status: "preparing",
-    createdAt: "Today, 2:55 PM",
-  },
-];
-
-const SAMPLE_USERS: DemoUser[] = [
-  {
-    id: "demo-user-1",
-    name: "Chikondi Banda",
-    phone: "0888 123 456",
-    role: "landlord",
-    status: "verified",
-    joined: "Joined 2h ago",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80",
-  },
-  {
-    id: "demo-user-2",
-    name: "Thandiwe Kamanga",
-    phone: "0999 987 654",
-    role: "restaurant",
-    status: "pending",
-    joined: "Joined 4h ago",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80",
-  },
-  {
-    id: "demo-user-3",
-    name: "Emmanuel Phiri",
-    phone: "0881 555 321",
-    role: "student",
-    status: "verified",
-    joined: "Joined 6h ago",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
-  },
-  {
-    id: "demo-user-4",
-    name: "Lindiwe Mvula",
-    phone: "0994 222 111",
-    role: "agent",
-    status: "suspended",
-    joined: "Suspended 1d ago",
-    avatar: "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=200&q=80",
-  },
-  {
-    id: "demo-user-5",
-    name: "Blessings Zulu",
-    phone: "0884 444 777",
-    role: "seller",
-    status: "pending",
-    joined: "Joined 1d ago",
-    avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=200&q=80",
-  },
-  {
-    id: "demo-user-6",
-    name: "Patrick Mwale",
-    phone: "0991 333 888",
-    role: "landlord",
-    status: "verified",
-    joined: "Joined 2d ago",
-    avatar: "https://images.unsplash.com/photo-1507591064344-4c6ce005b128?auto=format&fit=crop&w=200&q=80",
-  },
-];
-
-const SAMPLE_TICKETS: DemoTicket[] = [
-  {
-    id: "demo-ticket-1",
-    title: "Fraud report",
-    description: "User reported suspicious activity and possible fraud.",
-    reporter: "Daniel Mwangi",
-    reporterId: "EYA-78451",
-    category: "Trust & Safety",
-    priority: "High",
-    type: "payments",
-    createdAt: "10m ago",
-    status: "urgent",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80",
-  },
-  {
-    id: "demo-ticket-2",
-    title: "Payment not received",
-    description: "Customer was charged but payment not reflected in wallet.",
-    reporter: "Amina Yusuf",
-    reporterId: "EYA-23109",
-    category: "Support",
-    priority: "High",
-    type: "payments",
-    createdAt: "25m ago",
-    status: "urgent",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80",
-  },
-  {
-    id: "demo-ticket-3",
-    title: "Room not as described",
-    description: "Guest reported that the room condition was different.",
-    reporter: "Mercy Achieng",
-    reporterId: "RM-99823",
-    category: "Support",
-    priority: "Medium",
-    type: "rooms",
-    createdAt: "1h ago",
-    status: "open",
-    avatar: "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=120&q=80",
-  },
-  {
-    id: "demo-ticket-4",
-    title: "Order delivered late",
-    description: "Customer received order 2 hours later than expected.",
-    reporter: "Brian Otieno",
-    reporterId: "FD-44211",
-    category: "Support",
-    priority: "Medium",
-    type: "food",
-    createdAt: "2h ago",
-    status: "open",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80",
-  },
-  {
-    id: "demo-ticket-5",
-    title: "Item not received",
-    description: "User has not received the item since order was completed.",
-    reporter: "Gifty Banda",
-    reporterId: "MK-88731",
-    category: "Support",
-    priority: "Medium",
-    type: "market",
-    createdAt: "3h ago",
-    status: "open",
-    avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=120&q=80",
-  },
 ];
 
 const SAMPLE_REVIEW_ITEMS: DemoReviewItem[] = [
@@ -429,7 +316,6 @@ const SAMPLE_REVIEW_ITEMS: DemoReviewItem[] = [
   },
 ];
 
-const REVENUE_BARS = [0.9, 1.65, 2.0, 2.2, 1.6, 0.9, 1.3];
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function money(value: number | null | undefined) {
@@ -520,6 +406,16 @@ function firstNameFrom(value: string | null | undefined) {
   return first || "Amen";
 }
 
+function splitProfileName(value: string | null | undefined) {
+  const text = String(value ?? "").trim();
+  if (!text) return { firstName: "", lastName: "" };
+  const parts = text.split(/\s+/);
+  return {
+    firstName: parts[0] ?? "",
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
 function fullName(row: AdminUserSummary) {
   return row.full_name || [row.first_name, row.last_name].filter(Boolean).join(" ") || row.email || "EYA user";
 }
@@ -566,6 +462,52 @@ function applicationTone(application: Pick<RoleApplication, "application_kind" |
   return roleTone(application.target_role);
 }
 
+type ApplicationDetailGroup = {
+  title: string;
+  rows: { label: string; value: string }[];
+};
+
+function cleanApplicationDetailText(value: string) {
+  return value.replace(/\s*:\s*/g, ": ").replace(/\s+/g, " ").trim();
+}
+
+function applicationDetailGroups(application: RoleApplication): ApplicationDetailGroup[] {
+  const groups: ApplicationDetailGroup[] = [];
+  const groupByTitle = new Map<string, ApplicationDetailGroup>();
+
+  Object.entries(application.payload ?? {}).forEach(([rawKey, rawValue]) => {
+    const value = String(rawValue ?? "").trim();
+    if (!value) return;
+
+    const key = cleanApplicationDetailText(String(rawKey ?? ""));
+    const sectionMatch = key.match(/^(.+?)\s+-\s+(.+)$/);
+    const title = sectionMatch ? cleanApplicationDetailText(sectionMatch[1]) : "Application Details";
+    const label = cleanApplicationDetailText(sectionMatch ? sectionMatch[2] : key);
+
+    let group = groupByTitle.get(title);
+    if (!group) {
+      group = { title, rows: [] };
+      groupByTitle.set(title, group);
+      groups.push(group);
+    }
+    group.rows.push({ label, value });
+  });
+
+  return groups;
+}
+
+function normalizeDetailRows(rows: DetailSheetRow[]) {
+  return rows
+    .map((row) => ({ label: row.label, value: String(row.value ?? "").trim() }))
+    .filter((row) => row.value.length > 0);
+}
+
+function normalizeDetailSections(sections: DetailSheetSection[]) {
+  return sections
+    .map((section) => ({ title: section.title, rows: normalizeDetailRows(section.rows) }))
+    .filter((section) => section.rows.length > 0);
+}
+
 function paymentSucceeded(payment: AdminPaymentSummary) {
   return ["paid", "success", "successful", "succeeded", "completed"].includes(String(payment.status).toLowerCase());
 }
@@ -574,10 +516,109 @@ function paymentFailed(payment: AdminPaymentSummary) {
   return ["failed", "cancelled", "error"].includes(String(payment.status).toLowerCase());
 }
 
+function isToday(value: string | null | undefined) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+}
+
 function matchesQuery(query: string, ...values: unknown[]) {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
   return values.some((value) => String(value ?? "").toLowerCase().includes(normalized));
+}
+
+function catalogDraftFromItem(item: AdminCatalogItemSummary): CatalogListingDraft {
+  return {
+    name: item.name,
+    description: item.description ?? "",
+    priceMwk: String(item.price_mwk ?? 0),
+    stockQty: item.stock_qty === null || item.stock_qty === undefined ? "" : String(item.stock_qty),
+    imageUrl: item.image_urls?.[0] ?? item.image_url ?? "",
+    isActive: item.is_active,
+  };
+}
+
+function fallbackAdminProfile(user: SupabaseUser | null | undefined): AdminProfile {
+  const meta = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const fullName = String(meta.full_name ?? "").trim() || String(user?.email ?? "").split("@")[0] || "Admin";
+  const parts = splitProfileName(fullName);
+  return {
+    fullName,
+    firstName: String(meta.first_name ?? parts.firstName).trim(),
+    lastName: String(meta.last_name ?? meta.surname ?? parts.lastName).trim(),
+    phone: String(meta.phone ?? "").trim(),
+    email: String(user?.email ?? "").trim(),
+    avatarUrl: String(meta.avatar_url ?? "").trim() || null,
+  };
+}
+
+async function fetchAdminProfile(user: SupabaseUser): Promise<AdminProfile> {
+  const fallback = fallbackAdminProfile(user);
+  const selects = [
+    "id,full_name,first_name,last_name,surname,email,phone,avatar_url",
+    "id,full_name,first_name,last_name,email,phone,avatar_url",
+    "id,full_name,email,phone,avatar_url",
+  ];
+
+  for (const selectClause of selects) {
+    const { data, error } = await supabase.from("profiles").select(selectClause).eq("id", user.id).maybeSingle();
+    if (error) continue;
+    const row = (data ?? {}) as {
+      full_name?: string | null;
+      first_name?: string | null;
+      last_name?: string | null;
+      surname?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      avatar_url?: string | null;
+    };
+    const fullName = String(row.full_name ?? "").trim() || [row.first_name, row.last_name ?? row.surname].filter(Boolean).join(" ").trim() || fallback.fullName;
+    const parts = splitProfileName(fullName);
+    return {
+      fullName,
+      firstName: String(row.first_name ?? parts.firstName).trim(),
+      lastName: String(row.last_name ?? row.surname ?? parts.lastName).trim(),
+      phone: String(row.phone ?? fallback.phone).trim(),
+      email: String(row.email ?? fallback.email).trim(),
+      avatarUrl: String(row.avatar_url ?? "").trim() || fallback.avatarUrl,
+    };
+  }
+
+  return fallback;
+}
+
+function getAvatarFileMeta(asset: { uri: string; fileName?: string | null; mimeType?: string | null }) {
+  const fromName = (asset.fileName ?? "").split(".").pop()?.toLowerCase() ?? "";
+  const fromUri = asset.uri.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+  const ext = fromName || fromUri || "jpg";
+  const safeExt = ext === "heic" || ext === "heif" ? "jpg" : ext;
+  return {
+    name: `admin-avatar-${Date.now()}.${safeExt}`,
+    type: asset.mimeType || (safeExt === "png" ? "image/png" : safeExt === "webp" ? "image/webp" : "image/jpeg"),
+  };
+}
+
+async function uploadAdminAvatar(asset: { uri: string; fileName?: string | null; mimeType?: string | null }) {
+  const cloudName = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+  if (!cloudName || !uploadPreset) throw new Error("Cloudinary upload is not configured.");
+
+  const meta = getAvatarFileMeta(asset);
+  const form = new FormData();
+  form.append("file", { uri: asset.uri, name: meta.name, type: meta.type } as any);
+  form.append("upload_preset", uploadPreset);
+  form.append("folder", "eya/admin-avatars");
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: "POST",
+    body: form,
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.error?.message || "Failed to upload profile picture.");
+  return String(json.secure_url ?? "");
 }
 
 async function loadAdminSource<T>(promise: PromiseLike<T>, fallback: T): Promise<T> {
@@ -591,7 +632,7 @@ async function loadAdminSource<T>(promise: PromiseLike<T>, fallback: T): Promise
 export default function AdminPortalPage() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const { user, session } = useAuth();
+  const { user, session, signOut } = useAuth();
   const { unreadCount } = useNotificationInbox();
   const accessToken = session?.access_token ?? null;
   const isWide = width >= 760;
@@ -607,11 +648,22 @@ export default function AdminPortalPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [workingKey, setWorkingKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [detailSheet, setDetailSheet] = useState<DetailSheetData | null>(null);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [broadcastTitle, setBroadcastTitle] = useState("EYA admin notice");
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [broadcastAudience, setBroadcastAudience] = useState<AdminBroadcastAudience>("all");
   const [broadcastImportant, setBroadcastImportant] = useState(true);
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [adminProfile, setAdminProfile] = useState<AdminProfile>(() => fallbackAdminProfile(null));
+  const [profileFullName, setProfileFullName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [profileNotice, setProfileNotice] = useState<AdminProfileNotice | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const [orders, setOrders] = useState<AdminOrderSummary[]>([]);
   const [payments, setPayments] = useState<AdminPaymentSummary[]>([]);
@@ -623,11 +675,6 @@ export default function AdminPortalPage() {
   const [trustReports, setTrustReports] = useState<TrustReport[]>([]);
   const [roleApplications, setRoleApplications] = useState<RoleApplication[]>([]);
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
-
-  const [demoOrders, setDemoOrders] = useState(SAMPLE_ORDERS);
-  const [demoUsers, setDemoUsers] = useState(SAMPLE_USERS);
-  const [demoTickets, setDemoTickets] = useState(SAMPLE_TICKETS);
-  const [demoReviews, setDemoReviews] = useState(SAMPLE_REVIEW_ITEMS);
 
   const load = useCallback(async () => {
     if (!user?.id) {
@@ -648,17 +695,19 @@ export default function AdminPortalPage() {
         nextSupportTickets,
         nextTrustReports,
         nextRoleApplications,
+        nextAdminProfile,
         driverResult,
       ] = await Promise.all([
-        loadAdminSource(listAdminOrders({ userId: user.id, accessToken, limit: 200 }), []),
-        loadAdminSource(listAdminPayments({ userId: user.id, accessToken, limit: 200 }), []),
-        loadAdminSource(listAdminUsers({ userId: user.id, accessToken, limit: 240 }), []),
-        loadAdminSource(listAdminVendors({ userId: user.id, accessToken, limit: 240 }), []),
-        loadAdminSource(listAdminCatalogItems({ userId: user.id, accessToken, limit: 260 }), []),
-        loadAdminSource(listAdminHousingListings({ userId: user.id, accessToken, limit: 260 }), []),
-        loadAdminSource(listAdminSupportTickets({ userId: user.id, accessToken, limit: 200 }), []),
-        loadAdminSource(listTrustSafetyReportsForAdmin(), []),
-        loadAdminSource(listRoleApplicationsForAdmin(), []),
+        loadAdminSource<AdminOrderSummary[]>(listAdminOrders({ userId: user.id, accessToken, limit: 200 }), []),
+        loadAdminSource<AdminPaymentSummary[]>(listAdminPayments({ userId: user.id, accessToken, limit: 200 }), []),
+        loadAdminSource<AdminUserSummary[]>(listAdminUsers({ userId: user.id, accessToken, limit: 240 }), []),
+        loadAdminSource<AdminVendorSummary[]>(listAdminVendors({ userId: user.id, accessToken, limit: 240 }), []),
+        loadAdminSource<AdminCatalogItemSummary[]>(listAdminCatalogItems({ userId: user.id, accessToken, limit: 260 }), []),
+        loadAdminSource<AdminHousingListingSummary[]>(listAdminHousingListings({ userId: user.id, accessToken, limit: 260 }), []),
+        loadAdminSource<AdminSupportTicket[]>(listAdminSupportTickets({ userId: user.id, accessToken, limit: 200 }), []),
+        loadAdminSource<TrustReport[]>(listTrustSafetyReportsForAdmin(), []),
+        loadAdminSource<RoleApplication[]>(listRoleApplicationsForAdmin(), []),
+        loadAdminSource<AdminProfile>(fetchAdminProfile(user), fallbackAdminProfile(user)),
         loadAdminSource(
           supabase.from("profiles").select("id,full_name,first_name,last_name,email,role").in("role", ["agent", "admin"]).limit(120),
           { data: [], error: null, count: null, status: 200, statusText: "OK" },
@@ -674,6 +723,9 @@ export default function AdminPortalPage() {
       setSupportTickets(nextSupportTickets);
       setTrustReports(nextTrustReports);
       setRoleApplications(nextRoleApplications);
+      setAdminProfile(nextAdminProfile);
+      setProfileFullName(nextAdminProfile.fullName);
+      setProfilePhone(nextAdminProfile.phone);
 
       const driverRows =
         !driverResult.error ? driverResult.data ?? [] : [];
@@ -691,7 +743,7 @@ export default function AdminPortalPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [accessToken, user?.id]);
+  }, [accessToken, user]);
 
   useEffect(() => {
     void load();
@@ -699,39 +751,63 @@ export default function AdminPortalPage() {
 
   const profileName = useMemo(() => {
     const self = users.find((row) => row.id === user?.id);
-    return (self ? fullName(self) : null) || user?.user_metadata?.full_name || user?.email || "Amen";
-  }, [user?.email, user?.id, user?.user_metadata?.full_name, users]);
+    return adminProfile.fullName || (self ? fullName(self) : null) || user?.user_metadata?.full_name || user?.email || "Amen";
+  }, [adminProfile.fullName, user?.email, user?.id, user?.user_metadata?.full_name, users]);
 
-  const avatarUrl = String(user?.user_metadata?.avatar_url || "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80");
+  const avatarUrl = String(adminProfile.avatarUrl || user?.user_metadata?.avatar_url || "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80");
 
   const metrics = useMemo(() => {
     const paidRevenue = payments.filter(paymentSucceeded).reduce((sum, payment) => sum + Number(payment.amount_mwk ?? 0), 0);
     const failedPayments = payments.filter(paymentFailed).length;
-    const activeOrders = orders.filter((order) => !["delivered", "cancelled"].includes(order.status)).length || demoOrders.filter((order) => !["delivered", "cancelled"].includes(String(order.status))).length;
-    const pendingApplications = roleApplications.filter((row) => row.status === "pending").length || demoUsers.filter((row) => row.status === "pending").length;
-    const openTickets = supportTickets.filter((ticket) => !["resolved", "closed"].includes(ticket.status.toLowerCase())).length || demoTickets.filter((ticket) => ticket.status !== "resolved").length;
-    const activeDeliveries = orders.filter((order) => ["assigned", "picked_up", "arriving"].includes(String(order.delivery?.status))).length || 86;
+    const pendingPayments = payments.filter((payment) => !paymentSucceeded(payment) && !paymentFailed(payment)).length;
+    const activeOrderRows = orders.filter((order) => !["delivered", "cancelled"].includes(order.status));
+    const activeOrders = activeOrderRows.length;
+    const delayedOrders = activeOrderRows.filter((order) => {
+      const lastChanged = new Date(order.updated_at || order.created_at).getTime();
+      return Number.isFinite(lastChanged) && Date.now() - lastChanged > 1000 * 60 * 45;
+    }).length;
+    const unassignedOrders = activeOrderRows.filter((order) => order.delivery_mode !== "pickup" && !order.delivery?.driver_id).length;
+    const pendingApplications = roleApplications.filter((row) => row.status === "pending").length;
+    const openTickets = supportTickets.filter((ticket) => !["resolved", "closed"].includes(ticket.status.toLowerCase())).length;
+    const urgentTickets =
+      supportTickets.filter((ticket) => ticket.status.toLowerCase() === "open").length +
+      trustReports.filter((row: any) => ["open", "in_review"].includes(String(row.status).toLowerCase())).length;
+    const activeDeliveries = orders.filter((order) => ["assigned", "picked_up", "arriving"].includes(String(order.delivery?.status))).length;
+    const inactiveHousing = housing.filter((row) => !row.is_active);
+    const inactiveCatalog = catalog.filter((row) => !row.is_active);
+    const activeTrustReports = trustReports.filter((row: any) => ["open", "in_review"].includes(String(row.status).toLowerCase()));
     const pendingReviews =
-      housing.filter((row) => !row.is_active).length +
-        catalog.filter((row) => !row.is_active).length +
-        trustReports.filter((row: any) => ["open", "in_review"].includes(String(row.status).toLowerCase())).length || demoReviews.filter((row) => row.status !== "approved").length;
-    const totalUsers = users.length || 126;
+      inactiveHousing.length +
+        inactiveCatalog.length +
+        activeTrustReports.length;
+    const flaggedReviews = activeTrustReports.length;
+    const approvedReviewsToday =
+      housing.filter((row) => row.is_active && isToday(row.updated_at || row.created_at)).length +
+      catalog.filter((row) => row.is_active && isToday(row.updated_at || row.created_at)).length +
+      trustReports.filter((row: any) => ["resolved", "dismissed"].includes(String(row.status).toLowerCase()) && isToday(row.updated_at || row.created_at)).length;
+    const totalUsers = users.length;
     return {
-      paidRevenue: paidRevenue || 2450000,
-      weeklyRevenue: paidRevenue || 8400000,
-      failedPayments: failedPayments || 9,
+      paidRevenue,
+      weeklyRevenue: paidRevenue,
+      failedPayments,
+      pendingPayments,
       activeOrders,
       activeDeliveries,
+      delayedOrders,
+      unassignedOrders,
       pendingApplications,
       openTickets,
+      urgentTickets,
       pendingReviews,
+      flaggedReviews,
+      approvedReviewsToday,
       totalUsers,
       newUsers: users.filter((row) => {
         if (!row.created_at) return false;
         return Date.now() - new Date(row.created_at).getTime() < 1000 * 60 * 60 * 24;
-      }).length || 32,
+      }).length,
     };
-  }, [catalog, demoOrders, demoReviews, demoTickets, demoUsers, housing, orders, payments, roleApplications, supportTickets, trustReports, users]);
+  }, [catalog, housing, orders, payments, roleApplications, supportTickets, trustReports, users]);
 
   const liveOrders: DemoOrder[] = useMemo(
     () =>
@@ -747,7 +823,7 @@ export default function AdminPortalPage() {
       })),
     [orders],
   );
-  const displayedOrders = liveOrders.length ? liveOrders : demoOrders;
+  const displayedOrders = liveOrders;
 
   const reviewItems = useMemo<DemoReviewItem[]>(() => {
     const housingRows: DemoReviewItem[] = housing.map((row) => ({
@@ -769,7 +845,7 @@ export default function AdminPortalPage() {
       location: vendors.find((vendor) => vendor.id === row.vendor_id)?.area || "Lilongwe",
       submittedBy: vendors.find((vendor) => vendor.id === row.vendor_id)?.name || compactId(row.vendor_id),
       submittedAgo: `Submitted ${relativeTime(row.created_at)}`,
-      image: row.image_url || SAMPLE_REVIEW_ITEMS[(index + 1) % SAMPLE_REVIEW_ITEMS.length].image,
+      image: row.image_urls?.[0] || row.image_url || SAMPLE_REVIEW_ITEMS[(index + 1) % SAMPLE_REVIEW_ITEMS.length].image,
       status: row.is_active ? "approved" : "flagged",
     }));
     const reportRows: DemoReviewItem[] = trustReports.map((row: any, index) => ({
@@ -784,11 +860,10 @@ export default function AdminPortalPage() {
       status: row.status === "resolved" ? "approved" : row.status === "dismissed" ? "needs_details" : "flagged",
     }));
     const rows = [...housingRows, ...catalogRows, ...reportRows];
-    return rows.length ? rows : demoReviews;
-  }, [catalog, demoReviews, housing, trustReports, vendors]);
+    return rows;
+  }, [catalog, housing, trustReports, vendors]);
 
   const displayedUsers = useMemo(() => {
-    if (!users.length && !roleApplications.length) return demoUsers;
     const userRows: DemoUser[] = users.map((row, index) => {
       const pendingApplication = roleApplications.find((application) => application.user_id === row.id && application.status === "pending");
       return {
@@ -813,10 +888,9 @@ export default function AdminPortalPage() {
         avatar: `https://i.pravatar.cc/160?u=${encodeURIComponent(application.id)}`,
       }));
     return [...applicationRows, ...userRows];
-  }, [demoUsers, roleApplications, users]);
+  }, [roleApplications, users]);
 
   const displayedTickets = useMemo<DemoTicket[]>(() => {
-    if (!supportTickets.length && !trustReports.length) return demoTickets;
     const supportRows = supportTickets.map((ticket, index) => ({
       id: ticket.id,
       title: ticket.subject || titleCase(ticket.type) || "Support ticket",
@@ -850,7 +924,7 @@ export default function AdminPortalPage() {
       avatar: `https://i.pravatar.cc/120?u=${encodeURIComponent(report.reporter_id || String(index))}`,
     }));
     return [...reportRows, ...supportRows];
-  }, [demoTickets, supportTickets, trustReports]);
+  }, [supportTickets, trustReports]);
 
   const filteredOrders = useMemo(() => {
     if (orderFilter === "All") return displayedOrders;
@@ -885,13 +959,15 @@ export default function AdminPortalPage() {
 
   const runAdminAction = useCallback(
     async (key: string, action: (userId: string, token: string | null) => Promise<unknown>) => {
-      if (!user?.id) return;
+      if (!user?.id) return false;
       setWorkingKey(key);
       try {
         await action(user.id, accessToken);
         await load();
+        return true;
       } catch (error) {
         Alert.alert("Admin action failed", error instanceof Error ? error.message : "The request could not be completed.");
+        return false;
       } finally {
         setWorkingKey(null);
       }
@@ -903,14 +979,7 @@ export default function AdminPortalPage() {
     (row: DemoOrder) => {
       const live = orders.find((order) => order.id === row.id);
       if (!live) {
-        setDemoOrders((current) =>
-          current.map((order) => {
-            if (order.id !== row.id) return order;
-            if (order.status === "issue") return { ...order, status: "preparing" };
-            if (order.status === "awaiting_agent") return { ...order, status: "on_the_way" };
-            return { ...order, status: nextStatus(order.status as AdminOrderStatus) };
-          }),
-        );
+        Alert.alert("Order not found", "This order is not available from the backend list. Pull to refresh and try again.");
         return;
       }
       void runAdminAction(`order:${row.id}`, (userId, token) =>
@@ -929,7 +998,7 @@ export default function AdminPortalPage() {
     (row: DemoOrder) => {
       const live = orders.find((order) => order.id === row.id);
       if (!live) {
-        setDemoOrders((current) => current.map((order) => (order.id === row.id ? { ...order, status: "on_the_way" } : order)));
+        Alert.alert("Order not found", "This order is not available from the backend list. Pull to refresh and try again.");
         return;
       }
       const driver = drivers[0];
@@ -983,7 +1052,7 @@ export default function AdminPortalPage() {
         return;
       }
 
-      setDemoUsers((current) => current.map((entry) => (entry.id === row.id ? { ...entry, status: "verified" } : entry)));
+      Alert.alert("User not found", "This account is not available from the backend user list yet. Pull to refresh and try again.");
     },
     [handleReviewRoleApplication, roleApplications, runAdminAction, users],
   );
@@ -1013,24 +1082,42 @@ export default function AdminPortalPage() {
   const handleViewUser = useCallback((row: DemoUser) => {
     const liveUser = users.find((entry) => entry.id === row.id);
     const application = roleApplications.find((entry) => entry.id === row.id || entry.user_id === row.id);
-    Alert.alert(
-      row.name,
-      [
-        `Role: ${roleLabel(row.role)}`,
-        `Status: ${titleCase(row.status)}`,
-        `Contact: ${row.phone}`,
-        liveUser ? `Orders: ${liveUser.order_count}` : null,
-        liveUser ? `Listings: ${liveUser.listing_count}` : null,
-        liveUser ? `Vendors: ${liveUser.vendor_count}` : null,
-        application ? `Application: ${titleCase(application.status)}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
+    setDetailSheet({
+      title: row.name,
+      kicker: "User profile",
+      subtitle: row.joined,
+      icon: roleIcon(row.role),
+      tone: roleTone(row.role),
+      summary: [
+        { label: "Role", value: roleLabel(row.role) },
+        { label: "Status", value: titleCase(row.status) },
+        { label: "Application", value: application ? titleCase(application.status) : null },
+      ],
+      sections: [
+        {
+          title: "Contact",
+          rows: [
+            { label: "Phone or email", value: row.phone },
+            { label: "Email", value: liveUser?.email },
+            { label: "User ID", value: row.id },
+          ],
+        },
+        {
+          title: "Activity",
+          rows: [
+            { label: "Orders", value: liveUser?.order_count },
+            { label: "Listings", value: liveUser?.listing_count },
+            { label: "Vendors", value: liveUser?.vendor_count },
+            { label: "Campus", value: liveUser?.campus },
+            { label: "Area", value: liveUser?.area },
+          ],
+        },
+      ],
+    });
   }, [roleApplications, users]);
 
   const handleTicketStatus = useCallback(
-    (row: DemoTicket, status: "open" | "pending" | "resolved") => {
+    (row: DemoTicket, status: "open" | "resolved") => {
       const support = supportTickets.find((ticket) => ticket.id === row.id);
       if (support) {
         void runAdminAction(`ticket:${row.id}`, (userId, token) =>
@@ -1052,11 +1139,7 @@ export default function AdminPortalPage() {
         return;
       }
 
-      setDemoTickets((current) =>
-        current.map((ticket) =>
-          ticket.id === row.id ? { ...ticket, status: status === "resolved" ? "resolved" : "open" } : ticket,
-        ),
-      );
+      Alert.alert("Ticket not found", "This ticket is not available from the backend list. Pull to refresh and try again.");
     },
     [runAdminAction, supportTickets, trustReports],
   );
@@ -1098,20 +1181,330 @@ export default function AdminPortalPage() {
         return;
       }
 
-      setDemoReviews((current) =>
-        current.map((entry) =>
-          entry.id === row.id
-            ? { ...entry, status: action === "approve" ? "approved" : action === "reject" ? "needs_details" : "flagged" }
-            : entry,
-        ),
-      );
+      Alert.alert("Review item not found", "This item is not available from the backend review queue. Pull to refresh and try again.");
     },
     [catalog, housing, runAdminAction, trustReports],
+  );
+
+  const handleViewCatalogItem = useCallback(
+    (item: AdminCatalogItemSummary) => {
+      const vendor = vendors.find((entry) => entry.id === item.vendor_id);
+      setDetailSheet({
+        title: item.name,
+        kicker: "Marketplace listing",
+        subtitle: item.channel === "food" ? "Food item" : "Market product",
+        icon: item.channel === "food" ? UtensilsCrossed : ShoppingBag,
+        tone: item.is_active ? "green" : "neutral",
+        summary: [
+          { label: "Status", value: item.is_active ? "Live" : "Hidden" },
+          { label: "Price", value: money(item.price_mwk) },
+          { label: "Stock", value: item.stock_qty === null || item.stock_qty === undefined ? "Not tracked" : item.stock_qty },
+        ],
+        sections: [
+          {
+            title: "Vendor",
+            rows: [
+              { label: "Name", value: vendor?.name || compactId(item.vendor_id) },
+              { label: "Location", value: [vendor?.area, vendor?.city, vendor?.campus].filter(Boolean).join(", ") || "Not set" },
+              { label: "Vendor ID", value: item.vendor_id },
+            ],
+          },
+          {
+            title: "Listing Details",
+            rows: [
+              { label: "Description", value: item.description },
+              { label: "Primary image", value: item.image_url },
+              { label: "Images", value: item.image_urls?.join(", ") },
+              { label: "Listing ID", value: item.id },
+            ],
+          },
+        ],
+      });
+    },
+    [vendors],
+  );
+
+  const handleSaveCatalogItem = useCallback(
+    async (item: AdminCatalogItemSummary, draft: CatalogListingDraft) => {
+      const name = draft.name.trim();
+      const priceText = draft.priceMwk.trim().replace(/,/g, "");
+      const price = Number(priceText);
+      const stockText = draft.stockQty.trim();
+      const stockQty = stockText ? Number(stockText.replace(/,/g, "")) : null;
+
+      if (!name) {
+        Alert.alert("Listing needs a name", "Enter the product name before saving.");
+        return false;
+      }
+      if (!Number.isFinite(price) || price < 0) {
+        Alert.alert("Invalid price", "Enter a valid MWK price for this listing.");
+        return false;
+      }
+      if (stockText && (!Number.isFinite(stockQty) || Number(stockQty) < 0)) {
+        Alert.alert("Invalid stock", "Stock must be a valid number or left empty.");
+        return false;
+      }
+
+      return runAdminAction(`catalog:${item.id}:edit`, (userId, token) =>
+        updateAdminCatalogItem({
+          itemId: item.id,
+          patch: {
+            name,
+            description: draft.description.trim() || null,
+            price_mwk: Math.round(price),
+            stock_qty: stockQty === null ? null : Math.floor(Number(stockQty)),
+            image_url: draft.imageUrl.trim() || null,
+            image_urls: draft.imageUrl.trim() ? [draft.imageUrl.trim()] : [],
+            is_active: draft.isActive,
+          },
+          userId,
+          accessToken: token,
+        }),
+      );
+    },
+    [runAdminAction],
+  );
+
+  const handleToggleCatalogLive = useCallback(
+    (item: AdminCatalogItemSummary, isActive: boolean) => {
+      void runAdminAction(`catalog:${item.id}:live`, (userId, token) =>
+        updateAdminCatalogItem({
+          itemId: item.id,
+          patch: { is_active: isActive },
+          userId,
+          accessToken: token,
+        }),
+      );
+    },
+    [runAdminAction],
+  );
+
+  const handleDeleteCatalogItem = useCallback(
+    (item: AdminCatalogItemSummary) => {
+      Alert.alert("Delete market listing", `Delete "${item.name}" from the marketplace?`, [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void runAdminAction(`catalog:${item.id}:delete`, (userId, token) =>
+              deleteAdminCatalogItem({
+                itemId: item.id,
+                userId,
+                accessToken: token,
+              }),
+            );
+          },
+        },
+      ]);
+    },
+    [runAdminAction],
   );
 
   const handleBroadcast = useCallback(() => {
     setBroadcastOpen(true);
   }, []);
+
+  const handleLogout = useCallback(() => {
+    Alert.alert("Log out", "Log out of the admin portal?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await signOut();
+          } finally {
+            router.replace("/(auth)/login");
+          }
+        },
+      },
+    ]);
+  }, [router, signOut]);
+
+  const handlePickAdminAvatar = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      setProfileNotice(null);
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Photo access needed", "Allow photo access to update the admin profile picture.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+      });
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+
+      setUploadingAvatar(true);
+      const nextAvatarUrl = await uploadAdminAvatar(asset);
+      const { error } = await supabase.from("profiles").update({ avatar_url: nextAvatarUrl, updated_at: new Date().toISOString() }).eq("id", user.id);
+      if (error) throw error;
+
+      await supabase.auth.updateUser({
+        data: {
+          ...(user.user_metadata ?? {}),
+          avatar_url: nextAvatarUrl,
+        },
+      });
+
+      setAdminProfile((current) => ({ ...current, avatarUrl: nextAvatarUrl }));
+      setProfileNotice({ type: "success", text: "Profile picture updated." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not update profile picture.";
+      setProfileNotice({
+        type: "error",
+        text: message.toLowerCase().includes("heic") ? "Please choose a JPG or PNG profile picture." : message,
+      });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }, [user]);
+
+  const handleSaveAdminProfile = useCallback(async () => {
+    if (!user?.id) return;
+
+    const fullName = profileFullName.trim();
+    const phone = profilePhone.trim();
+    if (!fullName) {
+      setProfileNotice({ type: "error", text: "Admin name is required." });
+      return;
+    }
+
+    try {
+      setSavingProfile(true);
+      setProfileNotice(null);
+
+      const parts = splitProfileName(fullName);
+      const updatedAt = new Date().toISOString();
+      let profileSaved = false;
+      let lastProfileError: unknown = null;
+
+      try {
+        await updateAdminUser({
+          targetUserId: user.id,
+          patch: { full_name: fullName, phone: phone || null },
+          userId: user.id,
+          accessToken,
+        });
+        profileSaved = true;
+      } catch (error) {
+        lastProfileError = error;
+      }
+
+      if (!profileSaved) {
+        const profilePayloads = [
+          {
+            full_name: fullName,
+            first_name: parts.firstName || null,
+            last_name: parts.lastName || null,
+            surname: parts.lastName || null,
+            phone: phone || null,
+            updated_at: updatedAt,
+          },
+          { full_name: fullName, phone: phone || null, updated_at: updatedAt },
+          { full_name: fullName, updated_at: updatedAt },
+          { full_name: fullName },
+        ];
+
+        for (const payload of profilePayloads) {
+          const { data, error } = await supabase.from("profiles").update(payload as any).eq("id", user.id).select("id").maybeSingle();
+          if (!error && data?.id) {
+            profileSaved = true;
+            break;
+          }
+          if (error) lastProfileError = error;
+        }
+      }
+
+      if (!profileSaved) {
+        const upsertPayloads = [
+          { id: user.id, email: user.email ?? null, full_name: fullName, phone: phone || null, updated_at: updatedAt },
+          { id: user.id, email: user.email ?? null, full_name: fullName, updated_at: updatedAt },
+          { id: user.id, full_name: fullName },
+        ];
+
+        for (const payload of upsertPayloads) {
+          const { data, error } = await supabase.from("profiles").upsert(payload as any, { onConflict: "id" }).select("id").maybeSingle();
+          if (!error && data?.id) {
+            profileSaved = true;
+            break;
+          }
+          if (error) lastProfileError = error;
+        }
+      }
+
+      await supabase.auth.updateUser({
+        data: {
+          ...(user.user_metadata ?? {}),
+          full_name: fullName,
+          first_name: parts.firstName,
+          last_name: parts.lastName,
+          phone,
+        },
+      });
+
+      if (!profileSaved && lastProfileError) {
+        console.warn("[admin-profile-save-profile-row]", lastProfileError instanceof Error ? lastProfileError.message : lastProfileError);
+      }
+
+      setAdminProfile((current) => ({
+        ...current,
+        fullName,
+        firstName: parts.firstName,
+        lastName: parts.lastName,
+        phone,
+      }));
+      setProfileNotice({
+        type: profileSaved ? "success" : "error",
+        text: profileSaved ? "Admin profile updated." : "Profile saved locally, but the profile row could not be updated. Check profile table permissions.",
+      });
+    } catch (error) {
+      setProfileNotice({ type: "error", text: error instanceof Error ? error.message : "Could not save admin profile." });
+    } finally {
+      setSavingProfile(false);
+    }
+  }, [accessToken, profileFullName, profilePhone, user]);
+
+  const handleUpdateAdminPassword = useCallback(async () => {
+    const email = user?.email || adminProfile.email;
+    if (!email) {
+      setProfileNotice({ type: "error", text: "Admin email is required before changing password." });
+      return;
+    }
+
+    try {
+      setSavingPassword(true);
+      setProfileNotice(null);
+
+      if (!oldPassword.trim()) throw new Error("Enter the current password.");
+      if (newPassword.trim().length < 6) throw new Error("New password must be at least 6 characters.");
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: oldPassword.trim(),
+      });
+      if (signInError) throw new Error("Current password is incorrect.");
+
+      const { error: passwordError } = await supabase.auth.updateUser({ password: newPassword.trim() });
+      if (passwordError) throw passwordError;
+
+      setOldPassword("");
+      setNewPassword("");
+      setProfileNotice({ type: "success", text: "Password updated successfully." });
+    } catch (error) {
+      setProfileNotice({ type: "error", text: error instanceof Error ? error.message : "Could not update password." });
+    } finally {
+      setSavingPassword(false);
+    }
+  }, [adminProfile.email, newPassword, oldPassword, user?.email]);
 
   const handleSendBroadcast = useCallback(() => {
     const title = broadcastTitle.trim();
@@ -1201,12 +1594,44 @@ export default function AdminPortalPage() {
             onBell={() => router.push("/admin/notifications")}
             onGo={setActiveTab}
             onBroadcast={handleBroadcast}
+            onLogout={handleLogout}
+            onManageTickets={() => router.push("/admin/ticketing")}
+            onScanTickets={() => router.push("/admin/ticket-scanner")}
+            onProfileEdit={() => {
+              setProfileEditorOpen((value) => !value);
+              setProfileNotice(null);
+            }}
+            profileEditorOpen={profileEditorOpen}
+            profilePanel={
+              profileEditorOpen ? (
+                <AdminProfilePanel
+                  avatarUrl={avatarUrl}
+                  fullName={profileFullName}
+                  phone={profilePhone}
+                  email={adminProfile.email || user?.email || ""}
+                  oldPassword={oldPassword}
+                  newPassword={newPassword}
+                  notice={profileNotice}
+                  savingProfile={savingProfile}
+                  savingPassword={savingPassword}
+                  uploadingAvatar={uploadingAvatar}
+                  onFullName={setProfileFullName}
+                  onPhone={setProfilePhone}
+                  onOldPassword={setOldPassword}
+                  onNewPassword={setNewPassword}
+                  onPickAvatar={handlePickAdminAvatar}
+                  onSaveProfile={handleSaveAdminProfile}
+                  onUpdatePassword={handleUpdateAdminPassword}
+                />
+              ) : null
+            }
           />
         ) : null}
 
         {activeTab === "more" ? (
           <ReportsScreen
             metrics={metrics}
+            orders={orders}
             payments={payments}
             vendors={vendors}
             unreadCount={unreadCount}
@@ -1262,17 +1687,24 @@ export default function AdminPortalPage() {
 
         {activeTab === "moderation" ? (
           <ModerationScreen
+            catalogItems={catalog}
             filter={reviewFilter}
             items={reviewItems.filter((item) => item.filter === reviewFilter)}
             metrics={metrics}
+            vendors={vendors}
             workingKey={workingKey}
             onAction={handleReviewAction}
             onBell={() => router.push("/admin/notifications")}
+            onCatalogDelete={handleDeleteCatalogItem}
+            onCatalogSave={handleSaveCatalogItem}
+            onCatalogToggleLive={handleToggleCatalogLive}
+            onCatalogView={handleViewCatalogItem}
             onFilter={setReviewFilter}
           />
         ) : null}
       </ScrollView>
       <BottomNav active={bottomActive} onChange={setActiveTab} />
+      <DetailSheet data={detailSheet} visible={Boolean(detailSheet)} onClose={() => setDetailSheet(null)} />
     </SafeAreaView>
   );
 }
@@ -1380,6 +1812,119 @@ function BroadcastComposer({
   );
 }
 
+function AdminProfilePanel({
+  avatarUrl,
+  email,
+  fullName,
+  newPassword,
+  notice,
+  oldPassword,
+  phone,
+  savingPassword,
+  savingProfile,
+  uploadingAvatar,
+  onFullName,
+  onNewPassword,
+  onOldPassword,
+  onPhone,
+  onPickAvatar,
+  onSaveProfile,
+  onUpdatePassword,
+}: {
+  avatarUrl: string;
+  email: string;
+  fullName: string;
+  newPassword: string;
+  notice: AdminProfileNotice | null;
+  oldPassword: string;
+  phone: string;
+  savingPassword: boolean;
+  savingProfile: boolean;
+  uploadingAvatar: boolean;
+  onFullName: (value: string) => void;
+  onNewPassword: (value: string) => void;
+  onOldPassword: (value: string) => void;
+  onPhone: (value: string) => void;
+  onPickAvatar: () => void;
+  onSaveProfile: () => void;
+  onUpdatePassword: () => void;
+}) {
+  return (
+    <View style={styles.adminProfilePanel}>
+      <View style={styles.adminProfileHeader}>
+        <Pressable style={styles.adminAvatarPicker} onPress={onPickAvatar} disabled={uploadingAvatar}>
+          <Image source={{ uri: avatarUrl }} style={styles.adminProfileAvatar} />
+          <View style={styles.adminAvatarCamera}>
+            {uploadingAvatar ? <ActivityIndicator color="#ffffff" size="small" /> : <Camera color="#ffffff" size={17} />}
+          </View>
+        </Pressable>
+        <View style={styles.adminProfileHeaderCopy}>
+          <Text style={styles.adminProfileKicker}>Admin Profile</Text>
+          <Text style={styles.adminProfileTitle}>{fullName || "Admin"}</Text>
+          <Text style={styles.adminProfileEmail}>{email || "No email attached"}</Text>
+        </View>
+      </View>
+
+      {notice ? (
+        <View style={[styles.adminProfileNotice, notice.type === "error" ? styles.adminProfileNoticeError : styles.adminProfileNoticeSuccess]}>
+          <Text style={[styles.adminProfileNoticeText, notice.type === "error" ? styles.adminProfileNoticeTextError : styles.adminProfileNoticeTextSuccess]}>
+            {notice.text}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.adminProfileFields}>
+        <TextInput
+          value={fullName}
+          onChangeText={onFullName}
+          placeholder="Admin full name"
+          placeholderTextColor={COLORS.muted}
+          style={styles.adminProfileInput}
+        />
+        <TextInput
+          value={phone}
+          onChangeText={onPhone}
+          keyboardType="phone-pad"
+          placeholder="Admin phone"
+          placeholderTextColor={COLORS.muted}
+          style={styles.adminProfileInput}
+        />
+        <Pressable style={[styles.adminProfileSaveButton, savingProfile && styles.disabledButton]} onPress={onSaveProfile} disabled={savingProfile}>
+          <Save color="#ffffff" size={18} />
+          <Text style={styles.adminProfileSaveText}>{savingProfile ? "Saving..." : "Save profile"}</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.adminPasswordBox}>
+        <View style={styles.adminPasswordHeader}>
+          <KeyRound color={COLORS.purple} size={20} />
+          <Text style={styles.adminPasswordTitle}>Change password</Text>
+        </View>
+        <TextInput
+          value={oldPassword}
+          onChangeText={onOldPassword}
+          secureTextEntry
+          placeholder="Current password"
+          placeholderTextColor={COLORS.muted}
+          style={styles.adminProfileInput}
+        />
+        <TextInput
+          value={newPassword}
+          onChangeText={onNewPassword}
+          secureTextEntry
+          placeholder="New password"
+          placeholderTextColor={COLORS.muted}
+          style={styles.adminProfileInput}
+        />
+        <Pressable style={[styles.adminPasswordButton, savingPassword && styles.disabledButton]} onPress={onUpdatePassword} disabled={savingPassword}>
+          <KeyRound color={COLORS.purple} size={18} />
+          <Text style={styles.adminPasswordButtonText}>{savingPassword ? "Updating..." : "Update password"}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function DashboardScreen({
   avatarUrl,
   firstName,
@@ -1389,6 +1934,12 @@ function DashboardScreen({
   onBell,
   onBroadcast,
   onGo,
+  onLogout,
+  onManageTickets,
+  onScanTickets,
+  onProfileEdit,
+  profileEditorOpen,
+  profilePanel,
 }: {
   avatarUrl: string;
   firstName: string;
@@ -1398,86 +1949,106 @@ function DashboardScreen({
   onBell: () => void;
   onBroadcast: () => void;
   onGo: (tab: AdminTab) => void;
+  onLogout: () => void;
+  onManageTickets: () => void;
+  onScanTickets: () => void;
+  onProfileEdit: () => void;
+  profileEditorOpen: boolean;
+  profilePanel?: React.ReactNode;
 }) {
-  const attentionRows = [
+  const focusCount = metrics.pendingApplications + metrics.openTickets + metrics.pendingReviews;
+  const firstTask =
+    metrics.pendingApplications > 0
+      ? ("users" as AdminTab)
+      : metrics.openTickets > 0
+        ? ("tickets" as AdminTab)
+        : metrics.pendingReviews > 0
+          ? ("moderation" as AdminTab)
+          : ("orders" as AdminTab);
+  const workflowRows = [
     {
-      title: "Landlord Verification",
-      subtitle: "3 new landlords awaiting verification",
-      time: "10m ago",
-      icon: User,
-      tone: "orange" as Tone,
+      title: "Approve admissions",
+      subtitle: metrics.pendingApplications ? "Role requests waiting for a decision" : "No role requests waiting",
+      count: metrics.pendingApplications,
+      icon: ShieldCheck,
+      tone: "purple" as Tone,
       target: "users" as AdminTab,
     },
     {
-      title: "Restaurant Approval",
-      subtitle: "2 restaurants awaiting approval",
-      time: "25m ago",
-      icon: Store,
-      tone: "green" as Tone,
-      target: "moderation" as AdminTab,
+      title: "Handle support",
+      subtitle: metrics.openTickets ? "Open tickets and safety issues need replies" : "Support queue is clear",
+      count: metrics.openTickets,
+      icon: Headphones,
+      tone: "orange" as Tone,
+      target: "tickets" as AdminTab,
     },
     {
-      title: "Flagged Listing",
-      subtitle: "1 listing reported for review",
-      time: "1h ago",
+      title: "Review content",
+      subtitle: metrics.pendingReviews ? "Listings, catalog items, and reports to check" : "Content review is clear",
+      count: metrics.pendingReviews,
       icon: Flag,
       tone: "red" as Tone,
       target: "moderation" as AdminTab,
     },
     {
-      title: "Urgent Support Ticket",
-      subtitle: "Payment issue from Chitedze Hostel",
-      time: "2h ago",
-      icon: Headphones,
-      tone: "purple" as Tone,
-      target: "tickets" as AdminTab,
+      title: "Track orders",
+      subtitle: metrics.activeOrders ? "Active orders and deliveries moving now" : "No active orders",
+      count: metrics.activeOrders,
+      icon: Truck,
+      tone: "green" as Tone,
+      target: "orders" as AdminTab,
     },
   ];
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Admin" subtitle="Control Center" unreadCount={unreadCount} onBell={onBell} />
+      <ScreenHeader title="Admin" subtitle="Daily workflow" unreadCount={unreadCount} onBell={onBell} />
 
       <View style={styles.profileCard}>
         <Image source={{ uri: avatarUrl }} style={styles.avatarLarge} />
         <View style={styles.profileCopy}>
           <Text style={styles.greetingText}>{greeting()}, {firstName}</Text>
-          <Text style={styles.profileSubtitle}>{"Here's what's happening across EYA today."}</Text>
-          <View style={styles.superAdminBadge}>
-            <ShieldCheck color={COLORS.purple} size={17} strokeWidth={2.4} />
-            <Text style={styles.superAdminText}>Super Admin</Text>
+          <Text style={styles.profileSubtitle}>Start with approvals, then support, then operations.</Text>
+          <View style={styles.profileActionRow}>
+            <View style={styles.superAdminBadge}>
+              <ShieldCheck color={COLORS.purple} size={17} strokeWidth={2.4} />
+              <Text style={styles.superAdminText}>Super Admin</Text>
+            </View>
+            <Pressable style={styles.adminProfileButton} onPress={onProfileEdit}>
+              <User color={COLORS.purple} size={16} />
+              <Text style={styles.adminProfileButtonText}>{profileEditorOpen ? "Close profile" : "Edit profile"}</Text>
+            </Pressable>
+            <Pressable style={styles.adminLogoutButton} onPress={onLogout}>
+              <LogOut color={COLORS.red} size={16} />
+              <Text style={styles.adminLogoutText}>Log out</Text>
+            </Pressable>
           </View>
         </View>
       </View>
+      {profilePanel}
 
-      <View style={styles.miniStatsGrid}>
-        <MiniMetricCard icon={Briefcase} tone="blue" value="1,248" label="Total Orders" trend="12% vs yesterday" direction="up" onPress={() => onGo("orders")} />
-        <MiniMetricCard icon={Truck} tone="green" value={String(metrics.activeDeliveries)} label="Active Deliveries" trend="8% vs yesterday" direction="up" onPress={() => onGo("orders")} />
-        <MiniMetricCard icon={Tag} tone="orange" value={String(metrics.openTickets)} label="Open Tickets" trend="15% vs yesterday" direction="down" onPress={() => onGo("tickets")} />
-        <MiniMetricCard icon={ClipboardCheck} tone="purple" value={String(metrics.pendingApplications)} label="Pending Approvals" trend="5% vs yesterday" direction="up" onPress={() => onGo("users")} />
-      </View>
+      <Pressable style={styles.startWorkflowCard} onPress={() => onGo(firstTask)}>
+        <View style={styles.startWorkflowCopy}>
+          <Text style={styles.startWorkflowKicker}>Start here</Text>
+          <Text style={styles.startWorkflowTitle}>{focusCount ? `${focusCount} things need action` : "Everything important is clear"}</Text>
+          <Text style={styles.startWorkflowSub}>
+            {focusCount ? "Tap to jump into the first priority queue." : "Check live orders or send a notice when needed."}
+          </Text>
+        </View>
+        <View style={styles.startWorkflowBadge}>
+          <Text style={styles.startWorkflowBadgeText}>{focusCount}</Text>
+        </View>
+        <ChevronRight color="#ffffff" size={25} />
+      </Pressable>
 
-      <SectionHeading title="Today's Snapshot" subtitle="Key metrics at a glance" trailing={<PeriodPill label="Today" />} />
-      <View style={styles.snapshotGrid}>
-        <SnapshotCard icon={ShieldCheck} tone="green" label="Revenue Today" value={compactMoney(metrics.paidRevenue)} trend="14% vs yesterday" direction="up" />
-        <SnapshotCard icon={Users} tone="blue" label="New Users" value={String(metrics.newUsers)} trend="18% vs yesterday" direction="up" />
-        <SnapshotCard icon={CreditCard} tone="orange" label="Failed Payments" value={String(metrics.failedPayments)} trend="29% vs yesterday" direction="down" />
-      </View>
-
-      <SectionHeading
-        title="Needs Attention"
-        subtitle="Actions require your review"
-        badge={String(attentionRows.length)}
-        trailing={<TextButton label="View all" onPress={() => onGo("moderation")} />}
-      />
-      <View style={styles.listCard}>
-        {attentionRows.map((row, index) => (
-          <AttentionRow
+      <SectionHeading title="Workflow" subtitle="Do these in order" trailing={<PeriodPill label="Today" />} />
+      <View style={styles.workflowStack}>
+        {workflowRows.map((row) => (
+          <WorkflowActionCard
             key={row.title}
-            divider={index < attentionRows.length - 1}
+            count={row.count}
             icon={row.icon}
             subtitle={row.subtitle}
-            time={row.time}
             title={row.title}
             tone={row.tone}
             onPress={() => onGo(row.target)}
@@ -1485,12 +2056,44 @@ function DashboardScreen({
         ))}
       </View>
 
-      <SectionHeading title="Quick Actions" subtitle="Common admin tasks" />
-      <View style={styles.quickGrid}>
-        <QuickAction icon={ShieldCheck} label="Approve Roles" tone="purple" onPress={() => onGo("users")} />
-        <QuickAction icon={Briefcase} label="View Orders" tone="blue" onPress={() => onGo("orders")} />
-        <QuickAction icon={Users} label="Manage Users" tone="green" onPress={() => onGo("users")} />
-        <QuickAction icon={Megaphone} label="Send Notice" tone="orange" onPress={onBroadcast} />
+      <Pressable style={styles.broadcastShortcut} onPress={onBroadcast}>
+        <View style={styles.broadcastShortcutIcon}>
+          <Megaphone color="#ffffff" size={22} />
+        </View>
+        <View style={styles.broadcastShortcutCopy}>
+          <Text style={styles.broadcastShortcutTitle}>Broadcast a notice</Text>
+          <Text style={styles.broadcastShortcutSub}>Send one notification to everyone or a selected role.</Text>
+        </View>
+        <ChevronRight color={COLORS.navy} size={24} />
+      </Pressable>
+
+      <Pressable style={styles.broadcastShortcut} onPress={onManageTickets}>
+        <View style={[styles.broadcastShortcutIcon, { backgroundColor: COLORS.purple }]}>
+          <Ticket color="#ffffff" size={22} />
+        </View>
+        <View style={styles.broadcastShortcutCopy}>
+          <Text style={styles.broadcastShortcutTitle}>Manage ticket listings</Text>
+          <Text style={styles.broadcastShortcutSub}>Create events, set ticket prices, capacities, and publish sales.</Text>
+        </View>
+        <ChevronRight color={COLORS.navy} size={24} />
+      </Pressable>
+
+      <Pressable style={styles.broadcastShortcut} onPress={onScanTickets}>
+        <View style={[styles.broadcastShortcutIcon, { backgroundColor: COLORS.green }]}>
+          <Ticket color="#ffffff" size={22} />
+        </View>
+        <View style={styles.broadcastShortcutCopy}>
+          <Text style={styles.broadcastShortcutTitle}>Scan event tickets</Text>
+          <Text style={styles.broadcastShortcutSub}>Use this phone to admit guests and block reused QR codes.</Text>
+        </View>
+        <ChevronRight color={COLORS.navy} size={24} />
+      </Pressable>
+
+      <SectionHeading title="Quick pulse" subtitle="Only the numbers admins need first" />
+      <View style={styles.snapshotGrid}>
+        <SnapshotCard icon={WalletCards} tone="green" label="Revenue" value={compactMoney(metrics.paidRevenue)} trend="Today" direction="up" />
+        <SnapshotCard icon={Users} tone="blue" label="New Users" value={String(metrics.newUsers)} trend="Today" direction="up" />
+        <SnapshotCard icon={CreditCard} tone="orange" label="Failed Payments" value={String(metrics.failedPayments)} trend="Today" direction="down" />
       </View>
     </View>
   );
@@ -1498,6 +2101,7 @@ function DashboardScreen({
 
 function ReportsScreen({
   metrics,
+  orders,
   payments,
   vendors,
   unreadCount,
@@ -1505,6 +2109,7 @@ function ReportsScreen({
   onRefresh,
 }: {
   metrics: AdminMetrics;
+  orders: AdminOrderSummary[];
   payments: AdminPaymentSummary[];
   vendors: AdminVendorSummary[];
   unreadCount: number;
@@ -1513,46 +2118,80 @@ function ReportsScreen({
 }) {
   const [showAllPayouts, setShowAllPayouts] = useState(false);
   const [showAllTransactions, setShowAllTransactions] = useState(false);
-  const payoutRows = (vendors.length ? vendors.slice(0, 4) : []).map((vendor, index) => ({
-    id: vendor.id,
-    name: vendor.name,
-    subtitle: vendor.supports_food ? "Restaurant" : "Vendor",
-    role: vendor.supports_food ? "Restaurant" : "Seller",
-    amount: [1250000, 950000, 320000, 600000][index] ?? 250000,
-    status: index === 1 ? "Under Review" : index === 3 ? "On Hold" : "Ready",
-    icon: vendor.supports_food ? UtensilsCrossed : Briefcase,
-    tone: vendor.supports_food ? ("orange" as Tone) : ("purple" as Tone),
-  }));
-  const finalPayoutRows =
-    payoutRows.length > 0
-      ? payoutRows
-      : [
-          { id: "p1", name: "Chikondi Phiri", subtitle: "City Apartments", role: "Landlord", amount: 1250000, status: "Ready", icon: Home, tone: "green" as Tone },
-          { id: "p2", name: "Taste of Malawi", subtitle: "Restaurant", role: "Restaurant", amount: 950000, status: "Under Review", icon: UtensilsCrossed, tone: "orange" as Tone },
-          { id: "p3", name: "Green Leaf Produce", subtitle: "Vendor", role: "Seller", amount: 320000, status: "Ready", icon: Briefcase, tone: "purple" as Tone },
-          { id: "p4", name: "Bright Homes Agency", subtitle: "Agency", role: "Agent", amount: 600000, status: "On Hold", icon: User, tone: "blue" as Tone },
-          { id: "p5", name: "Mwayi Groceries", subtitle: "Campus shop", role: "Seller", amount: 280000, status: "Ready", icon: Store, tone: "green" as Tone },
-          { id: "p6", name: "Mponela Rooms", subtitle: "Student housing", role: "Landlord", amount: 720000, status: "Under Review", icon: Home, tone: "orange" as Tone },
-        ];
+  const [detailSheet, setDetailSheet] = useState<DetailSheetData | null>(null);
+  const payoutRows = useMemo(() => {
+    const vendorById = new Map(vendors.map((vendor) => [vendor.id, vendor]));
+    const grouped = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        subtitle: string;
+        role: string;
+        amount: number;
+        status: string;
+        icon: IconComponent;
+        tone: Tone;
+        pendingCount: number;
+      }
+    >();
 
-  const transactions =
-    payments.length > 0
-      ? payments.slice(0, 3).map((payment) => ({
-          id: payment.id,
-          title: payment.title || payment.reference || "Payment",
-          subtitle: paymentSucceeded(payment) ? "Payment received" : paymentFailed(payment) ? "Payment failed" : "Payment processing",
-          amount: Number(payment.amount_mwk ?? 0),
-          status: paymentSucceeded(payment) ? "Completed" : paymentFailed(payment) ? "Failed" : "Processing",
-          time: relativeTime(payment.created_at),
-        }))
-      : [
-          { id: "t1", title: "Order #EYA-94821", subtitle: "Payment received", amount: 150000, status: "Completed", time: "10m ago" },
-          { id: "t2", title: "Payout to Chikondi Phiri", subtitle: "Payout initiated", amount: 1250000, status: "Processing", time: "25m ago" },
-          { id: "t3", title: "Payment failure - Order #EYA-94710", subtitle: "Card declined", amount: 35000, status: "Failed", time: "1h ago" },
-          { id: "t4", title: "Order #EYA-94803", subtitle: "Payment received", amount: 87500, status: "Completed", time: "2h ago" },
-          { id: "t5", title: "Payout to Taste of Malawi", subtitle: "Payout queued", amount: 950000, status: "Processing", time: "3h ago" },
-        ];
-  const visiblePayoutRows = showAllPayouts ? finalPayoutRows : finalPayoutRows.slice(0, 4);
+    orders
+      .filter((order) => String(order.payment_status || "").toLowerCase() === "paid")
+      .forEach((order) => {
+        const vendor = vendorById.get(order.vendor_id);
+        const key = order.vendor_id || order.vendor?.id || order.id;
+        const foodVendor = Boolean(vendor?.supports_food || order.channel === "food");
+        const current =
+          grouped.get(key) ?? {
+            id: key,
+            name: vendor?.name || order.vendor?.name || compactId(key),
+            subtitle: foodVendor ? "Restaurant" : "Vendor",
+            role: foodVendor ? "Restaurant" : "Seller",
+            amount: 0,
+            status: "Ready",
+            icon: foodVendor ? UtensilsCrossed : Briefcase,
+            tone: foodVendor ? ("orange" as Tone) : ("purple" as Tone),
+            pendingCount: 0,
+          };
+        current.amount += Number(order.total_mwk ?? 0);
+        if (order.status !== "delivered") current.pendingCount += 1;
+        current.status = current.pendingCount ? "Processing" : "Ready";
+        grouped.set(key, current);
+      });
+
+    return Array.from(grouped.values()).sort((a, b) => b.amount - a.amount);
+  }, [orders, vendors]);
+
+  const transactions = payments.map((payment) => ({
+    id: payment.id,
+    title: payment.title || payment.reference || "Payment",
+    subtitle: paymentSucceeded(payment) ? "Payment received" : paymentFailed(payment) ? "Payment failed" : "Payment processing",
+    amount: Number(payment.amount_mwk ?? 0),
+    status: paymentSucceeded(payment) ? "Completed" : paymentFailed(payment) ? "Failed" : "Processing",
+    time: relativeTime(payment.created_at),
+    reference: payment.reference,
+    provider: payment.provider,
+    method: payment.method,
+    customerEmail: payment.customer_email,
+    relatedOrderId: payment.related_order_id,
+    paidAt: payment.paid_at,
+    createdAt: payment.created_at,
+  }));
+  const revenueBars = useMemo(() => {
+    const totals = Array.from({ length: 7 }, () => 0);
+    payments.filter(paymentSucceeded).forEach((payment) => {
+      const paidAt = new Date(payment.paid_at || payment.verified_at || payment.created_at);
+      if (Number.isNaN(paidAt.getTime())) return;
+      const dayIndex = (paidAt.getDay() + 6) % 7;
+      totals[dayIndex] += Number(payment.amount_mwk ?? 0);
+    });
+    return totals.map((value) => value / 1000000);
+  }, [payments]);
+  const maxRevenueBar = Math.max(1, ...revenueBars);
+  const revenueAxisLabels = [maxRevenueBar, maxRevenueBar * 0.67, maxRevenueBar * 0.33, 0];
+  const formatRevenueAxis = (value: number) => (value === 0 ? "0" : `${value >= 10 ? value.toFixed(0) : value.toFixed(1)}M`);
+  const visiblePayoutRows = showAllPayouts ? payoutRows : payoutRows.slice(0, 4);
   const visibleTransactions = showAllTransactions ? transactions : transactions.slice(0, 3);
 
   return (
@@ -1561,9 +2200,9 @@ function ReportsScreen({
       <PeriodPill label="This Week" icon={CalendarDays} onPress={onRefresh} />
 
       <View style={styles.reportMetricGrid}>
-        <ReportMetric icon={WalletCards} tone="green" label="Revenue" value={compactMoney(metrics.weeklyRevenue)} trend="16% vs last week" direction="up" />
-        <ReportMetric icon={Clock3} tone="orange" label="Payouts Pending" value="11" trend="8% vs last week" direction="down" />
-        <ReportMetric icon={ShieldAlert} tone="red" label="Failed Payments" value={String(metrics.failedPayments)} trend="29% vs last week" direction="upBad" />
+        <ReportMetric icon={WalletCards} tone="green" label="Revenue" value={compactMoney(metrics.weeklyRevenue)} />
+        <ReportMetric icon={Clock3} tone="orange" label="Payouts Pending" value={String(metrics.pendingPayments)} />
+        <ReportMetric icon={ShieldAlert} tone="red" label="Failed Payments" value={String(metrics.failedPayments)} />
       </View>
 
       <View style={styles.chartCard}>
@@ -1572,16 +2211,16 @@ function ReportsScreen({
           <PeriodPill label="By Day" compact />
         </View>
         <View style={styles.chartArea}>
-          {[2.4, 1.6, 0.8, 0].map((label) => (
+          {revenueAxisLabels.map((label) => (
             <View key={label} style={styles.chartGridLine}>
-              <Text style={styles.chartAxis}>{label === 0 ? "0" : `${label.toFixed(1)}M`}</Text>
+              <Text style={styles.chartAxis}>{formatRevenueAxis(label)}</Text>
               <View style={styles.chartDashed} />
             </View>
           ))}
           <View style={styles.barsRow}>
-            {REVENUE_BARS.map((value, index) => (
+            {revenueBars.map((value, index) => (
               <View key={DAYS[index]} style={styles.barColumn}>
-                <View style={[styles.chartBar, { height: 28 + value * 42 }]} />
+                <View style={[styles.chartBar, { height: 28 + (value / maxRevenueBar) * 126 }]} />
                 <Text style={styles.barLabel}>{DAYS[index]}</Text>
               </View>
             ))}
@@ -1595,33 +2234,94 @@ function ReportsScreen({
 
       <SectionHeading
         title="Payout Queue"
-        trailing={<TextButton label={showAllPayouts ? "Collapse" : "View all"} onPress={() => setShowAllPayouts((value) => !value)} />}
+        trailing={payoutRows.length > 4 ? <TextButton label={showAllPayouts ? "Collapse" : "View all"} onPress={() => setShowAllPayouts((value) => !value)} /> : undefined}
       />
-      <View style={styles.listCard}>
-        {visiblePayoutRows.map((row, index) => (
-          <PayoutRow
-            key={row.id}
-            row={row}
-            divider={index < visiblePayoutRows.length - 1}
-            onPress={() => Alert.alert(row.name, `${row.subtitle}\n${row.role}\n${compactMoney(row.amount)} - ${row.status}`)}
-          />
-        ))}
-      </View>
+      {visiblePayoutRows.length ? (
+        <View style={styles.listCard}>
+          {visiblePayoutRows.map((row, index) => (
+            <PayoutRow
+              key={row.id}
+              row={row}
+              divider={index < visiblePayoutRows.length - 1}
+              onPress={() =>
+                setDetailSheet({
+                  title: row.name,
+                  kicker: "Payout queue",
+                  subtitle: row.subtitle,
+                  icon: row.icon,
+                  tone: row.tone,
+                  summary: [
+                    { label: "Amount", value: compactMoney(row.amount) },
+                    { label: "Status", value: row.status },
+                    { label: "Role", value: row.role },
+                  ],
+                  sections: [
+                    {
+                      title: "Payout Details",
+                      rows: [
+                        { label: "Recipient", value: row.name },
+                        { label: "Business type", value: row.subtitle },
+                        { label: "Pending orders", value: row.pendingCount },
+                        { label: "Account ID", value: row.id },
+                      ],
+                    },
+                  ],
+                })
+              }
+            />
+          ))}
+        </View>
+      ) : (
+        <EmptyQueueCard icon={WalletCards} title="No payout queue yet" text="Paid vendor orders will create payout rows here." />
+      )}
 
       <SectionHeading
         title="Recent Transactions"
-        trailing={<TextButton label={showAllTransactions ? "Collapse" : "View all"} onPress={() => setShowAllTransactions((value) => !value)} />}
+        trailing={transactions.length > 3 ? <TextButton label={showAllTransactions ? "Collapse" : "View all"} onPress={() => setShowAllTransactions((value) => !value)} /> : undefined}
       />
-      <View style={styles.listCard}>
-        {visibleTransactions.map((row, index) => (
-          <TransactionRow
-            key={row.id}
-            row={row}
-            divider={index < visibleTransactions.length - 1}
-            onPress={() => Alert.alert(row.title, `${row.subtitle}\n${money(row.amount)}\n${row.status} - ${row.time}`)}
-          />
-        ))}
-      </View>
+      {visibleTransactions.length ? (
+        <View style={styles.listCard}>
+          {visibleTransactions.map((row, index) => (
+            <TransactionRow
+              key={row.id}
+              row={row}
+              divider={index < visibleTransactions.length - 1}
+              onPress={() =>
+                setDetailSheet({
+                  title: row.title,
+                  kicker: "Transaction",
+                  subtitle: row.subtitle,
+                  icon: row.status === "Completed" ? ArrowUp : row.status === "Failed" ? CircleAlert : ArrowDown,
+                  tone: statusColor(row.status),
+                  summary: [
+                    { label: "Amount", value: money(row.amount) },
+                    { label: "Status", value: row.status },
+                    { label: "Time", value: row.time },
+                  ],
+                  sections: [
+                    {
+                      title: "Payment Details",
+                      rows: [
+                        { label: "Reference", value: row.reference },
+                        { label: "Provider", value: row.provider },
+                        { label: "Method", value: row.method },
+                        { label: "Customer email", value: row.customerEmail },
+                        { label: "Related order", value: row.relatedOrderId },
+                        { label: "Paid at", value: row.paidAt ? new Date(row.paidAt).toLocaleString() : null },
+                        { label: "Created at", value: row.createdAt ? new Date(row.createdAt).toLocaleString() : null },
+                        { label: "Payment ID", value: row.id },
+                      ],
+                    },
+                  ],
+                })
+              }
+            />
+          ))}
+        </View>
+      ) : (
+        <EmptyQueueCard icon={CreditCard} title="No transactions yet" text="Payment activity from the backend will appear here." />
+      )}
+      <DetailSheet data={detailSheet} visible={Boolean(detailSheet)} onClose={() => setDetailSheet(null)} />
     </View>
   );
 }
@@ -1651,21 +2351,29 @@ function OrdersScreen({
       <Segmented labels={ORDER_FILTERS} active={filter} onChange={onFilter} />
 
       <View style={styles.orderMetricGrid}>
-        <SnapshotCard icon={Briefcase} tone="green" label="Active Orders" value={String(metrics.activeOrders)} trend="12% vs yesterday" direction="up" />
-        <SnapshotCard icon={Clock3} tone="orange" label="Delayed" value="12" trend="9% vs yesterday" direction="down" />
-        <SnapshotCard icon={User} tone="purple" label="Unassigned" value="7" trend="13% vs yesterday" direction="up" />
+        <SnapshotCard icon={Briefcase} tone="green" label="Active Orders" value={String(metrics.activeOrders)} trend="Live now" direction="up" />
+        <SnapshotCard icon={Clock3} tone="orange" label="Delayed" value={String(metrics.delayedOrders)} trend="Needs check" direction="down" />
+        <SnapshotCard icon={User} tone="purple" label="Unassigned" value={String(metrics.unassignedOrders)} trend="Assign agent" direction="down" />
       </View>
 
       <View style={styles.stackGap}>
-        {orders.map((row) => (
-          <OrderCard
-            key={row.id}
-            order={row}
-            working={workingKey === `order:${row.id}` || workingKey === `assign:${row.id}`}
-            onAdvance={() => onAdvance(row)}
-            onAssign={() => onAssign(row)}
+        {orders.length ? (
+          orders.map((row) => (
+            <OrderCard
+              key={row.id}
+              order={row}
+              working={workingKey === `order:${row.id}` || workingKey === `assign:${row.id}`}
+              onAdvance={() => onAdvance(row)}
+              onAssign={() => onAssign(row)}
+            />
+          ))
+        ) : (
+          <EmptyQueueCard
+            icon={ClipboardList}
+            title="No orders in this view"
+            text="Live orders from the backend will appear here after customers place them."
           />
-        ))}
+        )}
       </View>
     </View>
   );
@@ -1704,10 +2412,12 @@ function UsersScreen({
   onStatusFilter: (value: UserStatusFilter) => void;
   onView: (row: DemoUser) => void;
 }) {
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const [workflow, setWorkflow] = useState<UserWorkflow>("Admissions");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<AdminUserSummary["role"]>("admin");
+  const [selectedApplication, setSelectedApplication] = useState<RoleApplication | null>(null);
+  const selectedApplicationWorking = selectedApplication ? Boolean(workingKey?.startsWith(`application:${selectedApplication.id}:`)) : false;
 
   const openStatusFilter = () => {
     const currentIndex = STATUS_FILTERS.indexOf(statusFilter);
@@ -1722,26 +2432,144 @@ function UsersScreen({
     onInvite({ email: inviteEmail, fullName: inviteName, role: inviteRole });
     setInviteEmail("");
     setInviteName("");
-    setInviteOpen(false);
   };
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader
-        title="Users"
-        subtitle="Roles & Access"
-        onBell={onBell}
-        rightAction={
-          <Pressable style={styles.inviteButton} onPress={() => setInviteOpen((value) => !value)}>
-            <Plus color={COLORS.purple} size={20} />
-            <Text style={styles.inviteButtonText}>Invite Staff</Text>
+      <ScreenHeader title="People" subtitle="Access workflow" onBell={onBell} />
+      <Segmented labels={USER_WORKFLOWS} active={workflow} badgeLabel="Admissions" badge={applications.length ? String(applications.length) : undefined} onChange={setWorkflow} />
+
+      {workflow === "Admissions" ? (
+        <View style={styles.admissionPanel}>
+          <View style={styles.admissionPanelHeader}>
+            <View style={styles.admissionTitleBlock}>
+              <Text style={styles.admissionKicker}>Step 1</Text>
+              <Text style={styles.admissionTitle}>{applications.length ? `${applications.length} admission request${applications.length === 1 ? "" : "s"}` : "Admission queue is clear"}</Text>
+            </View>
+            <View style={styles.admissionCountBadge}>
+              <Text style={styles.admissionCountText}>{applications.length}</Text>
+            </View>
+          </View>
+          <Text style={styles.admissionSub}>Approve or decline role access from here. Approved users are notified and can switch roles immediately.</Text>
+          {applications.length ? (
+            <View style={styles.stackGap}>
+              {applications.map((application) => (
+                <RoleApplicationReviewCard
+                  key={application.id}
+                  application={application}
+                  working={Boolean(workingKey?.startsWith(`application:${application.id}:`))}
+                  onDetails={() => setSelectedApplication(application)}
+                  onApprove={() => onReviewApplication(application, "approved")}
+                  onDecline={() => onReviewApplication(application, "declined")}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.admissionEmpty}>
+              <ClipboardCheck color={COLORS.green} size={20} />
+              <Text style={styles.admissionEmptyText}>No one is waiting for role approval.</Text>
+            </View>
+          )}
+          <Pressable style={styles.workflowNextButton} onPress={() => setWorkflow("Directory")}>
+            <Users color={COLORS.purple} size={19} />
+            <Text style={styles.workflowNextText}>Open user directory</Text>
+            <ChevronRight color={COLORS.purple} size={20} />
           </Pressable>
-        }
+        </View>
+      ) : null}
+
+      <ApplicationDetailsModal
+        application={selectedApplication}
+        visible={Boolean(selectedApplication)}
+        working={selectedApplicationWorking}
+        onClose={() => setSelectedApplication(null)}
+        onApprove={() => {
+          if (!selectedApplication) return;
+          const current = selectedApplication;
+          setSelectedApplication(null);
+          onReviewApplication(current, "approved");
+        }}
+        onDecline={() => {
+          if (!selectedApplication) return;
+          const current = selectedApplication;
+          setSelectedApplication(null);
+          onReviewApplication(current, "declined");
+        }}
       />
 
-      {inviteOpen ? (
+      {workflow === "Directory" ? (
+        <>
+          <View style={styles.peopleSummaryRow}>
+            <WideMetric icon={Users} tone="blue" label="Total Users" value={String(metrics.totalUsers)} trend="Directory" />
+            <WideMetric icon={UserPlus} tone="green" label="New Signups" value={String(metrics.newUsers)} trend="Today" />
+          </View>
+
+          <View style={styles.searchRow}>
+            <View style={styles.searchBox}>
+              <Search color={COLORS.muted} size={25} />
+              <TextInput
+                value={query}
+                onChangeText={onQuery}
+                placeholder="Search name, phone or email"
+                placeholderTextColor={COLORS.muted}
+                style={styles.searchInput}
+              />
+            </View>
+            <Pressable style={styles.filterButton} onPress={openStatusFilter}>
+              <SlidersHorizontal color={COLORS.navy} size={27} />
+            </Pressable>
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.userChipScroller}>
+            {USER_FILTERS.map((row) => (
+              <RoleFilterChip key={row.label} label={row.label} icon={row.icon} active={filter === row.label} onPress={() => onFilter(row.label)} />
+            ))}
+          </ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.userChipScroller}>
+            {STATUS_FILTERS.map((status) => (
+              <StatusFilterChip key={status} label={status} active={statusFilter === status} onPress={() => onStatusFilter(status)} />
+            ))}
+          </ScrollView>
+          <View style={styles.activeFilterRow}>
+            <StatusPill label={`Status: ${statusFilter}`} tone={statusFilter === "All" ? "neutral" : statusColor(statusFilter)} />
+            {query ? <StatusPill label={`Search: ${query}`} tone="blue" /> : null}
+          </View>
+
+          <SectionHeading title={`Directory (${users.length})`} subtitle="Search, view, and verify accounts" trailing={<PeriodPill label="Newest" compact />} />
+          {users.length ? (
+            <View style={styles.stackGap}>
+              {users.map((row) => {
+                const matchingApplication = applications.find((application) => application.id === row.id || application.user_id === row.id);
+                return (
+                  <UserRowCard
+                    key={row.id}
+                    row={row}
+                    working={
+                      workingKey === `user:${row.id}` ||
+                      Boolean(matchingApplication && workingKey?.startsWith(`application:${matchingApplication.id}:`))
+                    }
+                    onApprove={() => onApprove(row)}
+                    onView={() => onView(row)}
+                  />
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.peopleEmptyCard}>
+              <Users color={COLORS.muted} size={24} />
+              <View style={styles.peopleEmptyCopy}>
+                <Text style={styles.peopleEmptyTitle}>No backend users found</Text>
+                <Text style={styles.peopleEmptyText}>Pull to refresh after users sign up or after the admin user endpoint is connected.</Text>
+              </View>
+            </View>
+          )}
+        </>
+      ) : null}
+
+      {workflow === "Staff" ? (
         <View style={styles.invitePanel}>
           <Text style={styles.invitePanelTitle}>Invite staff member</Text>
+          <Text style={styles.invitePanelSub}>Add admins, delivery agents, vendors, or landlords without leaving this page.</Text>
           <TextInput
             value={inviteName}
             onChangeText={setInviteName}
@@ -1770,98 +2598,11 @@ function UsersScreen({
             ))}
           </View>
           <Pressable style={[styles.inviteSubmitButton, workingKey === "invite" && styles.disabledButton]} onPress={sendInvite} disabled={workingKey === "invite"}>
+            <Plus color="#ffffff" size={18} />
             <Text style={styles.inviteSubmitText}>{workingKey === "invite" ? "Sending..." : "Send invite"}</Text>
           </Pressable>
         </View>
       ) : null}
-
-      <View style={styles.admissionPanel}>
-        <View style={styles.admissionPanelHeader}>
-          <View>
-            <Text style={styles.admissionKicker}>Admission Queue</Text>
-            <Text style={styles.admissionTitle}>{applications.length ? `${applications.length} role request${applications.length === 1 ? "" : "s"} waiting` : "No role requests waiting"}</Text>
-          </View>
-          <View style={styles.admissionCountBadge}>
-            <Text style={styles.admissionCountText}>{applications.length}</Text>
-          </View>
-        </View>
-        <Text style={styles.admissionSub}>
-          Review submitted details, then approve access or decline with feedback. Approved users are notified and can switch roles immediately.
-        </Text>
-        {applications.length ? (
-          <View style={styles.stackGap}>
-            {applications.map((application) => (
-              <RoleApplicationReviewCard
-                key={application.id}
-                application={application}
-                working={Boolean(workingKey?.startsWith(`application:${application.id}:`))}
-                onApprove={() => onReviewApplication(application, "approved")}
-                onDecline={() => onReviewApplication(application, "declined")}
-              />
-            ))}
-          </View>
-        ) : (
-          <View style={styles.admissionEmpty}>
-            <ClipboardCheck color={COLORS.green} size={20} />
-            <Text style={styles.admissionEmptyText}>Every admission request has been handled.</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.searchRow}>
-        <View style={styles.searchBox}>
-          <Search color={COLORS.muted} size={25} />
-          <TextInput
-            value={query}
-            onChangeText={onQuery}
-            placeholder="Search by name, phone or email..."
-            placeholderTextColor={COLORS.muted}
-            style={styles.searchInput}
-          />
-        </View>
-        <Pressable style={styles.filterButton} onPress={openStatusFilter}>
-          <SlidersHorizontal color={COLORS.navy} size={27} />
-        </Pressable>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.userChipScroller}>
-        {USER_FILTERS.map((row) => (
-          <RoleFilterChip key={row.label} label={row.label} icon={row.icon} active={filter === row.label} onPress={() => onFilter(row.label)} />
-        ))}
-      </ScrollView>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.userChipScroller}>
-        {STATUS_FILTERS.map((status) => (
-          <StatusFilterChip key={status} label={status} active={statusFilter === status} onPress={() => onStatusFilter(status)} />
-        ))}
-      </ScrollView>
-      <View style={styles.activeFilterRow}>
-        <StatusPill label={`Status: ${statusFilter}`} tone={statusFilter === "All" ? "neutral" : statusColor(statusFilter)} />
-        {query ? <StatusPill label={`Search: ${query}`} tone="blue" /> : null}
-      </View>
-
-      <View style={styles.twoMetricGrid}>
-        <WideMetric icon={UserPlus} tone="green" label="New Signups" value={String(metrics.newUsers)} trend="18% vs yesterday" />
-        <WideMetric icon={ShieldCheck} tone="orange" label="Pending Verifications" value={String(metrics.pendingApplications)} trend="12% vs yesterday" />
-      </View>
-
-      <SectionHeading title={`All Users (${metrics.totalUsers})`} subtitle="Manage and review user access" trailing={<PeriodPill label="Sort by: Newest" compact />} />
-      <View style={styles.stackGap}>
-        {users.map((row) => {
-          const matchingApplication = applications.find((application) => application.id === row.id || application.user_id === row.id);
-          return (
-            <UserRowCard
-              key={row.id}
-              row={row}
-              working={
-                workingKey === `user:${row.id}` ||
-                Boolean(matchingApplication && workingKey?.startsWith(`application:${matchingApplication.id}:`))
-              }
-              onApprove={() => onApprove(row)}
-              onView={() => onView(row)}
-            />
-          );
-        })}
-      </View>
     </View>
   );
 }
@@ -1881,48 +2622,70 @@ function TicketsScreen({
   workingKey: string | null;
   onBell: () => void;
   onFilter: (value: TicketFilter) => void;
-  onSetStatus: (row: DemoTicket, status: "open" | "pending" | "resolved") => void;
+  onSetStatus: (row: DemoTicket, status: "open" | "resolved") => void;
 }) {
   return (
     <View style={styles.screen}>
       <ScreenHeader title="Tickets" subtitle="Support & Safety" onBell={onBell} />
-      <Segmented labels={TICKET_FILTERS} active={filter} badgeLabel="Urgent" badge={String(metrics.pendingReviews)} onChange={onFilter} />
+      <Segmented labels={TICKET_FILTERS} active={filter} badgeLabel="Urgent" badge={metrics.urgentTickets ? String(metrics.urgentTickets) : undefined} onChange={onFilter} />
       <View style={styles.twoMetricGrid}>
-        <WideMetric icon={Ticket} tone="orange" label="Open Tickets" value={String(metrics.openTickets)} trend="15% vs yesterday" direction="down" />
-        <WideMetric icon={ShieldAlert} tone="red" label="Urgent Reports" value={String(metrics.pendingReviews)} trend="20% vs yesterday" direction="down" />
+        <WideMetric icon={Ticket} tone="orange" label="Open Tickets" value={String(metrics.openTickets)} trend="Live now" direction="up" />
+        <WideMetric icon={ShieldAlert} tone="red" label="Urgent Reports" value={String(metrics.urgentTickets)} trend="Needs action" direction="down" />
       </View>
       <View style={styles.stackGap}>
-        {tickets.map((row) => (
-          <TicketCard
-            key={row.id}
-            ticket={row}
-            working={workingKey === `ticket:${row.id}` || workingKey === `report:${row.id}`}
-            onReply={() => onSetStatus(row, "pending")}
-            onResolve={() => onSetStatus(row, "resolved")}
+        {tickets.length ? (
+          tickets.map((row) => (
+            <TicketCard
+              key={row.id}
+              ticket={row}
+              working={workingKey === `ticket:${row.id}` || workingKey === `report:${row.id}`}
+              onReply={() => onSetStatus(row, "open")}
+              onResolve={() => onSetStatus(row, "resolved")}
+            />
+          ))
+        ) : (
+          <EmptyQueueCard
+            icon={Ticket}
+            title="No tickets in this view"
+            text="Support and trust reports will show here when users submit them."
           />
-        ))}
+        )}
       </View>
     </View>
   );
 }
 
 function ModerationScreen({
+  catalogItems,
   filter,
   items,
   metrics,
+  vendors,
   workingKey,
   onAction,
   onBell,
+  onCatalogDelete,
+  onCatalogSave,
+  onCatalogToggleLive,
+  onCatalogView,
   onFilter,
 }: {
+  catalogItems: AdminCatalogItemSummary[];
   filter: ReviewFilter;
   items: DemoReviewItem[];
   metrics: AdminMetrics;
+  vendors: AdminVendorSummary[];
   workingKey: string | null;
   onAction: (row: DemoReviewItem, action: "approve" | "reject" | "flag") => void;
   onBell: () => void;
+  onCatalogDelete: (item: AdminCatalogItemSummary) => void;
+  onCatalogSave: (item: AdminCatalogItemSummary, draft: CatalogListingDraft) => Promise<boolean>;
+  onCatalogToggleLive: (item: AdminCatalogItemSummary, isActive: boolean) => void;
+  onCatalogView: (item: AdminCatalogItemSummary) => void;
   onFilter: (value: ReviewFilter) => void;
 }) {
+  const marketItems = useMemo(() => catalogItems.filter((item) => item.channel === "market"), [catalogItems]);
+
   return (
     <View style={styles.screen}>
       <ScreenHeader title="Content Review" subtitle="Moderation" onBell={onBell} />
@@ -1930,21 +2693,249 @@ function ModerationScreen({
 
       <View style={styles.reviewMetricGrid}>
         <ReportMetric icon={Clock3} tone="orange" label="Pending" value={String(metrics.pendingReviews)} />
-        <ReportMetric icon={Flag} tone="red" label="Flagged" value="5" />
-        <ReportMetric icon={CheckCircle2} tone="green" label="Approved today" value="28" />
+        <ReportMetric icon={Flag} tone="red" label="Flagged" value={String(metrics.flaggedReviews)} />
+        <ReportMetric icon={CheckCircle2} tone="green" label="Approved today" value={String(metrics.approvedReviewsToday)} />
+      </View>
+
+      {filter === "Market" ? (
+        <MarketListingsManager
+          items={marketItems}
+          vendors={vendors}
+          workingKey={workingKey}
+          onDelete={onCatalogDelete}
+          onSave={onCatalogSave}
+          onToggleLive={onCatalogToggleLive}
+          onView={onCatalogView}
+        />
+      ) : (
+        <View style={styles.stackGap}>
+          {items.length ? (
+            items.map((row) => (
+              <ReviewCard
+                key={row.id}
+                item={row}
+                working={workingKey === `listing:${row.id}` || workingKey === `catalog:${row.id}` || workingKey === `report:${row.id}`}
+                onApprove={() => onAction(row, "approve")}
+                onFlag={() => onAction(row, "flag")}
+                onReject={() => onAction(row, "reject")}
+              />
+            ))
+          ) : (
+            <EmptyQueueCard
+              icon={CheckCircle2}
+              title="Review queue is clear"
+              text="Pending listings, food items, room listings, and reports will appear here."
+            />
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function MarketListingsManager({
+  items,
+  vendors,
+  workingKey,
+  onDelete,
+  onSave,
+  onToggleLive,
+  onView,
+}: {
+  items: AdminCatalogItemSummary[];
+  vendors: AdminVendorSummary[];
+  workingKey: string | null;
+  onDelete: (item: AdminCatalogItemSummary) => void;
+  onSave: (item: AdminCatalogItemSummary, draft: CatalogListingDraft) => Promise<boolean>;
+  onToggleLive: (item: AdminCatalogItemSummary, isActive: boolean) => void;
+  onView: (item: AdminCatalogItemSummary) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<CatalogListingDraft | null>(null);
+  const vendorById = useMemo(() => new Map(vendors.map((vendor) => [vendor.id, vendor])), [vendors]);
+  const visibleItems = useMemo(
+    () =>
+      items.filter((item) => {
+        const vendor = vendorById.get(item.vendor_id);
+        return matchesQuery(query, item.name, item.description, vendor?.name, vendor?.area, vendor?.campus, item.is_active ? "live" : "hidden");
+      }),
+    [items, query, vendorById],
+  );
+  const liveCount = items.filter((item) => item.is_active).length;
+
+  const startEdit = (item: AdminCatalogItemSummary) => {
+    setEditingId(item.id);
+    setDraft(catalogDraftFromItem(item));
+  };
+
+  const updateDraft = (patch: Partial<CatalogListingDraft>) => {
+    setDraft((current) => (current ? { ...current, ...patch } : current));
+  };
+
+  const saveEdit = async (item: AdminCatalogItemSummary) => {
+    if (!draft) return;
+    const saved = await onSave(item, draft);
+    if (saved) {
+      setEditingId(null);
+      setDraft(null);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraft(null);
+  };
+
+  return (
+    <View style={styles.marketAdminSection}>
+      <SectionHeading
+        title={`Market listings (${items.length})`}
+        subtitle="View, edit, publish, hide, or delete marketplace products"
+        trailing={<StatusPill label={`${liveCount} live`} tone={liveCount ? "green" : "neutral"} />}
+      />
+
+      <View style={styles.marketSearchBox}>
+        <Search color={COLORS.muted} size={22} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search market listings"
+          placeholderTextColor={COLORS.muted}
+          style={styles.marketSearchInput}
+        />
       </View>
 
       <View style={styles.stackGap}>
-        {items.map((row) => (
-          <ReviewCard
-            key={row.id}
-            item={row}
-            working={workingKey === `listing:${row.id}` || workingKey === `catalog:${row.id}` || workingKey === `report:${row.id}`}
-            onApprove={() => onAction(row, "approve")}
-            onFlag={() => onAction(row, "flag")}
-            onReject={() => onAction(row, "reject")}
+        {visibleItems.length ? (
+          visibleItems.map((item) => {
+            const vendor = vendorById.get(item.vendor_id);
+            const editing = editingId === item.id;
+            const working =
+              workingKey === `catalog:${item.id}` ||
+              workingKey === `catalog:${item.id}:edit` ||
+              workingKey === `catalog:${item.id}:live` ||
+              workingKey === `catalog:${item.id}:delete`;
+            return (
+              <View key={item.id} style={styles.marketAdminCard}>
+                <View style={styles.marketAdminTop}>
+                  <Image source={{ uri: item.image_urls?.[0] || item.image_url || SAMPLE_REVIEW_ITEMS[1].image }} style={styles.marketAdminImage} />
+                  <View style={styles.marketAdminCopy}>
+                    <View style={styles.marketAdminTitleRow}>
+                      <Text style={styles.marketAdminTitle} numberOfLines={2}>{item.name}</Text>
+                      <StatusPill label={item.is_active ? "Live" : "Hidden"} tone={item.is_active ? "green" : "orange"} />
+                    </View>
+                    <Text style={styles.marketAdminPrice}>{money(item.price_mwk)}</Text>
+                    <Text style={styles.marketAdminMeta} numberOfLines={1}>{vendor?.name || compactId(item.vendor_id)}</Text>
+                    <Text style={styles.marketAdminMeta} numberOfLines={1}>
+                      {[vendor?.area, vendor?.city, vendor?.campus].filter(Boolean).join(", ") || "No location set"}
+                    </Text>
+                    <Text style={styles.marketAdminMeta}>
+                      Stock: {item.stock_qty === null || item.stock_qty === undefined ? "Not tracked" : item.stock_qty}
+                    </Text>
+                  </View>
+                </View>
+
+                {editing && draft ? (
+                  <View style={styles.marketEditPanel}>
+                    <TextInput
+                      value={draft.name}
+                      onChangeText={(value) => updateDraft({ name: value })}
+                      placeholder="Listing name"
+                      placeholderTextColor={COLORS.muted}
+                      style={styles.marketEditInput}
+                    />
+                    <View style={styles.marketEditRow}>
+                      <TextInput
+                        value={draft.priceMwk}
+                        onChangeText={(value) => updateDraft({ priceMwk: value })}
+                        keyboardType="numeric"
+                        placeholder="Price MWK"
+                        placeholderTextColor={COLORS.muted}
+                        style={[styles.marketEditInput, styles.marketEditHalfInput]}
+                      />
+                      <TextInput
+                        value={draft.stockQty}
+                        onChangeText={(value) => updateDraft({ stockQty: value })}
+                        keyboardType="numeric"
+                        placeholder="Stock"
+                        placeholderTextColor={COLORS.muted}
+                        style={[styles.marketEditInput, styles.marketEditHalfInput]}
+                      />
+                    </View>
+                    <TextInput
+                      value={draft.description}
+                      onChangeText={(value) => updateDraft({ description: value })}
+                      multiline
+                      placeholder="Description"
+                      placeholderTextColor={COLORS.muted}
+                      style={[styles.marketEditInput, styles.marketEditDescription]}
+                    />
+                    <TextInput
+                      value={draft.imageUrl}
+                      onChangeText={(value) => updateDraft({ imageUrl: value })}
+                      autoCapitalize="none"
+                      placeholder="Image URL"
+                      placeholderTextColor={COLORS.muted}
+                      style={styles.marketEditInput}
+                    />
+                    <Pressable
+                      style={[styles.marketLiveToggle, draft.isActive && styles.marketLiveToggleActive]}
+                      onPress={() => updateDraft({ isActive: !draft.isActive })}
+                      disabled={working}
+                    >
+                      <CheckCircle2 color={draft.isActive ? "#ffffff" : COLORS.green} size={18} />
+                      <Text style={[styles.marketLiveToggleText, draft.isActive && styles.marketLiveToggleTextActive]}>
+                        {draft.isActive ? "Listing is live" : "Make listing live"}
+                      </Text>
+                    </Pressable>
+                    <View style={styles.marketEditActions}>
+                      <Pressable style={[styles.marketSmallAction, styles.marketNeutralAction]} onPress={cancelEdit} disabled={working}>
+                        <XCircle color={COLORS.muted} size={17} />
+                        <Text style={styles.marketNeutralActionText}>Cancel</Text>
+                      </Pressable>
+                      <Pressable style={[styles.marketSmallAction, styles.marketPrimaryAction, working && styles.disabledButton]} onPress={() => void saveEdit(item)} disabled={working}>
+                        <Save color="#ffffff" size={17} />
+                        <Text style={styles.marketPrimaryActionText}>{working ? "Saving..." : "Save"}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+
+                {!editing ? (
+                  <View style={styles.marketAdminActions}>
+                    <Pressable style={[styles.marketSmallAction, styles.marketNeutralAction]} onPress={() => onView(item)} disabled={working}>
+                      <Eye color={COLORS.purple} size={17} />
+                      <Text style={styles.marketNeutralActionText}>View</Text>
+                    </Pressable>
+                    <Pressable style={[styles.marketSmallAction, styles.marketNeutralAction]} onPress={() => startEdit(item)} disabled={working}>
+                      <Pencil color={COLORS.blue} size={17} />
+                      <Text style={styles.marketNeutralActionText}>Edit</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.marketSmallAction, item.is_active ? styles.marketHideAction : styles.marketLiveAction, working && styles.disabledButton]}
+                      onPress={() => onToggleLive(item, !item.is_active)}
+                      disabled={working}
+                    >
+                      <CheckCircle2 color={item.is_active ? COLORS.orange : COLORS.green} size={17} />
+                      <Text style={item.is_active ? styles.marketHideActionText : styles.marketLiveActionText}>{item.is_active ? "Hide" : "Live"}</Text>
+                    </Pressable>
+                    <Pressable style={[styles.marketSmallAction, styles.marketDeleteAction, working && styles.disabledButton]} onPress={() => onDelete(item)} disabled={working}>
+                      <Trash2 color={COLORS.red} size={17} />
+                      <Text style={styles.marketDeleteActionText}>Delete</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })
+        ) : (
+          <EmptyQueueCard
+            icon={ShoppingBag}
+            title={items.length ? "No matching market listings" : "No market listings yet"}
+            text={items.length ? "Clear the search to show all marketplace products." : "Products added by sellers will appear here for admin review."}
           />
-        ))}
+        )}
       </View>
     </View>
   );
@@ -1973,8 +2964,20 @@ function ScreenHeader({
         {rightAction}
         <Pressable style={styles.bellButton} onPress={onBell}>
           <Bell color={COLORS.navy} size={29} strokeWidth={2.2} />
-          {unreadCount ? <View style={styles.bellDot} /> : <View style={styles.bellDot} />}
+          {unreadCount ? <View style={styles.bellDot} /> : null}
         </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function EmptyQueueCard({ icon: Icon, title, text }: { icon: IconComponent; title: string; text: string }) {
+  return (
+    <View style={styles.emptyQueueCard}>
+      <IconBubble icon={Icon} tone="neutral" size={58} />
+      <View style={styles.emptyQueueCopy}>
+        <Text style={styles.emptyQueueTitle}>{title}</Text>
+        <Text style={styles.emptyQueueText}>{text}</Text>
       </View>
     </View>
   );
@@ -2002,33 +3005,6 @@ function Trend({ direction = "up", label, compact = false }: { direction?: Trend
         <Text style={{ color }}>{label.split(" ")[0]}</Text> {label.split(" ").slice(1).join(" ")}
       </Text>
     </View>
-  );
-}
-
-function MiniMetricCard({
-  icon,
-  label,
-  value,
-  trend,
-  tone,
-  direction,
-  onPress,
-}: {
-  icon: IconComponent;
-  label: string;
-  value: string;
-  trend: string;
-  tone: Tone;
-  direction: TrendDirection;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable style={styles.miniMetricCard} onPress={onPress}>
-      <IconBubble icon={icon} tone={tone} size={45} />
-      <Text style={styles.miniMetricValue} numberOfLines={1}>{value}</Text>
-      <Text style={styles.miniMetricLabel} numberOfLines={2}>{label}</Text>
-      <Trend label={trend} direction={direction} />
-    </Pressable>
   );
 }
 
@@ -2177,44 +3153,32 @@ function PeriodPill({
   );
 }
 
-function AttentionRow({
-  divider,
+function WorkflowActionCard({
+  count,
   icon,
   subtitle,
-  time,
   title,
   tone,
   onPress,
 }: {
-  divider: boolean;
+  count: number;
   icon: IconComponent;
   subtitle: string;
-  time: string;
   title: string;
   tone: Tone;
   onPress: () => void;
 }) {
   return (
-    <Pressable style={[styles.attentionRow, divider && styles.rowDivider]} onPress={onPress}>
-      <IconBubble icon={icon} tone={tone} size={49} />
-      <View style={styles.attentionCopy}>
-        <View style={styles.rowTitleLine}>
-          <Text style={styles.rowTitle}>{title}</Text>
-          <View style={[styles.tinyDot, { backgroundColor: toneColors(tone).fg }]} />
-        </View>
-        <Text style={styles.rowSubtitle}>{subtitle}</Text>
+    <Pressable style={styles.workflowCard} onPress={onPress}>
+      <IconBubble icon={icon} tone={tone} size={54} />
+      <View style={styles.workflowCardCopy}>
+        <Text style={styles.workflowCardTitle}>{title}</Text>
+        <Text style={styles.workflowCardSub}>{subtitle}</Text>
       </View>
-      <Text style={styles.rowTime}>{time}</Text>
-      <ChevronRight color={COLORS.muted} size={25} />
-    </Pressable>
-  );
-}
-
-function QuickAction({ icon, label, tone, onPress }: { icon: IconComponent; label: string; tone: Tone; onPress: () => void }) {
-  return (
-    <Pressable style={styles.quickActionCard} onPress={onPress}>
-      <IconBubble icon={icon} tone={tone} size={52} />
-      <Text style={styles.quickLabel}>{label}</Text>
+      <View style={[styles.workflowCountBadge, count === 0 && styles.workflowCountBadgeClear]}>
+        <Text style={[styles.workflowCountText, count === 0 && styles.workflowCountTextClear]}>{count}</Text>
+      </View>
+      <ChevronRight color={COLORS.muted} size={22} />
     </Pressable>
   );
 }
@@ -2244,8 +3208,8 @@ function Segmented<T extends string>({
             {Icon ? <Icon color={selected ? COLORS.navy : COLORS.muted} size={25} strokeWidth={2.2} /> : null}
             <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>{label}</Text>
             {badgeLabel === label && badge ? (
-              <View style={styles.segmentBadge}>
-                <Text style={styles.segmentBadgeText}>{badge}</Text>
+              <View style={[styles.segmentBadge, selected && styles.segmentBadgeActive]}>
+                <Text style={[styles.segmentBadgeText, selected && styles.segmentBadgeTextActive]}>{badge}</Text>
               </View>
             ) : null}
           </Pressable>
@@ -2323,9 +3287,10 @@ function OrderCard({
         ? { label: "Track", icon: MapPin, onPress: onAdvance }
         : null;
   const ActionIcon = action?.icon;
+  const primaryPress = action?.onPress ?? onAdvance;
 
   return (
-    <Pressable style={styles.orderCard} onPress={onAdvance} disabled={working}>
+    <Pressable style={styles.orderCard} onPress={primaryPress} disabled={working}>
       <View style={styles.orderTopRow}>
         <View style={styles.orderLeftRail}>
           <IconBubble icon={Icon} tone={tone} size={64} />
@@ -2362,11 +3327,13 @@ function OrderCard({
 function RoleApplicationReviewCard({
   application,
   working,
+  onDetails,
   onApprove,
   onDecline,
 }: {
   application: RoleApplication;
   working: boolean;
+  onDetails: () => void;
   onApprove: () => void;
   onDecline: () => void;
 }) {
@@ -2377,19 +3344,6 @@ function RoleApplicationReviewCard({
   const details = Object.entries(application.payload ?? {}).filter(([, value]) => String(value ?? "").trim());
   const previewDetails = details.slice(0, 3);
   const applicant = application.applicant_name || application.applicant_email || compactId(application.user_id);
-
-  const showDetails = () => {
-    const body = [
-      `Applicant: ${applicant}`,
-      application.applicant_email ? `Email: ${application.applicant_email}` : null,
-      application.applicant_phone ? `Phone: ${application.applicant_phone}` : null,
-      "",
-      ...details.map(([key, value]) => `${key}: ${value}`),
-    ]
-      .filter((line) => line !== null)
-      .join("\n");
-    Alert.alert(`${label} admission`, body || "No extra details were attached.");
-  };
 
   return (
     <View style={[styles.applicationReviewCard, { borderColor: colors.soft }]}>
@@ -2427,7 +3381,8 @@ function RoleApplicationReviewCard({
       ) : null}
 
       <View style={styles.applicationActions}>
-        <Pressable style={styles.applicationGhostButton} onPress={showDetails} disabled={working}>
+        <Pressable style={styles.applicationGhostButton} onPress={onDetails} disabled={working}>
+          <Eye color={COLORS.purple} size={17} />
           <Text style={styles.applicationGhostText}>Review</Text>
         </Pressable>
         <Pressable style={[styles.applicationDecisionButton, styles.applicationDeclineButton]} onPress={onDecline} disabled={working}>
@@ -2440,6 +3395,213 @@ function RoleApplicationReviewCard({
         </Pressable>
       </View>
     </View>
+  );
+}
+
+function DetailSheet({
+  data,
+  visible,
+  onClose,
+}: {
+  data: DetailSheetData | null;
+  visible: boolean;
+  onClose: () => void;
+}) {
+  if (!data) {
+    return <Modal visible={false} transparent animationType="fade" />;
+  }
+
+  const Icon = data.icon;
+  const colors = toneColors(data.tone);
+  const summary = normalizeDetailRows(data.summary ?? []);
+  const sections = normalizeDetailSections(data.sections);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <View style={styles.applicationModalOverlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.applicationModalSheet}>
+          <View style={styles.applicationModalHandle} />
+          <View style={styles.applicationModalHeader}>
+            <View style={[styles.applicationModalIcon, { backgroundColor: colors.bg }]}>
+              <Icon color={colors.fg} size={25} />
+            </View>
+            <View style={styles.applicationModalTitleBlock}>
+              <Text style={styles.applicationModalKicker}>{data.kicker}</Text>
+              <Text style={styles.applicationModalTitle}>{data.title}</Text>
+              {data.subtitle ? <Text style={styles.applicationModalSub}>{data.subtitle}</Text> : null}
+            </View>
+            <Pressable style={styles.applicationModalClose} onPress={onClose}>
+              <X color={COLORS.navy} size={22} />
+            </Pressable>
+          </View>
+
+          {summary.length ? (
+            <View style={styles.detailSheetSummaryGrid}>
+              {summary.slice(0, 4).map((row) => (
+                <View key={row.label} style={styles.detailSheetSummaryItem}>
+                  <Text style={styles.applicationModalStatValue} numberOfLines={1}>{row.value}</Text>
+                  <Text style={styles.applicationModalStatLabel}>{row.label}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          <ScrollView style={styles.applicationModalScroll} contentContainerStyle={styles.applicationModalScrollContent} showsVerticalScrollIndicator>
+            {sections.length ? (
+              sections.map((section) => (
+                <View key={section.title} style={styles.applicationModalSection}>
+                  <Text style={styles.applicationModalSectionTitle}>{section.title}</Text>
+                  <View style={styles.applicationModalRows}>
+                    {section.rows.map((row, index) => (
+                      <View key={`${section.title}-${row.label}-${index}`} style={styles.applicationModalDetailRow}>
+                        <Text style={styles.applicationModalDetailLabel}>{row.label}</Text>
+                        <Text style={styles.applicationModalDetailValue} selectable>{row.value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View style={styles.applicationModalEmpty}>
+                <ClipboardList color={COLORS.muted} size={24} />
+                <Text style={styles.applicationModalEmptyTitle}>No details available</Text>
+                <Text style={styles.applicationModalEmptyText}>Refresh the admin data and open this item again.</Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.detailSheetFooter}>
+            <Pressable style={styles.detailSheetDoneButton} onPress={onClose}>
+              <Text style={styles.detailSheetDoneText}>Done</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function ApplicationDetailsModal({
+  application,
+  visible,
+  working,
+  onClose,
+  onApprove,
+  onDecline,
+}: {
+  application: RoleApplication | null;
+  visible: boolean;
+  working: boolean;
+  onClose: () => void;
+  onApprove: () => void;
+  onDecline: () => void;
+}) {
+  if (!application) {
+    return <Modal visible={false} transparent animationType="fade" />;
+  }
+
+  const label = applicationLabel(application);
+  const Icon = applicationIcon(application);
+  const colors = toneColors(applicationTone(application));
+  const applicant = application.applicant_name || application.applicant_email || compactId(application.user_id);
+  const groups = applicationDetailGroups(application);
+  const detailCount = groups.reduce((count, group) => count + group.rows.length, 0);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <View style={styles.applicationModalOverlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.applicationModalSheet}>
+          <View style={styles.applicationModalHandle} />
+
+          <View style={styles.applicationModalHeader}>
+            <View style={[styles.applicationModalIcon, { backgroundColor: colors.bg }]}>
+              <Icon color={colors.fg} size={25} />
+            </View>
+            <View style={styles.applicationModalTitleBlock}>
+              <Text style={styles.applicationModalKicker}>Admission request</Text>
+              <Text style={styles.applicationModalTitle}>{label}</Text>
+              <Text style={styles.applicationModalSub}>{relativeTime(application.created_at)}</Text>
+            </View>
+            <Pressable style={styles.applicationModalClose} onPress={onClose} disabled={working}>
+              <X color={COLORS.navy} size={22} />
+            </Pressable>
+          </View>
+
+          <View style={styles.applicationApplicantPanel}>
+            <Text style={styles.applicationApplicantName}>{applicant}</Text>
+            <View style={styles.applicationIdentityGrid}>
+              <View style={styles.applicationIdentityRow}>
+                <User color={COLORS.muted} size={17} />
+                <Text style={styles.applicationIdentityText} numberOfLines={1}>{compactId(application.user_id)}</Text>
+              </View>
+              {application.applicant_email ? (
+                <View style={styles.applicationIdentityRow}>
+                  <Mail color={COLORS.muted} size={17} />
+                  <Text style={styles.applicationIdentityText} numberOfLines={1}>{application.applicant_email}</Text>
+                </View>
+              ) : null}
+              {application.applicant_phone ? (
+                <View style={styles.applicationIdentityRow}>
+                  <Phone color={COLORS.muted} size={17} />
+                  <Text style={styles.applicationIdentityText} numberOfLines={1}>{application.applicant_phone}</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.applicationModalStats}>
+              <View style={styles.applicationModalStat}>
+                <Text style={styles.applicationModalStatValue}>{detailCount}</Text>
+                <Text style={styles.applicationModalStatLabel}>Details</Text>
+              </View>
+              <View style={styles.applicationModalStat}>
+                <Text style={styles.applicationModalStatValue}>{groups.length}</Text>
+                <Text style={styles.applicationModalStatLabel}>Sections</Text>
+              </View>
+              <View style={styles.applicationModalStat}>
+                <Text style={styles.applicationModalStatValue}>{roleLabel(application.target_role)}</Text>
+                <Text style={styles.applicationModalStatLabel}>Role</Text>
+              </View>
+            </View>
+          </View>
+
+          <ScrollView style={styles.applicationModalScroll} contentContainerStyle={styles.applicationModalScrollContent} showsVerticalScrollIndicator>
+            {groups.length ? (
+              groups.map((group) => (
+                <View key={group.title} style={styles.applicationModalSection}>
+                  <Text style={styles.applicationModalSectionTitle}>{group.title}</Text>
+                  <View style={styles.applicationModalRows}>
+                    {group.rows.map((row, index) => (
+                      <View key={`${group.title}-${row.label}-${index}`} style={styles.applicationModalDetailRow}>
+                        <Text style={styles.applicationModalDetailLabel}>{row.label}</Text>
+                        <Text style={styles.applicationModalDetailValue} selectable>{row.value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View style={styles.applicationModalEmpty}>
+                <ClipboardList color={COLORS.muted} size={24} />
+                <Text style={styles.applicationModalEmptyTitle}>No attached details</Text>
+                <Text style={styles.applicationModalEmptyText}>This request only includes the applicant account information.</Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.applicationModalFooter}>
+            <Pressable style={[styles.applicationModalDecision, styles.applicationModalDecline, working && styles.disabledButton]} onPress={onDecline} disabled={working}>
+              <XCircle color={COLORS.red} size={19} />
+              <Text style={styles.applicationModalDeclineText}>{working ? "Working..." : "Decline"}</Text>
+            </Pressable>
+            <Pressable style={[styles.applicationModalDecision, styles.applicationModalApprove, working && styles.disabledButton]} onPress={onApprove} disabled={working}>
+              <CheckCircle2 color="#ffffff" size={19} />
+              <Text style={styles.applicationModalApproveText}>{working ? "Working..." : "Approve"}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -2662,11 +3824,11 @@ function StatusPill({ label, tone, icon: Icon }: { label: string; tone: Tone; ic
 
 function BottomNav({ active, onChange }: { active: Exclude<AdminTab, "moderation">; onChange: (tab: AdminTab) => void }) {
   const items: { id: Exclude<AdminTab, "moderation">; label: string; icon: IconComponent }[] = [
-    { id: "dashboard", label: "Dashboard", icon: Home },
+    { id: "dashboard", label: "Home", icon: Home },
     { id: "orders", label: "Orders", icon: ClipboardList },
-    { id: "users", label: "Users", icon: Users },
-    { id: "tickets", label: "Tickets", icon: Tag },
-    { id: "more", label: "More", icon: MoreHorizontal },
+    { id: "users", label: "People", icon: Users },
+    { id: "tickets", label: "Support", icon: Tag },
+    { id: "more", label: "Reports", icon: MoreHorizontal },
   ];
 
   return (
@@ -3013,6 +4175,12 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     fontWeight: "700",
   },
+  profileActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
   superAdminBadge: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -3027,6 +4195,324 @@ const styles = StyleSheet.create({
     color: COLORS.purple,
     fontWeight: "900",
     fontSize: 14,
+  },
+  adminProfileButton: {
+    minHeight: 36,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d8dcfb",
+    backgroundColor: "#f7f6ff",
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  adminProfileButtonText: {
+    color: COLORS.purple,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  adminLogoutButton: {
+    minHeight: 36,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#ffd4d7",
+    backgroundColor: "#fff1f2",
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  adminLogoutText: {
+    color: COLORS.red,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  adminProfilePanel: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "rgba(255,255,255,0.94)",
+    padding: 14,
+    gap: 13,
+    shadowColor: "#d1d7eb",
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  adminProfileHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+  },
+  adminAvatarPicker: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+  },
+  adminProfileAvatar: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    backgroundColor: COLORS.faint,
+  },
+  adminAvatarCamera: {
+    position: "absolute",
+    right: -1,
+    bottom: -1,
+    width: 31,
+    height: 31,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#ffffff",
+    backgroundColor: COLORS.purple,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  adminProfileHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  adminProfileKicker: {
+    color: COLORS.purple,
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  adminProfileTitle: {
+    color: COLORS.navy,
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: "900",
+  },
+  adminProfileEmail: {
+    color: COLORS.muted,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  adminProfileNotice: {
+    borderRadius: 15,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  adminProfileNoticeSuccess: {
+    borderColor: "#cdebd8",
+    backgroundColor: "#f0fbf5",
+  },
+  adminProfileNoticeError: {
+    borderColor: "#ffd4d7",
+    backgroundColor: "#fff1f2",
+  },
+  adminProfileNoticeText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "800",
+  },
+  adminProfileNoticeTextSuccess: {
+    color: COLORS.green,
+  },
+  adminProfileNoticeTextError: {
+    color: COLORS.red,
+  },
+  adminProfileFields: {
+    gap: 10,
+  },
+  adminProfileInput: {
+    minHeight: 50,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#fbfcff",
+    paddingHorizontal: 13,
+    color: COLORS.navy,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  adminProfileSaveButton: {
+    minHeight: 48,
+    borderRadius: 15,
+    backgroundColor: COLORS.purple,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  adminProfileSaveText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  adminPasswordBox: {
+    borderTopWidth: 1,
+    borderTopColor: "#edf0f7",
+    paddingTop: 12,
+    gap: 10,
+  },
+  adminPasswordHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  adminPasswordTitle: {
+    color: COLORS.navy,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  adminPasswordButton: {
+    minHeight: 48,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#d8dcfb",
+    backgroundColor: "#f7f6ff",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  adminPasswordButtonText: {
+    color: COLORS.purple,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  startWorkflowCard: {
+    minHeight: 126,
+    borderRadius: 24,
+    backgroundColor: COLORS.navy,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    shadowColor: "#061f63",
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 9 },
+    elevation: 5,
+  },
+  startWorkflowCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  startWorkflowKicker: {
+    color: "#bfc7ff",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  startWorkflowTitle: {
+    color: "#ffffff",
+    fontSize: 23,
+    lineHeight: 28,
+    fontWeight: "900",
+  },
+  startWorkflowSub: {
+    color: "#d9def7",
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "700",
+  },
+  startWorkflowBadge: {
+    minWidth: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.purple,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  startWorkflowBadgeText: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  workflowStack: {
+    gap: 9,
+  },
+  workflowCard: {
+    minHeight: 82,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "rgba(255,255,255,0.94)",
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+  workflowCardCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  workflowCardTitle: {
+    color: COLORS.navy,
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "900",
+  },
+  workflowCardSub: {
+    color: COLORS.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  workflowCountBadge: {
+    minWidth: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.purple,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 9,
+  },
+  workflowCountBadgeClear: {
+    backgroundColor: "#edf7f1",
+  },
+  workflowCountText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  workflowCountTextClear: {
+    color: COLORS.green,
+  },
+  broadcastShortcut: {
+    minHeight: 78,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: "#dfe4f2",
+    backgroundColor: "#fff9ed",
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  broadcastShortcutIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 17,
+    backgroundColor: COLORS.orange,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  broadcastShortcutCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  broadcastShortcutTitle: {
+    color: COLORS.navy,
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  broadcastShortcutSub: {
+    color: COLORS.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
   },
   miniStatsGrid: {
     flexDirection: "row",
@@ -3474,15 +4960,21 @@ const styles = StyleSheet.create({
     minWidth: 23,
     height: 23,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.22)",
+    backgroundColor: COLORS.purple,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 6,
+  },
+  segmentBadgeActive: {
+    backgroundColor: COLORS.navy,
   },
   segmentBadgeText: {
     color: "#fff",
     fontSize: 13,
     fontWeight: "900",
+  },
+  segmentBadgeTextActive: {
+    color: "#ffffff",
   },
   orderMetricGrid: {
     flexDirection: "row",
@@ -3691,6 +5183,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "900",
   },
+  invitePanelSub: {
+    color: COLORS.muted,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "700",
+  },
   inviteInput: {
     minHeight: 48,
     borderRadius: 14,
@@ -3733,6 +5231,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.purple,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
   },
   inviteSubmitText: {
     color: "#fff",
@@ -3757,6 +5257,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+  },
+  admissionTitleBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   admissionKicker: {
     color: COLORS.purple,
@@ -3808,10 +5312,92 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     fontWeight: "800",
   },
+  workflowNextButton: {
+    minHeight: 48,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#d8dcfb",
+    backgroundColor: "#f7f6ff",
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  workflowNextText: {
+    color: COLORS.purple,
+    fontSize: 14,
+    fontWeight: "900",
+  },
   activeFilterRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  peopleSummaryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  peopleEmptyCard: {
+    minHeight: 86,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  peopleEmptyCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  peopleEmptyTitle: {
+    color: COLORS.navy,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  peopleEmptyText: {
+    color: COLORS.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  emptyQueueCard: {
+    minHeight: 126,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    padding: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    shadowColor: "#d5dae9",
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  emptyQueueCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 5,
+  },
+  emptyQueueTitle: {
+    color: COLORS.navy,
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "900",
+  },
+  emptyQueueText: {
+    color: COLORS.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
   },
   twoMetricGrid: {
     flexDirection: "row",
@@ -3936,8 +5522,10 @@ const styles = StyleSheet.create({
     borderColor: "#c9cef8",
     backgroundColor: "#ffffff",
     paddingHorizontal: 13,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 7,
   },
   applicationGhostText: {
     color: COLORS.purple,
@@ -3968,6 +5556,288 @@ const styles = StyleSheet.create({
   applicationApproveText: {
     color: "#ffffff",
     fontSize: 14,
+    fontWeight: "900",
+  },
+  applicationModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(6, 14, 38, 0.58)",
+    paddingHorizontal: 14,
+    paddingVertical: 24,
+    justifyContent: "center",
+  },
+  applicationModalSheet: {
+    width: "100%",
+    maxWidth: 560,
+    maxHeight: "88%",
+    alignSelf: "center",
+    borderRadius: 26,
+    backgroundColor: "#ffffff",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.7)",
+    shadowColor: "#07112d",
+    shadowOpacity: 0.26,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 16,
+  },
+  applicationModalHandle: {
+    width: 46,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#dfe4f2",
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  applicationModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 14,
+  },
+  applicationModalIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  applicationModalTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  applicationModalKicker: {
+    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  applicationModalTitle: {
+    color: COLORS.navy,
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: "900",
+  },
+  applicationModalSub: {
+    color: COLORS.muted,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  applicationModalClose: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: "#e2e7f4",
+    backgroundColor: "#f8f9fe",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  applicationApplicantPanel: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#e6eaf6",
+    backgroundColor: "#f7f9ff",
+    padding: 14,
+    gap: 12,
+  },
+  applicationApplicantName: {
+    color: COLORS.navy,
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "900",
+  },
+  applicationIdentityGrid: {
+    gap: 8,
+  },
+  applicationIdentityRow: {
+    minHeight: 32,
+    borderRadius: 11,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  applicationIdentityText: {
+    flex: 1,
+    minWidth: 0,
+    color: "#445075",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  applicationModalStats: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  detailSheetSummaryGrid: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  detailSheetSummaryItem: {
+    flexGrow: 1,
+    flexBasis: "47%",
+    minHeight: 58,
+    borderRadius: 14,
+    backgroundColor: "#f7f9ff",
+    borderWidth: 1,
+    borderColor: "#e6eaf6",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    justifyContent: "center",
+    gap: 2,
+  },
+  applicationModalStat: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: 14,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e6eaf6",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    justifyContent: "center",
+    gap: 2,
+  },
+  applicationModalStatValue: {
+    color: COLORS.navy,
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "900",
+  },
+  applicationModalStatLabel: {
+    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  applicationModalScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  applicationModalScrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 12,
+  },
+  applicationModalSection: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e6eaf6",
+    backgroundColor: "#ffffff",
+    overflow: "hidden",
+  },
+  applicationModalSectionTitle: {
+    color: COLORS.navy,
+    fontSize: 15,
+    fontWeight: "900",
+    backgroundColor: "#f7f9ff",
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+  },
+  applicationModalRows: {
+    paddingHorizontal: 13,
+  },
+  applicationModalDetailRow: {
+    paddingVertical: 11,
+    borderTopWidth: 1,
+    borderTopColor: "#edf0f7",
+    gap: 4,
+  },
+  applicationModalDetailLabel: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "900",
+  },
+  applicationModalDetailValue: {
+    color: COLORS.navy,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "800",
+  },
+  applicationModalEmpty: {
+    minHeight: 132,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e6eaf6",
+    backgroundColor: "#f7f9ff",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 18,
+    gap: 6,
+  },
+  applicationModalEmptyTitle: {
+    color: COLORS.navy,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  applicationModalEmptyText: {
+    color: COLORS.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  applicationModalFooter: {
+    padding: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#edf0f7",
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    gap: 10,
+  },
+  detailSheetFooter: {
+    padding: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#edf0f7",
+    backgroundColor: "#ffffff",
+  },
+  detailSheetDoneButton: {
+    minHeight: 50,
+    borderRadius: 15,
+    backgroundColor: COLORS.navy,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailSheetDoneText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  applicationModalDecision: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  applicationModalDecline: {
+    backgroundColor: "#ffe7e8",
+  },
+  applicationModalApprove: {
+    backgroundColor: COLORS.green,
+  },
+  applicationModalDeclineText: {
+    color: COLORS.red,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  applicationModalApproveText: {
+    color: "#ffffff",
+    fontSize: 15,
     fontWeight: "900",
   },
   userCard: {
@@ -4050,6 +5920,196 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: "center",
     justifyContent: "center",
+  },
+  marketAdminSection: {
+    gap: 12,
+  },
+  marketSearchBox: {
+    minHeight: 52,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  marketSearchInput: {
+    flex: 1,
+    minWidth: 0,
+    color: COLORS.navy,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  marketAdminCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "rgba(255,255,255,0.94)",
+    padding: 12,
+    gap: 12,
+  },
+  marketAdminTop: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  marketAdminImage: {
+    width: 92,
+    height: 104,
+    borderRadius: 13,
+    backgroundColor: COLORS.faint,
+  },
+  marketAdminCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  marketAdminTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  marketAdminTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: COLORS.navy,
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "900",
+  },
+  marketAdminPrice: {
+    color: COLORS.green,
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  marketAdminMeta: {
+    color: COLORS.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "800",
+  },
+  marketAdminActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  marketSmallAction: {
+    flexGrow: 1,
+    minWidth: 76,
+    minHeight: 42,
+    borderRadius: 13,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  marketNeutralAction: {
+    borderColor: COLORS.border,
+    backgroundColor: "#fbfcff",
+  },
+  marketNeutralActionText: {
+    color: COLORS.navy,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  marketLiveAction: {
+    borderColor: "#ccebd8",
+    backgroundColor: "#edf9f2",
+  },
+  marketLiveActionText: {
+    color: COLORS.green,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  marketHideAction: {
+    borderColor: "#ffe0a8",
+    backgroundColor: "#fff7e8",
+  },
+  marketHideActionText: {
+    color: COLORS.orange,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  marketDeleteAction: {
+    borderColor: "#ffd4d7",
+    backgroundColor: "#fff1f2",
+  },
+  marketDeleteActionText: {
+    color: COLORS.red,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  marketEditPanel: {
+    borderTopWidth: 1,
+    borderTopColor: "#edf0f7",
+    paddingTop: 12,
+    gap: 10,
+  },
+  marketEditInput: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#fbfcff",
+    paddingHorizontal: 12,
+    color: COLORS.navy,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  marketEditRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  marketEditHalfInput: {
+    flex: 1,
+    minWidth: 0,
+  },
+  marketEditDescription: {
+    minHeight: 92,
+    paddingTop: 11,
+    paddingBottom: 11,
+    textAlignVertical: "top",
+    lineHeight: 20,
+  },
+  marketLiveToggle: {
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#ccebd8",
+    backgroundColor: "#f4fbf7",
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  marketLiveToggleActive: {
+    backgroundColor: COLORS.green,
+    borderColor: COLORS.green,
+  },
+  marketLiveToggleText: {
+    color: COLORS.green,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  marketLiveToggleTextActive: {
+    color: "#ffffff",
+  },
+  marketEditActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  marketPrimaryAction: {
+    borderColor: COLORS.purple,
+    backgroundColor: COLORS.purple,
+  },
+  marketPrimaryActionText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "900",
   },
   reviewMetricGrid: {
     flexDirection: "row",

@@ -28,7 +28,7 @@ function initials(name?: string | null) {
 
 function maskPhone(phone?: string | null) {
   const raw = (phone ?? "").trim();
-  if (!raw) return "+265 99 **** 4567";
+  if (!raw) return "No phone added";
   const digits = raw.replace(/\D/g, "");
   if (digits.length < 4) return raw;
   const tail = digits.slice(-4);
@@ -48,8 +48,8 @@ export default function AccountScreen() {
   const notificationCount = unreadCount;
   const { location } = usePreferredLocation();
   const [loading, setLoading] = useState(true);
-  const [fullName, setFullName] = useState("Peter Phiri");
-  const [phone, setPhone] = useState("+265 99 **** 4567");
+  const [fullName, setFullName] = useState("User Account");
+  const [phone, setPhone] = useState("No phone added");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState(0);
 

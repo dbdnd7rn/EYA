@@ -23,6 +23,7 @@ export type QueuedProductSave = BaseOutboxEntry & {
     stock_qty?: number | null;
     channel: SalesChannel;
     image_url?: string | null;
+    image_urls?: string[] | null;
   };
 };
 
@@ -121,6 +122,7 @@ export async function enqueueSellerProductSave(params: {
   stock_qty?: number | null;
   channel: SalesChannel;
   image_url?: string | null;
+  image_urls?: string[] | null;
 }) {
   const localItemId = params.itemId ?? `local-product:${Date.now()}`;
   const entry: QueuedProductSave = {
@@ -138,6 +140,7 @@ export async function enqueueSellerProductSave(params: {
       stock_qty: params.stock_qty ?? null,
       channel: params.channel,
       image_url: params.image_url ?? null,
+      image_urls: params.image_urls ?? (params.image_url ? [params.image_url] : []),
     },
   };
   await enqueueMutation(entry);
@@ -222,6 +225,7 @@ function buildLocalProduct(entry: QueuedProductSave): CatalogItemRow {
     price_mwk: entry.payload.price_mwk,
     stock_qty: entry.payload.stock_qty ?? null,
     image_url: entry.payload.image_url ?? null,
+    image_urls: entry.payload.image_urls ?? (entry.payload.image_url ? [entry.payload.image_url] : []),
     is_active: true,
     created_at: now,
     updated_at: now,
@@ -314,6 +318,7 @@ export async function syncMutationOutbox(ownerUserId?: string | null) {
             price_mwk: entry.payload.price_mwk,
             stock_qty: entry.payload.stock_qty ?? null,
             image_url: entry.payload.image_url ?? null,
+            image_urls: entry.payload.image_urls ?? (entry.payload.image_url ? [entry.payload.image_url] : []),
           });
         } else {
           const created = await createCatalogItem({
@@ -324,6 +329,7 @@ export async function syncMutationOutbox(ownerUserId?: string | null) {
             price_mwk: entry.payload.price_mwk,
             stock_qty: entry.payload.stock_qty ?? null,
             image_url: entry.payload.image_url ?? null,
+            image_urls: entry.payload.image_urls ?? (entry.payload.image_url ? [entry.payload.image_url] : []),
           });
           if (entry.payload.localItemId) localIdMap.set(entry.payload.localItemId, created.id);
         }

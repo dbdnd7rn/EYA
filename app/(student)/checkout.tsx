@@ -7,7 +7,6 @@ import {
   Banknote,
   ChevronRight,
   CircleCheckBig,
-  CreditCard,
   Landmark,
   MapPin,
   Phone,
@@ -17,7 +16,6 @@ import {
   WalletCards,
 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MarketPaymentsComingSoonScreen from "@/components/market/MarketPaymentsComingSoonScreen";
 import PaymentBrandLogo from "@/components/payment/PaymentBrandLogo";
 import { formatCacheTime } from "@/lib/offlineCache";
 import { goBackOrFallback } from "@/lib/navigation";
@@ -157,8 +155,8 @@ export default function CheckoutScreen() {
   const foodSelection = useMemo(() => parseSelectionMap(params.food_selection), [params.food_selection]);
   const foodSummary = typeof params.food_summary === "string" ? params.food_summary.trim() : "";
   const foodBaseTitle = typeof params.food_base_title === "string" ? params.food_base_title.trim() : "";
-  const channel = params.channel === "market" || params.channel === "food" ? params.channel : mode === "food" ? "food" : "market";
-  const deliveryMode = params.delivery_mode === "pickup" || params.delivery_mode === "doorstep"
+  const channel: "market" | "food" = params.channel === "market" || params.channel === "food" ? params.channel : mode === "food" ? "food" : "market";
+  const deliveryMode: "pickup" | "doorstep" = params.delivery_mode === "pickup" || params.delivery_mode === "doorstep"
     ? params.delivery_mode
     : delivery > 0
       ? "doorstep"
@@ -174,7 +172,7 @@ export default function CheckoutScreen() {
   );
   const showBankFallbackState = pendingPayment?.method === "bank_transfer" && !hasBankTransferDetails;
   const orderLine =
-    mode === "food" && itemId
+    (mode === "food" || mode === "market") && itemId
       ? {
           item_id: itemId,
           quantity,
@@ -188,16 +186,22 @@ export default function CheckoutScreen() {
             : {}),
         }
       : null;
+  const campusMarketOrderDraft =
+    (mode === "food" || mode === "market") && vendorId && orderLine
+      ? {
+          vendor_id: vendorId,
+          channel,
+          delivery_mode: deliveryMode,
+          delivery_fee_mwk: delivery,
+          service_fee_mwk: serviceFee,
+          lines: [orderLine],
+        }
+      : null;
 
   useEffect(() => {
     let active = true;
 
     const loadDraft = async () => {
-      if (mode === "market") {
-        setQuantity(initialQuantity);
-        setDraftLoaded(true);
-        return;
-      }
       const cached = await getCheckoutDraft(user?.id);
       if (!active) return;
       if (cached?.data?.scope === draftScope) {
@@ -219,7 +223,7 @@ export default function CheckoutScreen() {
   }, [draftScope, initialQuantity, mode, user?.id]);
 
   useEffect(() => {
-    if (mode === "market" || !draftLoaded) return;
+    if (!draftLoaded) return;
     void saveCheckoutDraft(user?.id, {
       scope: draftScope,
       payMethod,
@@ -231,22 +235,6 @@ export default function CheckoutScreen() {
       setDraftSavedAt(Date.now());
     });
   }, [couponCode, draftLoaded, draftScope, mobileNumber, mode, payMethod, quantity, user?.id]);
-
-  if (isMarketMode) {
-    return (
-      <MarketPaymentsComingSoonScreen
-        audience="buyer"
-        primaryAction={{
-          label: "Back to market",
-          onPress: () => goBackOrFallback(router, "/(student)/(tabs)/marketplace"),
-        }}
-        secondaryAction={{
-          label: "Browse listings",
-          onPress: () => router.replace("/(student)/(tabs)/marketplace"),
-        }}
-      />
-    );
-  }
 
   if (loading) {
     return (
@@ -311,7 +299,7 @@ export default function CheckoutScreen() {
   };
 
   const payNow = async (options?: { fromMobileMoneyModal?: boolean }) => {
-    const requiresCatalogOrder = mode === "food";
+    const requiresCatalogOrder = mode === "food" || mode === "market";
     if (requiresCatalogOrder && (!isUuid(itemId) || !isUuid(vendorId))) {
       Alert.alert("Item unavailable", "This item is using old preview data. Refresh the catalog and choose a live product.");
       return;
@@ -334,8 +322,8 @@ export default function CheckoutScreen() {
         Alert.alert("Login required", "Please log in again to place a cash order.");
         return;
       }
-      if (mode !== "food" || !itemId || !vendorId || !orderLine) {
-        Alert.alert("Cash unavailable", "Cash on delivery is currently supported for food orders only.");
+      if (!campusMarketOrderDraft) {
+        Alert.alert("Cash unavailable", "Cash on delivery needs a live market or food item.");
         return;
       }
 
@@ -345,14 +333,7 @@ export default function CheckoutScreen() {
           title: `EYA ${mode.toUpperCase()} checkout`,
           description: `${mode} cash checkout - ${title}`,
           purpose: "campus_market_order",
-          order: {
-            vendor_id: vendorId,
-            channel,
-            delivery_mode: deliveryMode,
-            delivery_fee_mwk: delivery,
-            service_fee_mwk: serviceFee,
-            lines: [orderLine],
-          },
+          order: campusMarketOrderDraft,
         });
         await clearCheckoutDraft(user?.id);
         router.replace({
@@ -392,8 +373,8 @@ export default function CheckoutScreen() {
         Alert.alert("Login required", "Please log in again to use wallet balance.");
         return;
       }
-      if (mode !== "food" || !itemId || !vendorId || !orderLine) {
-        Alert.alert("Wallet unavailable", "Wallet payments are currently supported for food orders only.");
+      if (!campusMarketOrderDraft) {
+        Alert.alert("Wallet unavailable", "Wallet checkout needs a live market or food item.");
         return;
       }
 
@@ -403,14 +384,7 @@ export default function CheckoutScreen() {
           title: `EYA ${mode.toUpperCase()} checkout`,
           description: `${mode} checkout - ${title}`,
           purpose: "campus_market_order",
-          order: {
-            vendor_id: vendorId,
-            channel,
-            delivery_mode: deliveryMode,
-            delivery_fee_mwk: delivery,
-            service_fee_mwk: serviceFee,
-            lines: [orderLine],
-          },
+          order: campusMarketOrderDraft,
         });
         await clearCheckoutDraft(user?.id);
 
@@ -479,18 +453,8 @@ export default function CheckoutScreen() {
           mode,
           title,
           user_id: user.id,
-          purpose: mode === "food" ? "campus_market_order" : "stay_reservation",
-          order:
-            mode === "food" && itemId && vendorId
-              ? {
-                  vendor_id: vendorId,
-                  channel,
-                  delivery_mode: deliveryMode,
-                  delivery_fee_mwk: delivery,
-                  service_fee_mwk: serviceFee,
-                  lines: [orderLine],
-                }
-              : undefined,
+          purpose: campusMarketOrderDraft ? "campus_market_order" : "stay_reservation",
+          order: campusMarketOrderDraft ?? undefined,
         },
       });
 
@@ -629,7 +593,12 @@ export default function CheckoutScreen() {
                 placeholderTextColor="#7f89a6"
                 style={styles.couponInput}
               />
-              <Pressable style={styles.applyBtn}>
+              <Pressable
+                style={styles.applyBtn}
+                onPress={() => {
+                  Alert.alert("Coupon saved", couponCode.trim() ? "The coupon code is saved with this checkout draft." : "Enter a coupon code first.");
+                }}
+              >
                 <Text style={styles.applyBtnText}>Apply</Text>
               </Pressable>
             </View>
@@ -641,7 +610,7 @@ export default function CheckoutScreen() {
                   Delivery to: <Text style={styles.deliveryStrong}>Campus residence</Text>
                 </Text>
               </View>
-              <Pressable style={styles.changeBtn}>
+              <Pressable style={styles.changeBtn} onPress={() => router.push("/(student)/address")}>
                 <Text style={styles.changeBtnText}>Change</Text>
                 <ChevronRight size={18} color="#0c6174" />
               </Pressable>
@@ -702,7 +671,7 @@ export default function CheckoutScreen() {
             />
             <MethodTile
               label="Cash on Delivery"
-              subtitle="Place the food order now and pay at handoff"
+              subtitle="Place the order now and pay at handoff"
               active={payMethod === "cash"}
               icon={<Banknote size={22} color={payMethod === "cash" ? "#f5f8ff" : "#3a7a96"} />}
               onPress={() => setPayMethod("cash")}
@@ -715,7 +684,7 @@ export default function CheckoutScreen() {
               {isMobileMoneyMethod
                 ? "Mobile money opens a simple payment step inside the app before we start the charge."
                 : payMethod === "cash"
-                  ? "Cash on delivery creates the food order immediately and keeps tracking active for restaurant handoff."
+                  ? "Cash on delivery creates the order immediately and keeps tracking active for handoff."
                   : "Online methods stay in-app. Start the charge here, then confirm the payment status after approval."}
             </Text>
           </View>
@@ -1033,15 +1002,6 @@ function Milestone({ label, desc }: { label: string; desc: string }) {
     <View style={styles.milestone}>
       <Text style={styles.mileTitle}>{label}</Text>
       <Text style={styles.mileDesc}>{desc}</Text>
-    </View>
-  );
-}
-
-function BankDetailLine({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
-  return (
-    <View style={[styles.bankDetailLine, last && styles.bankDetailLineLast]}>
-      <Text style={styles.bankDetailLabel}>{label}</Text>
-      <Text style={styles.bankDetailValue}>{value}</Text>
     </View>
   );
 }
@@ -1543,19 +1503,6 @@ const styles = StyleSheet.create({
     borderColor: "#e3e8f3",
     overflow: "hidden",
   },
-  bankDetailLine: {
-    minHeight: 72,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#edf1f7",
-  },
-  bankDetailLineLast: { borderBottomWidth: 0 },
-  bankDetailLabel: { color: "#62708f", fontWeight: "700", fontSize: 15, flex: 1 },
-  bankDetailValue: { color: "#13285f", fontWeight: "900", fontSize: 19, textAlign: "right", flex: 1 },
   bankMetaCard: {
     borderRadius: 16,
     backgroundColor: "#eef4ff",

@@ -1,6 +1,5 @@
-import React from "react";
-import MarketplaceBrowseScreen from "@/components/market/MarketplaceBrowseScreen";
+import { Redirect } from "expo-router";
 
 export default function StudentMarketplacePage() {
-  return <MarketplaceBrowseScreen detailRoute="/(student)/market/[id]" showModeSwitch />;
+  return <Redirect href={"/(student)/market" as any} />;
 }

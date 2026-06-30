@@ -5,6 +5,8 @@ import { ArrowLeft, Home, Search } from "lucide-react-native";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { supabase } from "@/lib/supabase";
 import { useNetwork } from "@/providers/NetworkProvider";
+import { useLiveProximity } from "@/lib/liveProximity";
+import { rankRoomListing } from "@/lib/roomProximity";
 
 type ListingType = "hostel" | "bedsitter";
 type ListingRow = {
@@ -17,6 +19,8 @@ type ListingRow = {
   price_from: number | null;
   room_types: string[] | null;
   image_urls: string[] | null;
+  latitude: number | null;
+  longitude: number | null;
   created_at: string | null;
   visibility_rank?: number | null;
 };
@@ -38,6 +42,7 @@ function coverImage(row: Pick<ListingRow, "image_urls">) {
 export default function AllRoomsScreen() {
   const router = useRouter();
   const { isOnline } = useNetwork();
+  const { point: liveLocation } = useLiveProximity(true);
 
   const [query, setQuery] = React.useState("");
   const [filterType, setFilterType] = React.useState<FilterType>("all");
@@ -55,7 +60,7 @@ export default function AllRoomsScreen() {
         if (!isOnline) return;
         const { data, error } = await supabase
           .from("listings")
-          .select("id, title, listing_type, campus, area, city, price_from, room_types, image_urls, created_at")
+          .select("id, title, listing_type, campus, area, city, price_from, room_types, image_urls, latitude, longitude, created_at")
           .eq("is_active", true);
         if (error) throw error;
         const rows = (data ?? []) as ListingRow[];
@@ -75,12 +80,21 @@ export default function AllRoomsScreen() {
 
   const filtered = React.useMemo(() => {
     const term = query.trim().toLowerCase();
-    return items.filter((row) => {
-      const matchesTerm = !term || [row.title, row.area, row.city, row.campus].some((v) => (v ?? "").toLowerCase().includes(term));
-      const matchesType = filterType === "all" || row.listing_type === filterType;
-      return matchesTerm && matchesType;
-    });
-  }, [filterType, items, query]);
+    return items
+      .filter((row) => {
+        const matchesTerm = !term || [row.title, row.area, row.city, row.campus].some((v) => (v ?? "").toLowerCase().includes(term));
+        const matchesType = filterType === "all" || row.listing_type === filterType;
+        return matchesTerm && matchesType;
+      })
+      .map((row) => ({ row, rank: rankRoomListing({ item: row, liveLocation }) }))
+      .sort(
+        (a, b) =>
+          b.rank.score - a.rank.score ||
+          (a.rank.distanceMeters ?? Number.MAX_SAFE_INTEGER) - (b.rank.distanceMeters ?? Number.MAX_SAFE_INTEGER) ||
+          new Date(b.row.created_at ?? 0).getTime() - new Date(a.row.created_at ?? 0).getTime(),
+      )
+      .map(({ row }) => row);
+  }, [filterType, items, liveLocation, query]);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -125,7 +139,7 @@ export default function AllRoomsScreen() {
 
       <View style={styles.infoCard}>
         <Text style={styles.infoTitle}>All listings</Text>
-        <Text style={styles.infoSub}>Discover unique rooms around you</Text>
+        <Text style={styles.infoSub}>Browse verified rooms and hostels from active landlords.</Text>
       </View>
 
       {loading ? (

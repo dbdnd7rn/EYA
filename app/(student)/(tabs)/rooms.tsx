@@ -19,6 +19,10 @@ import { supabase } from "@/lib/supabase";
 import { useNetwork } from "@/providers/NetworkProvider";
 import { locationMatchScore, usePreferredLocation } from "@/providers/PreferredLocationProvider";
 import RoomsBottomNav from "@/components/rooms/RoomsBottomNav";
+import RoomsSectionHeader from "@/components/rooms/RoomsSectionHeader";
+import { useLiveProximity } from "@/lib/liveProximity";
+import { rankRoomListing } from "@/lib/roomProximity";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 type ListingType = "hostel" | "bedsitter";
 type SortKey = "newest" | "cheapest";
@@ -32,6 +36,8 @@ type ListingRow = {
   city: string | null;
   price_from: number | null;
   image_urls: string[] | null;
+  latitude: number | null;
+  longitude: number | null;
   created_at: string | null;
   visibility_rank?: number | null;
 };
@@ -43,8 +49,10 @@ function formatPrice(amount?: number | null) {
 
 export default function RoomsScreen() {
   const router = useRouter();
+  const { theme } = useStudentTheme();
   const { isOnline } = useNetwork();
   const preferredLocation = usePreferredLocation().location;
+  const { point: liveLocation } = useLiveProximity(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -63,7 +71,7 @@ export default function RoomsScreen() {
         if (isOnline) {
           const { data, error } = await supabase
             .from("listings")
-            .select("id, title, listing_type, campus, area, city, price_from, image_urls, created_at")
+            .select("id, title, listing_type, campus, area, city, price_from, image_urls, latitude, longitude, created_at")
             .eq("is_active", true);
 
           if (error) throw error;
@@ -106,89 +114,84 @@ export default function RoomsScreen() {
     });
 
     next = next.sort((a, b) => {
-      const locationDelta =
-        locationMatchScore(preferredLocation, { area: b.area, campus: b.campus, city: b.city }) -
-        locationMatchScore(preferredLocation, { area: a.area, campus: a.campus, city: a.city });
-      if (locationDelta !== 0) return locationDelta;
-      const rankA = a.visibility_rank ?? 0;
-      const rankB = b.visibility_rank ?? 0;
-      if (rankB !== rankA) return rankB - rankA;
-      if (sort === "cheapest") return (a.price_from ?? Number.MAX_SAFE_INTEGER) - (b.price_from ?? Number.MAX_SAFE_INTEGER);
+      const savedA = locationMatchScore(preferredLocation, { area: a.area, campus: a.campus, city: a.city });
+      const savedB = locationMatchScore(preferredLocation, { area: b.area, campus: b.campus, city: b.city });
+      const rankA = rankRoomListing({ item: a, liveLocation, savedLocationScore: savedA });
+      const rankB = rankRoomListing({ item: b, liveLocation, savedLocationScore: savedB });
+      if (sort === "cheapest") {
+        const priceDelta = (a.price_from ?? Number.MAX_SAFE_INTEGER) - (b.price_from ?? Number.MAX_SAFE_INTEGER);
+        if (priceDelta !== 0) return priceDelta;
+      }
+      if (rankB.score !== rankA.score) return rankB.score - rankA.score;
+      if (rankA.distanceMeters !== rankB.distanceMeters) {
+        return (rankA.distanceMeters ?? Number.MAX_SAFE_INTEGER) - (rankB.distanceMeters ?? Number.MAX_SAFE_INTEGER);
+      }
       return new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
     });
 
     return next;
-  }, [preferredLocation, rows, q, type, sort]);
+  }, [liveLocation, preferredLocation, rows, q, type, sort]);
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView
+        style={styles.scroller}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => setRefreshing(true)} tintColor="#ff0f64" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => setRefreshing(true)} tintColor={theme.accent} />}
       >
+        <RoomsSectionHeader />
+
         <View style={styles.hero}>
-          <Text style={styles.h1}>EYA rooms</Text>
-          <Text style={styles.sub}>Browse verified hostels and bedsitters with clearer details.</Text>
+          <Text style={[styles.h1, { color: theme.heading }]}>EYA rooms</Text>
+          <Text style={[styles.sub, { color: theme.textMuted }]}>Browse verified hostels and bedsitters with clearer details.</Text>
         </View>
 
-        <View style={styles.switchRow}>
-          <Pressable style={[styles.switchBtn, styles.switchBtnActive]}>
-            <Text style={[styles.switchText, styles.switchTextActive]}>rooms</Text>
-          </Pressable>
-          <Pressable style={styles.switchBtn} onPress={() => router.push("/(student)/(tabs)/marketplace")}>
-            <Text style={styles.switchText}>Market</Text>
-          </Pressable>
-          <Pressable style={styles.switchBtn} onPress={() => router.push("/(student)/(tabs)/food")}>
-            <Text style={styles.switchText}>Food</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.searchWrap}>
-          <Search size={16} color="#6e7892" />
+        <View style={[styles.searchWrap, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Search size={16} color={theme.textSoft} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: theme.text }]}
             value={q}
             onChangeText={setQ}
             placeholder="Search room, area, campus..."
-            placeholderTextColor="#9aa3bd"
+            placeholderTextColor={theme.textSoft}
           />
         </View>
 
         <View style={styles.filtersRow}>
-          <Pressable style={[styles.filterChip, type === "" && styles.filterChipActive]} onPress={() => setType("")}>
-            <Text style={[styles.filterText, type === "" && styles.filterTextActive]}>All</Text>
+          <Pressable style={[styles.filterChip, { backgroundColor: theme.surface, borderColor: theme.border }, type === "" && { backgroundColor: theme.accent, borderColor: theme.accent }]} onPress={() => setType("")}>
+            <Text style={[styles.filterText, { color: theme.text }, type === "" && styles.filterTextActive]}>All</Text>
           </Pressable>
-          <Pressable style={[styles.filterChip, type === "hostel" && styles.filterChipActive]} onPress={() => setType("hostel")}>
-            <Text style={[styles.filterText, type === "hostel" && styles.filterTextActive]}>Hostel</Text>
+          <Pressable style={[styles.filterChip, { backgroundColor: theme.surface, borderColor: theme.border }, type === "hostel" && { backgroundColor: theme.accent, borderColor: theme.accent }]} onPress={() => setType("hostel")}>
+            <Text style={[styles.filterText, { color: theme.text }, type === "hostel" && styles.filterTextActive]}>Hostel</Text>
           </Pressable>
-          <Pressable style={[styles.filterChip, type === "bedsitter" && styles.filterChipActive]} onPress={() => setType("bedsitter")}>
-            <Text style={[styles.filterText, type === "bedsitter" && styles.filterTextActive]}>Bedsitter</Text>
+          <Pressable style={[styles.filterChip, { backgroundColor: theme.surface, borderColor: theme.border }, type === "bedsitter" && { backgroundColor: theme.accent, borderColor: theme.accent }]} onPress={() => setType("bedsitter")}>
+            <Text style={[styles.filterText, { color: theme.text }, type === "bedsitter" && styles.filterTextActive]}>Bedsitter</Text>
           </Pressable>
-          <Pressable style={styles.sortChip} onPress={() => setSort((s) => (s === "newest" ? "cheapest" : "newest"))}>
-            <Text style={styles.sortText}>{sort === "newest" ? "Newest" : "Cheapest"}</Text>
+          <Pressable style={[styles.sortChip, { backgroundColor: theme.accentSoft, borderColor: theme.border }]} onPress={() => setSort((s) => (s === "newest" ? "cheapest" : "newest"))}>
+            <Text style={[styles.sortText, { color: theme.accent }]}>{sort === "newest" ? "Newest" : "Cheapest"}</Text>
           </Pressable>
         </View>
 
-        <Pressable style={styles.enquiryBtn} onPress={() => router.push("/(student)/(tabs)/messages")}>
+        <Pressable style={[styles.enquiryBtn, { backgroundColor: theme.accent }]} onPress={() => router.push("/(student)/(tabs)/room-messages")}>
           <MessageCircle size={15} color="#fff" />
           <Text style={styles.enquiryBtnText}>Open enquiry chats</Text>
         </Pressable>
 
         {err ? (
-          <View style={styles.errCard}>
-            <Text style={styles.errText}>{err}</Text>
+          <View style={[styles.errCard, { backgroundColor: theme.isDark ? "#2a1e28" : "#fff0f6", borderColor: theme.isDark ? "#52313f" : "#ffd4e3" }]}>
+            <Text style={[styles.errText, { color: theme.isDark ? "#ffb3c6" : "#b0003a" }]}>{err}</Text>
           </View>
         ) : null}
 
         {loading ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator size="large" color="#ff0f64" />
+            <ActivityIndicator size="large" color={theme.accent} />
           </View>
         ) : filtered.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No rooms found</Text>
-            <Text style={styles.emptySub}>Try another search or switch listing type.</Text>
+          <View style={[styles.emptyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>No rooms found</Text>
+            <Text style={[styles.emptySub, { color: theme.textMuted }]}>Try another search or switch listing type.</Text>
           </View>
         ) : (
           <View style={{ gap: 12 }}>
@@ -211,7 +214,7 @@ export default function RoomsScreen() {
                     ],
                   }}
                 >
-                  <Pressable style={styles.card} onPress={() => router.push({ pathname: "/(student)/room/[id]", params: { id: room.id } })}>
+                  <Pressable style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => router.push({ pathname: "/(student)/room/[id]", params: { id: room.id } })}>
                     <ImageBackground source={{ uri: photo }} style={styles.cover} imageStyle={styles.coverImg}>
                       <View style={styles.overlay} />
                       <View style={styles.cardTop}>
@@ -237,8 +240,8 @@ export default function RoomsScreen() {
                       </View>
                     </ImageBackground>
                     <View style={styles.footer}>
-                      <Text style={styles.footerText}>View details</Text>
-                      <BedDouble size={15} color="#0e2756" />
+                      <Text style={[styles.footerText, { color: theme.text }]}>View details</Text>
+                      <BedDouble size={15} color={theme.accent} />
                     </View>
                   </Pressable>
                 </Animated.View>
@@ -255,23 +258,11 @@ export default function RoomsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f3f4f7" },
-  content: { padding: 16, paddingBottom: 108, gap: 12 },
+  scroller: { flex: 1 },
+  content: { padding: 16, paddingBottom: 164, gap: 12 },
   hero: { gap: 4 },
   h1: { color: "#0e2756", fontSize: 27, fontWeight: "900" },
   sub: { color: "#6e7892", fontSize: 13, fontWeight: "600" },
-  switchRow: { flexDirection: "row", gap: 8 },
-  switchBtn: {
-    flex: 1,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#dfe5f4",
-    backgroundColor: "#fff",
-    paddingVertical: 9,
-    alignItems: "center",
-  },
-  switchBtnActive: { backgroundColor: "#0e2756", borderColor: "#0e2756" },
-  switchText: { color: "#0e2756", fontWeight: "800", fontSize: 12 },
-  switchTextActive: { color: "#fff" },
   searchWrap: {
     borderRadius: 16,
     borderWidth: 1,

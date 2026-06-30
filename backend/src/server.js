@@ -7,6 +7,19 @@ import { createCampusMarketCashCheckout, createCampusMarketWalletCheckout, final
 import { createDirectCharge, verifyDirectCharge, verifyTransaction, verifyWebhookSignature } from "./paychangu.js";
 import { notifyDeliveryStatusChanged, notifyDriverAssigned, notifySupportTicketUpdated, sendPushNotificationsToUsers } from "./push.js";
 import { supabase, supabaseNewApp } from "./supabase.js";
+import {
+  attachTicketPaymentToOrder,
+  checkInTicket,
+  getTicketOrderForUser,
+  listAdminTicketEvents,
+  listAdminTicketOrders,
+  listMyIssuedTickets,
+  listPublishedTicketEvents,
+  releaseTicketOrder,
+  reserveTicketOrder,
+  upsertAdminTicketEvent,
+  upsertAdminTicketTier,
+} from "./tickets.js";
 
 requireCoreConfig();
 
@@ -41,8 +54,34 @@ function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function normalizeImageUrls(value) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const urls = [];
+  for (const item of value) {
+    const url = typeof item === "string" ? item.trim() : "";
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+  }
+  return urls;
+}
+
 const ORDER_STATUSES = new Set(["pending", "accepted", "preparing", "picked_up", "on_the_way", "delivered", "cancelled"]);
 const DELIVERY_STATUSES = new Set(["searching", "assigned", "picked_up", "arriving", "delivered", "failed", "cancelled"]);
+const SUPPORT_TICKET_STATUSES = new Set(["new", "open", "resolved", "closed"]);
+
+function normalizeOrderStatus(value) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return ORDER_STATUSES.has(normalized) ? normalized : "";
+}
+
+function normalizeSupportTicketStatus(value) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!normalized) return "open";
+  if (normalized === "pending" || normalized === "in_review") return "open";
+  return SUPPORT_TICKET_STATUSES.has(normalized) ? normalized : "open";
+}
 
 async function getProfileById(userId) {
   if (!userId) return null;
@@ -147,6 +186,37 @@ async function listBroadcastRecipientIds(audience) {
   }
 
   return [...ids];
+}
+
+async function createBroadcastNotifications(userIds, { title, message, type, priority, audience }) {
+  const targets = [...new Set((userIds || []).filter((value) => typeof value === "string" && value.trim()))];
+  if (!targets.length) return 0;
+
+  const now = new Date().toISOString();
+  const rows = targets.map((userId) => ({
+    user_id: userId,
+    title,
+    message,
+    type,
+    priority,
+    data: {
+      audienceRole: audience,
+      broadcast: true,
+    },
+    is_read: false,
+    pushed_at: now,
+  }));
+
+  const chunkSize = 500;
+  let inserted = 0;
+  for (let index = 0; index < rows.length; index += chunkSize) {
+    const chunk = rows.slice(index, index + chunkSize);
+    const { error } = await supabase.from("notifications").insert(chunk);
+    if (error) throw new Error(error.message);
+    inserted += chunk.length;
+  }
+
+  return inserted;
 }
 
 async function getDeliveryByOrderId(orderId) {
@@ -439,6 +509,16 @@ function normalizeInitiateBody(body) {
   };
 }
 
+function normalizeTicketPaymentMethod(value) {
+  const method = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (method === "airtel_money" || method === "mpamba" || method === "bank_transfer") return method;
+  return "mpamba";
+}
+
+function randomReference(prefix) {
+  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+}
+
 function extractVerifyAmount(payload) {
   const candidates = [
     payload?.data?.transaction?.amount,
@@ -532,6 +612,20 @@ async function verifyPaymentForRecord(reference, payment) {
   return verifyTransaction(reference);
 }
 
+async function addTicketQrDataUrls(tickets) {
+  return Promise.all(
+    (Array.isArray(tickets) ? tickets : []).map(async (ticket) => {
+      const payload = JSON.stringify({
+        type: "eya_ticket",
+        ticket_code: ticket.ticket_code,
+        event_id: ticket.event_id || null,
+      });
+      const qrDataUrl = await QRCode.toDataURL(payload, { margin: 1, width: 280 }).catch(() => null);
+      return { ...ticket, qr_data_url: qrDataUrl };
+    }),
+  );
+}
+
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
@@ -539,6 +633,238 @@ app.get("/health", (_req, res) => {
     success_url: getSuccessUrl(),
     cancel_url: getCancelUrl(),
   });
+});
+
+app.get("/api/tickets/events", async (req, res) => {
+  try {
+    const events = await listPublishedTicketEvents({
+      query: typeof req.query.q === "string" ? req.query.q : "",
+      limit: req.query.limit,
+    });
+    return res.json({ status: "success", events });
+  } catch (error) {
+    return sendError(res, 500, error instanceof Error ? error.message : "Could not load ticket events.");
+  }
+});
+
+app.post("/api/tickets/orders", async (req, res) => {
+  let reservedOrderId = null;
+
+  try {
+    const { user } = await requireAuthenticatedUser(req);
+    const eventId = typeof req.body?.event_id === "string" ? req.body.event_id.trim() : "";
+    const tierId = typeof req.body?.tier_id === "string" ? req.body.tier_id.trim() : "";
+    const quantity = Math.max(1, Math.min(10, Number(req.body?.quantity || 1)));
+    const method = normalizeTicketPaymentMethod(req.body?.payment_method);
+    const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
+
+    if (!eventId || !tierId) return sendError(res, 400, "Event and ticket tier are required.");
+    if ((method === "airtel_money" || method === "mpamba") && phone.replace(/[^\d]/g, "").length < 8) {
+      return sendError(res, 400, "A valid mobile money phone number is required.");
+    }
+    if (!user.email) return sendError(res, 400, "Your account needs an email before buying tickets.");
+
+    const reservation = await reserveTicketOrder({
+      userId: user.id,
+      eventId,
+      tierId,
+      quantity,
+      email: user.email,
+      phone,
+    });
+    const order = asObject(reservation.order);
+    const event = asObject(reservation.event);
+    const tier = asObject(reservation.tier);
+    reservedOrderId = order.id;
+
+    if (!reservedOrderId) throw new Error("Ticket reservation did not return an order.");
+
+    const txRef = typeof req.body?.tx_ref === "string" && req.body.tx_ref.trim()
+      ? req.body.tx_ref.trim()
+      : randomReference("tix");
+
+    const input = {
+      amount: Number(order.total_mwk || 0),
+      currency: "MWK",
+      email: user.email,
+      first_name: user.user_metadata?.first_name || undefined,
+      last_name: user.user_metadata?.last_name || undefined,
+      tx_ref: txRef,
+      title: `EYA ticket - ${event.title || "Event"}`,
+      description: `${quantity} x ${tier.name || "Ticket"} for ${event.title || "event"}`,
+      project: "eya",
+      meta: {
+        purpose: "ticket_order",
+        user_id: user.id,
+        related_order_id: reservedOrderId,
+        ticket_order_id: reservedOrderId,
+        event_id: eventId,
+        tier_id: tierId,
+        payment_method: method,
+        msisdn: phone || undefined,
+      },
+    };
+
+    const session = await createDirectCharge(input);
+    const payment = await recordPaymentInitiation({
+      input,
+      checkoutUrl: null,
+      providerPayload: session.raw,
+      txRef: session.chargeId,
+    });
+    const attachedOrder = await attachTicketPaymentToOrder({
+      orderId: reservedOrderId,
+      payment,
+      method,
+      providerPayload: session.raw,
+    });
+
+    return res.json({
+      status: "success",
+      message: "Ticket reservation created. Complete payment to issue tickets.",
+      order: attachedOrder,
+      event,
+      tier,
+      payment_id: payment.id,
+      tx_ref: session.chargeId,
+      direct_charge: {
+        status: session.status,
+        provider_reference: session.providerReference,
+        payment_account_details: session.paymentAccountDetails,
+        authorization: session.authorization,
+      },
+      data: session.raw,
+    });
+  } catch (error) {
+    if (reservedOrderId) {
+      await releaseTicketOrder(reservedOrderId, "failed").catch((releaseError) => {
+        console.error("[ticket-reservation-release-error]", releaseError instanceof Error ? releaseError.message : releaseError);
+      });
+    }
+    const message = error instanceof Error ? error.message : "Could not create ticket order.";
+    const status = /bearer token|authorization|required|authenticated|invalid session|missing bearer/i.test(message)
+      ? 401
+      : /required|available|quantity|email|phone|event|tier/i.test(message)
+        ? 400
+        : 502;
+    return sendError(res, status, message);
+  }
+});
+
+app.get("/api/tickets/orders/:orderId", async (req, res) => {
+  try {
+    const { user, profile } = await requireAuthenticatedUser(req);
+    const detail = await getTicketOrderForUser(String(req.params.orderId || ""), user.id, profile?.role === "admin");
+    if (!detail) return sendError(res, 404, "Ticket order not found.");
+    const tickets = await addTicketQrDataUrls(detail.tickets || []);
+    return res.json({ status: "success", ...detail, tickets });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not load ticket order.");
+  }
+});
+
+app.post("/api/tickets/orders/:orderId/verify", async (req, res) => {
+  try {
+    const { user, profile } = await requireAuthenticatedUser(req);
+    const detail = await getTicketOrderForUser(String(req.params.orderId || ""), user.id, profile?.role === "admin");
+    if (!detail) return sendError(res, 404, "Ticket order not found.");
+    const reference = detail.order?.payment_reference;
+    if (!reference) return sendError(res, 400, "Ticket order has no payment reference yet.");
+
+    const payment = await findPaymentByReference(reference);
+    if (!payment) return sendError(res, 404, "Payment not found for this ticket order.");
+    const verifyData = await verifyPaymentForRecord(reference, payment);
+    const finalized = await finalizePaymentByReference(reference, verifyData);
+    const nextDetail = await getTicketOrderForUser(String(req.params.orderId || ""), user.id, profile?.role === "admin");
+    const issuedTickets = await addTicketQrDataUrls(nextDetail?.tickets || []);
+
+    return res.json({
+      status: "success",
+      payment_status: finalized.payment.status,
+      fulfilled: finalized.finalized,
+      order: nextDetail?.order || detail.order,
+      event: nextDetail?.event || detail.event,
+      tier: nextDetail?.tier || detail.tier,
+      tickets: issuedTickets,
+      verify: verifyData,
+    });
+  } catch (error) {
+    return sendError(res, 502, error instanceof Error ? error.message : "Could not verify ticket payment.");
+  }
+});
+
+app.get("/api/tickets/my", async (req, res) => {
+  try {
+    const { user } = await requireAuthenticatedUser(req);
+    const tickets = await listMyIssuedTickets(user.id);
+    const ticketsWithQr = await addTicketQrDataUrls(tickets);
+    return res.json({ status: "success", tickets: ticketsWithQr });
+  } catch (error) {
+    return sendError(res, 401, error instanceof Error ? error.message : "Could not load your tickets.");
+  }
+});
+
+app.get("/api/admin/ticket-events", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const events = await listAdminTicketEvents({
+      query: typeof req.query.q === "string" ? req.query.q : "",
+      limit: req.query.limit,
+    });
+    return res.json({ status: "success", events });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not load ticket events.");
+  }
+});
+
+app.post("/api/admin/ticket-events", async (req, res) => {
+  try {
+    const admin = await requireAdmin(req);
+    const event = await upsertAdminTicketEvent(req.body || {}, admin.id);
+    return res.json({ status: "success", event });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not save ticket event.");
+  }
+});
+
+app.post("/api/admin/ticket-tiers", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const tier = await upsertAdminTicketTier(req.body || {});
+    return res.json({ status: "success", tier });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not save ticket tier.");
+  }
+});
+
+app.get("/api/admin/ticket-orders", async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const orders = await listAdminTicketOrders({
+      status: typeof req.query.status === "string" ? req.query.status : "",
+      limit: req.query.limit,
+    });
+    return res.json({ status: "success", orders });
+  } catch (error) {
+    return sendError(res, 403, error instanceof Error ? error.message : "Could not load ticket orders.");
+  }
+});
+
+app.post("/api/admin/tickets/check-in", async (req, res) => {
+  try {
+    const admin = await requireAdmin(req);
+    const result = await checkInTicket({
+      ticketCode: req.body?.ticket_code,
+      eventId: req.body?.event_id,
+      actorId: admin.id,
+      deviceLabel: typeof req.body?.device_label === "string" ? req.body.device_label : null,
+    });
+    return res.json({ status: "success", ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not check in ticket.";
+    const status = /already|used|cancelled|refunded/i.test(message) ? 409 : /required|not found|another event/i.test(message) ? 400 : 403;
+    return sendError(res, status, message);
+  }
 });
 
 app.get("/api/wallet/me", async (req, res) => {
@@ -1042,6 +1368,24 @@ app.get("/api/orders/:orderId/handoff", async (req, res) => {
       return sendError(res, 409, "Invoice and handoff pass are available only after backend payment confirmation.");
     }
 
+    let rider = null;
+    const driverId = detail.delivery?.driver_id || null;
+    if (driverId) {
+      const { data: riderProfile, error: riderError } = await supabase
+        .from("profiles")
+        .select("id,full_name,phone")
+        .eq("id", driverId)
+        .maybeSingle();
+      if (riderError) throw new Error(riderError.message);
+      if (riderProfile) {
+        rider = {
+          id: riderProfile.id,
+          name: riderProfile.full_name || null,
+          phone: riderProfile.phone || null,
+        };
+      }
+    }
+
     const { data: items, error: itemError } = await supabaseNewApp
       .from("order_items")
       .select("item_name_snapshot, quantity, line_total_mwk")
@@ -1089,6 +1433,7 @@ app.get("/api/orders/:orderId/handoff", async (req, res) => {
         delivery_fee_mwk: Number(order.delivery_fee_mwk || orderDraft.delivery_fee_mwk || 0),
         service_fee_mwk: Number(order.service_fee_mwk || orderDraft.service_fee_mwk || 0),
       },
+      rider,
     });
   } catch (error) {
     return sendError(res, 500, error instanceof Error ? error.message : "Could not load handoff details.");
@@ -1216,7 +1561,7 @@ app.post("/api/admin/orders/:orderId/status", async (req, res) => {
   try {
     await requireAdmin(req);
     const orderId = String(req.params.orderId || "").trim();
-    const status = typeof req.body?.status === "string" ? req.body.status.trim() : "";
+    const status = normalizeOrderStatus(req.body?.status);
     if (!orderId) return sendError(res, 400, "Order id is required.");
     if (!ORDER_STATUSES.has(status)) return sendError(res, 400, "Invalid order status.");
 
@@ -1306,13 +1651,13 @@ app.post("/api/admin/support-tickets/:id/respond", async (req, res) => {
   try {
     const admin = await requireAdmin(req);
     const ticketId = String(req.params.id || "").trim();
-    const status = typeof req.body?.status === "string" ? req.body.status.trim() : "";
+    const status = normalizeSupportTicketStatus(req.body?.status);
     const adminNote = typeof req.body?.admin_note === "string" ? req.body.admin_note.trim() : "";
     if (!ticketId) return sendError(res, 400, "Ticket id is required.");
 
     const next = {
       admin_note: adminNote || null,
-      status: status || "open",
+      status,
       resolved_at: status === "resolved" || status === "closed" ? new Date().toISOString() : null,
     };
 
@@ -1444,7 +1789,7 @@ app.get("/api/admin/catalog-items", async (req, res) => {
 
     let query = supabaseNewApp
       .from("catalog_items")
-      .select("id,vendor_id,channel,name,description,price_mwk,stock_qty,image_url,is_active,created_at,updated_at")
+      .select("id,vendor_id,channel,name,description,price_mwk,stock_qty,image_url,image_urls,is_active,created_at,updated_at")
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -1482,6 +1827,10 @@ app.post("/api/admin/catalog-items", async (req, res) => {
       stockQty = parsedStock;
     }
 
+    const bodyImageUrls = normalizeImageUrls(req.body?.image_urls);
+    const bodyImageUrl = typeof req.body?.image_url === "string" ? req.body.image_url.trim() || null : null;
+    const imageUrls = bodyImageUrls.length ? bodyImageUrls : bodyImageUrl ? [bodyImageUrl] : [];
+
     const payload = {
       vendor_id: vendorId,
       channel,
@@ -1489,14 +1838,15 @@ app.post("/api/admin/catalog-items", async (req, res) => {
       description: typeof req.body?.description === "string" ? req.body.description.trim() || null : null,
       price_mwk: price,
       stock_qty: stockQty,
-      image_url: typeof req.body?.image_url === "string" ? req.body.image_url.trim() || null : null,
+      image_url: bodyImageUrl || imageUrls[0] || null,
+      image_urls: imageUrls,
       is_active: typeof req.body?.is_active === "boolean" ? req.body.is_active : true,
     };
 
     const { data, error } = await supabaseNewApp
       .from("catalog_items")
       .insert(payload)
-      .select("id,vendor_id,channel,name,description,price_mwk,stock_qty,image_url,is_active,created_at,updated_at")
+      .select("id,vendor_id,channel,name,description,price_mwk,stock_qty,image_url,image_urls,is_active,created_at,updated_at")
       .single();
     if (error) throw new Error(error.message);
     return res.json({ status: "success", item: data });
@@ -1518,6 +1868,12 @@ app.post("/api/admin/catalog-items/:itemId", async (req, res) => {
     if (req.body?.description === null) payload.description = null;
     if (typeof req.body?.image_url === "string") payload.image_url = req.body.image_url.trim() || null;
     if (req.body?.image_url === null) payload.image_url = null;
+    if (Array.isArray(req.body?.image_urls)) {
+      const imageUrls = normalizeImageUrls(req.body.image_urls);
+      payload.image_urls = imageUrls;
+      if (payload.image_url === undefined) payload.image_url = imageUrls[0] || null;
+    }
+    if (req.body?.image_urls === null) payload.image_urls = [];
     if (req.body?.stock_qty === null) payload.stock_qty = null;
     if (req.body?.stock_qty !== undefined && req.body?.stock_qty !== null) {
       const stockQty = Number(req.body.stock_qty);
@@ -1538,7 +1894,7 @@ app.post("/api/admin/catalog-items/:itemId", async (req, res) => {
       .from("catalog_items")
       .update({ ...payload, updated_at: new Date().toISOString() })
       .eq("id", itemId)
-      .select("id,vendor_id,channel,name,description,price_mwk,stock_qty,image_url,is_active,created_at,updated_at")
+      .select("id,vendor_id,channel,name,description,price_mwk,stock_qty,image_url,image_urls,is_active,created_at,updated_at")
       .single();
     if (error) throw new Error(error.message);
     return res.json({ status: "success", item: data });
@@ -1913,22 +2269,32 @@ app.post("/api/admin/broadcast", async (req, res) => {
     if (!audience) return sendError(res, 400, "Invalid notification audience.");
 
     const userIds = await listBroadcastRecipientIds(audience);
+    const notificationCount = await createBroadcastNotifications(userIds, { title, message, type, priority, audience });
+    let pushSent = 0;
+
     if (userIds.length) {
-      await sendPushNotificationsToUsers(userIds, {
-        title,
-        body: message,
-        type,
-        priority,
-        data: {
-          audienceRole: audience,
-          broadcast: true,
-        },
-      });
+      try {
+        const pushResult = await sendPushNotificationsToUsers(userIds, {
+          title,
+          body: message,
+          type,
+          priority,
+          data: {
+            audienceRole: audience,
+            broadcast: true,
+          },
+          skipInApp: true,
+        });
+        pushSent = Number(pushResult?.sent || 0);
+      } catch (pushError) {
+        console.error("[admin-broadcast-push-error]", pushError instanceof Error ? pushError.message : pushError);
+      }
     }
 
     return res.json({
       status: "success",
-      sent_to: userIds.length,
+      sent_to: notificationCount,
+      push_sent: pushSent,
       audience_role: audience,
       recipient_source: audience === "all" || audience === "student" ? "auth_users" : "profiles",
     });

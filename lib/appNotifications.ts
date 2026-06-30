@@ -157,7 +157,8 @@ export function notificationHrefForRole(role: AppNotificationRole, type?: string
   if (role === "student") {
     if (normalized.includes("role_application")) return "/onboarding";
     if (normalized.startsWith("payment") || normalized.startsWith("wallet")) return "/(student)/(tabs)/wallet";
-    if (normalized.includes("message") || normalized.includes("enquiry")) return "/(student)/(tabs)/messages";
+    if (normalized.includes("enquiry")) return "/(student)/(tabs)/room-messages";
+    if (normalized.includes("message")) return "/(student)/(tabs)/messages";
     if (normalized.includes("support")) return "/support";
     return "/(student)/(tabs)/orders";
   }
@@ -201,7 +202,7 @@ export function notificationTargetForRole(role: AppNotificationRole, type?: stri
   if (role === "student" && enquiryId && (normalized.includes("message") || normalized.includes("enquiry"))) {
     return {
       pathname: "/(student)/chat/[enquiryId]",
-      params: { enquiryId },
+      params: { enquiryId, from: "rooms" },
     };
   }
 

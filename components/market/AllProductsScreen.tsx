@@ -1,10 +1,17 @@
 import React from "react";
-import { FlatList, Image, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ArrowLeft, Search, Store } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { listMarketCards, type MarketCard } from "@/lib/newApp/browse";
+import MarketBottomNav from "@/components/market/MarketBottomNav";
+import { useLiveProximity } from "@/lib/liveProximity";
+import {
+  diversifyMarketListings,
+  rankMarketListing,
+} from "@/lib/marketplaceRanking";
 
 type Props = {
   detailRoute: "/(market)/item/[id]" | "/(student)/market/[id]";
@@ -36,13 +43,20 @@ function formatListedOn(value: string) {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function listingAreaLabel(item: MarketCard) {
+  return [item.area, item.campus].filter(Boolean).join(" - ") || "Campus pickup";
+}
+
 export default function AllProductsScreen({ detailRoute }: Props) {
   const router = useRouter();
+  const isStudentBrowse = detailRoute === "/(student)/market/[id]";
   const [query, setQuery] = React.useState("");
   const [items, setItems] = React.useState<MarketCard[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = React.useState("all");
+  const { point: liveLocation } = useLiveProximity(isStudentBrowse);
+  const safeAreaEdges: Edge[] = isStudentBrowse ? ["top", "left", "right"] : ["top", "left", "right", "bottom"];
 
   React.useEffect(() => {
     let active = true;
@@ -67,20 +81,36 @@ export default function AllProductsScreen({ detailRoute }: Props) {
 
   const filtered = React.useMemo(() => {
     const term = query.trim().toLowerCase();
-    return items.filter((item) => {
-      const matchesTerm =
-        !term || [item.name, item.vendor, item.area, item.campus, item.description, item.category].some((value) => value.toLowerCase().includes(term));
-      return matchesTerm && matchesCategory(item, selectedCategory);
-    });
-  }, [items, query, selectedCategory]);
+    const ranked = items
+      .filter((item) => {
+        const matchesTerm =
+          !term || [item.name, item.vendor, item.area, item.campus, item.description, item.category].some((value) => value.toLowerCase().includes(term));
+        return matchesTerm && matchesCategory(item, selectedCategory);
+      })
+      .map((item) => ({
+        item,
+        rank: rankMarketListing({ item, term, liveLocation, savedLocationScore: 0 }),
+      }))
+      .sort((a, b) =>
+        b.rank.score - a.rank.score ||
+        (a.rank.distanceMeters ?? Number.MAX_SAFE_INTEGER) - (b.rank.distanceMeters ?? Number.MAX_SAFE_INTEGER) ||
+        new Date(b.item.refreshedAt).getTime() - new Date(a.item.refreshedAt).getTime(),
+      )
+      .map((row) => row.item);
+    return diversifyMarketListings(ranked);
+  }, [items, liveLocation, query, selectedCategory]);
+
+  const infoTitle = "All listings";
+  const infoSub = "Browse products from campus sellers.";
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={safeAreaEdges} style={styles.root}>
       <FlatList
+        style={styles.list}
         data={filtered}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, isStudentBrowse && styles.listContentWithBottomNav]}
         columnWrapperStyle={styles.gridRow}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
@@ -121,8 +151,8 @@ export default function AllProductsScreen({ detailRoute }: Props) {
             />
 
             <View style={styles.infoCard}>
-              <Text style={styles.infoTitle}>All listings</Text>
-              <Text style={styles.infoSub}>Discover unique products around you</Text>
+              <Text style={styles.infoTitle}>{infoTitle}</Text>
+              <Text style={styles.infoSub}>{infoSub}</Text>
             </View>
 
             {loading && items.length === 0 ? <View style={styles.skeleton} /> : null}
@@ -134,6 +164,7 @@ export default function AllProductsScreen({ detailRoute }: Props) {
             <Image source={{ uri: item.image }} style={styles.cardImage} />
             <Text numberOfLines={2} style={styles.cardTitle}>{item.name}</Text>
             <Text style={styles.cardPrice}>{kwacha(item.price)}</Text>
+            <Text style={styles.cardListed}>{listingAreaLabel(item)}</Text>
             <Text style={styles.cardListed}>Listed {formatListedOn(item.listedAt)}</Text>
             <View style={styles.cardMetaRow}>
               <View style={styles.vendorIcon}>
@@ -152,13 +183,16 @@ export default function AllProductsScreen({ detailRoute }: Props) {
           ) : null
         }
       />
+      {isStudentBrowse ? <MarketBottomNav active="market" /> : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f7fb", paddingHorizontal: 16, paddingTop: 10 },
+  list: { flex: 1 },
   listContent: { paddingBottom: 22 },
+  listContentWithBottomNav: { paddingBottom: 164 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 },
   backBtn: {
     width: 42,

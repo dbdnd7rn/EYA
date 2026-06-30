@@ -4,12 +4,14 @@ import { useRouter } from "expo-router";
 import { Bell, ChevronLeft, MessageCircle, Package2 } from "lucide-react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { listStudentMarketRequests, type MarketInterestRequest } from "@/lib/marketInterest";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 type Filter = "ongoing" | "completed" | "cancelled";
 
-export default function StudentRequestsPage() {
+export default function StudentRequestsPage({ contentBottomPadding = 120 }: { contentBottomPadding?: number }) {
   const router = useRouter();
   const { user } = useAuth();
+  const { theme } = useStudentTheme();
   const [rows, setRows] = useState<MarketInterestRequest[]>([]);
   const [filter, setFilter] = useState<Filter>("ongoing");
 
@@ -33,24 +35,24 @@ export default function StudentRequestsPage() {
   }, [filter, rows]);
 
   return (
-    <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Pressable style={styles.iconBtn} onPress={() => router.back()}>
-            <ChevronLeft size={22} color="#102a54" />
+          <Pressable style={[styles.iconBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => router.back()}>
+            <ChevronLeft size={22} color={theme.text} />
           </Pressable>
-          <Text style={styles.title}>My Requests</Text>
-          <View style={styles.iconBtn}>
-            <Bell size={18} color="#102a54" />
+          <Text style={[styles.title, { color: theme.heading }]}>My Requests</Text>
+          <View style={[styles.iconBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Bell size={18} color={theme.text} />
           </View>
         </View>
 
-        <View style={styles.segmented}>
+        <View style={[styles.segmented, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           {(["ongoing", "completed", "cancelled"] as Filter[]).map((value) => {
             const active = filter === value;
             return (
-              <Pressable key={value} style={[styles.segmentBtn, active && styles.segmentBtnActive]} onPress={() => setFilter(value)}>
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{value === "ongoing" ? `Ongoing ${filtered.length && active ? filtered.length : ""}`.trim() : value.charAt(0).toUpperCase() + value.slice(1)}</Text>
+              <Pressable key={value} style={[styles.segmentBtn, active && { backgroundColor: theme.accent }]} onPress={() => setFilter(value)}>
+                <Text style={[styles.segmentText, { color: theme.textMuted }, active && styles.segmentTextActive]}>{value === "ongoing" ? `Ongoing ${filtered.length && active ? filtered.length : ""}`.trim() : value.charAt(0).toUpperCase() + value.slice(1)}</Text>
               </Pressable>
             );
           })}
@@ -59,35 +61,35 @@ export default function StudentRequestsPage() {
         <View style={styles.list}>
           {filtered.length ? (
             filtered.map((row) => (
-              <View key={row.id} style={styles.card}>
+              <View key={row.id} style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <Text style={[styles.statusPill, row.status === "arranged" ? styles.statusWarm : row.status === "completed" ? styles.statusCool : styles.statusMuted]}>
                   {row.status === "arranged" ? "Arranged pickup" : row.status === "completed" ? "Pickup complete" : row.status === "cancelled" ? "Cancelled" : "Discussing pickup"}
                 </Text>
                 <View style={styles.cardBody}>
                   <Image source={{ uri: row.image }} style={styles.image} />
                   <View style={styles.meta}>
-                    <Text style={styles.itemName}>{row.itemName}</Text>
-                    <Text style={styles.price}>K{row.priceMwk.toLocaleString("en-MW")}</Text>
-                    <Text style={styles.vendor}>{row.vendorName}</Text>
-                    <Text style={styles.sub}>{row.pickupTimeLabel ? `${row.pickupTimeLabel} • ${row.pickupLocation}` : row.lastMessage}</Text>
+                    <Text style={[styles.itemName, { color: theme.text }]}>{row.itemName}</Text>
+                    <Text style={[styles.price, { color: theme.text }]}>K{row.priceMwk.toLocaleString("en-MW")}</Text>
+                    <Text style={[styles.vendor, { color: theme.textMuted }]}>{row.vendorName}</Text>
+                    <Text style={[styles.sub, { color: theme.textSoft }]}>{row.pickupTimeLabel ? `${row.pickupTimeLabel} • ${row.pickupLocation}` : row.lastMessage}</Text>
                   </View>
                 </View>
                 <View style={styles.actions}>
-                  <Pressable style={styles.actionBtn} onPress={() => router.push({ pathname: "/(student)/vendor-chat/[vendorId]", params: { vendorId: row.vendorId, requestId: row.id, itemId: row.itemId, itemName: row.itemName, image: row.image, price: String(row.priceMwk), category: row.category, vendorName: row.vendorName, subject: `About ${row.itemName}` } })}>
-                    <MessageCircle size={16} color="#102a54" />
-                    <Text style={styles.actionText}>Open chat</Text>
+                  <Pressable style={[styles.actionBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} onPress={() => router.push({ pathname: "/(student)/vendor-chat/[vendorId]", params: { vendorId: row.vendorId, requestId: row.id, itemId: row.itemId, itemName: row.itemName, image: row.image, price: String(row.priceMwk), category: row.category, vendorName: row.vendorName, subject: `About ${row.itemName}` } })}>
+                    <MessageCircle size={16} color={theme.text} />
+                    <Text style={[styles.actionText, { color: theme.text }]}>Open chat</Text>
                   </Pressable>
-                  <Pressable style={styles.actionBtn} onPress={() => router.push({ pathname: "/(student)/requests/[requestId]", params: { requestId: row.id } })}>
-                    <Package2 size={16} color="#102a54" />
-                    <Text style={styles.actionText}>{row.status === "completed" ? "Leave feedback" : "View details"}</Text>
+                  <Pressable style={[styles.actionBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} onPress={() => router.push({ pathname: "/(student)/requests/[requestId]", params: { requestId: row.id } })}>
+                    <Package2 size={16} color={theme.text} />
+                    <Text style={[styles.actionText, { color: theme.text }]}>{row.status === "completed" ? "Leave feedback" : "View details"}</Text>
                   </Pressable>
                 </View>
               </View>
             ))
           ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No requests yet</Text>
-              <Text style={styles.emptySub}>Mark items as interested or arrange pickup from seller chat to track them here.</Text>
+            <View style={[styles.emptyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>No requests yet</Text>
+              <Text style={[styles.emptySub, { color: theme.textMuted }]}>Mark items as interested or arrange pickup from seller chat to track them here.</Text>
             </View>
           )}
         </View>
@@ -98,7 +100,7 @@ export default function StudentRequestsPage() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f2fb" },
-  content: { padding: 18, paddingBottom: 40, gap: 16 },
+  content: { padding: 18, gap: 16 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   iconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e7ebf6", alignItems: "center", justifyContent: "center" },
   title: { color: "#102a54", fontSize: 26, fontWeight: "900" },

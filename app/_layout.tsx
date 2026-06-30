@@ -1,8 +1,8 @@
 import "../global.css";
 import React from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack } from "expo-router";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { AuthProvider } from "../providers/AuthProvider";
 import { NetworkProvider } from "@/providers/NetworkProvider";
 import SavedRoomsQueueSyncProvider from "@/providers/SavedRoomsQueueSyncProvider";
@@ -10,8 +10,7 @@ import MutationOutboxSyncProvider from "@/providers/MutationOutboxSyncProvider";
 import { NotificationInboxProvider } from "@/providers/NotificationInboxProvider";
 import EyaLaunchAnimation from "@/components/EyaLaunchAnimation";
 import AppRuntimeProvider from "@/providers/AppRuntimeProvider";
-
-const LAUNCH_ANIMATION_SEEN_KEY = "eya_launch_animation_seen_v1";
+import { StudentThemeProvider, useStudentTheme } from "@/providers/StudentThemeProvider";
 
 type ComponentWithDefaults = {
   defaultProps?: Record<string, unknown>;
@@ -33,55 +32,58 @@ textInputDefaults.defaultProps = {
 };
 
 export default function RootLayout() {
-  const [showLaunchAnimation, setShowLaunchAnimation] = React.useState(false);
-
-  React.useEffect(() => {
-    let active = true;
-
-    const loadSeenState = async () => {
-      const seen = await AsyncStorage.getItem(LAUNCH_ANIMATION_SEEN_KEY);
-      if (active && !seen) setShowLaunchAnimation(true);
-    };
-
-    void loadSeenState();
-    return () => {
-      active = false;
-    };
-  }, []);
+  const [showLaunchAnimation, setShowLaunchAnimation] = React.useState(true);
 
   const handleLaunchComplete = React.useCallback(() => {
     setShowLaunchAnimation(false);
-    void AsyncStorage.setItem(LAUNCH_ANIMATION_SEEN_KEY, "1");
   }, []);
 
   return (
     <NetworkProvider>
       <AuthProvider>
-        <AppRuntimeProvider>
-          <NotificationInboxProvider>
-            <SavedRoomsQueueSyncProvider>
-              <MutationOutboxSyncProvider>
-                <KeyboardAvoidingView
-                  behavior={Platform.select({ ios: "padding", android: "height" })}
-                  enabled={Platform.OS !== "web"}
-                  keyboardVerticalOffset={0}
-                  style={styles.keyboardRoot}
-                >
-                  <Stack
-                    screenOptions={{
-                      headerShown: false,
-                    }}
-                  />
-                  {showLaunchAnimation ? (
-                    <EyaLaunchAnimation onComplete={handleLaunchComplete} />
-                  ) : null}
-                </KeyboardAvoidingView>
-              </MutationOutboxSyncProvider>
-            </SavedRoomsQueueSyncProvider>
-          </NotificationInboxProvider>
-        </AppRuntimeProvider>
+        <StudentThemeProvider>
+          <ThemedRuntime showLaunchAnimation={showLaunchAnimation} onLaunchComplete={handleLaunchComplete} />
+        </StudentThemeProvider>
       </AuthProvider>
     </NetworkProvider>
+  );
+}
+
+function ThemedRuntime({
+  onLaunchComplete,
+  showLaunchAnimation,
+}: {
+  onLaunchComplete: () => void;
+  showLaunchAnimation: boolean;
+}) {
+  const { mode, theme } = useStudentTheme();
+
+  return (
+    <AppRuntimeProvider>
+      <NotificationInboxProvider>
+        <SavedRoomsQueueSyncProvider>
+          <MutationOutboxSyncProvider>
+            <KeyboardAvoidingView
+              behavior={Platform.select({ ios: "padding", android: "height" })}
+              enabled={Platform.OS !== "web"}
+              keyboardVerticalOffset={0}
+              style={[styles.keyboardRoot, { backgroundColor: theme.background }]}
+            >
+              <StatusBar style={mode === "dark" ? "light" : "dark"} backgroundColor={theme.background} />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: theme.background },
+                }}
+              />
+              {showLaunchAnimation ? (
+                <EyaLaunchAnimation onComplete={onLaunchComplete} />
+              ) : null}
+            </KeyboardAvoidingView>
+          </MutationOutboxSyncProvider>
+        </SavedRoomsQueueSyncProvider>
+      </NotificationInboxProvider>
+    </AppRuntimeProvider>
   );
 }
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert, FlatList, Image, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowLeft, Bell, Heart, Home, MapPin, PiggyBank, Scale, Search, User2 } from "lucide-react-native";
+import { ArrowLeft, Bell, Heart, PiggyBank, Scale, Search, User2 } from "lucide-react-native";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import {
   applyPendingSavedOpsToRows,
@@ -16,6 +16,8 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
 import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
+import { useLiveProximity } from "@/lib/liveProximity";
+import { rankRoomListing } from "@/lib/roomProximity";
 
 type OccupancyMode = "single" | "shared";
 type ListingType = "hostel" | "bedsitter";
@@ -32,6 +34,8 @@ type ListingRow = {
   image_urls: string[] | null;
   occupancy_mode: OccupancyMode | null;
   students_per_room: number | null;
+  latitude: number | null;
+  longitude: number | null;
   created_at: string | null;
   visibility_rank?: number | null;
 };
@@ -70,8 +74,8 @@ function snapshotFromListing(row: ListingRow): SavedListingSnapshot {
     price_from: row.price_from,
     room_types: row.room_types,
     image_urls: row.image_urls,
-    latitude: null,
-    longitude: null,
+    latitude: row.latitude,
+    longitude: row.longitude,
     created_at: row.created_at ?? null,
   };
 }
@@ -163,6 +167,7 @@ export default function RoomsBrowseScreen() {
   const { isOnline } = useNetwork();
   const { user } = useAuth();
   const { unreadCount } = useNotificationInbox();
+  const { point: liveLocation } = useLiveProximity(true);
 
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -170,7 +175,6 @@ export default function RoomsBrowseScreen() {
   const [all, setAll] = React.useState<ListingRow[]>([]);
   const [query, setQuery] = React.useState("");
   const [sortMode, setSortMode] = React.useState<SortMode>("recommended");
-  const [nearMeOn, setNearMeOn] = React.useState(false);
   const [savedSet, setSavedSet] = React.useState<Set<string>>(() => new Set());
 
   const loadListings = React.useCallback(async (opts?: { silent?: boolean }) => {
@@ -180,7 +184,7 @@ export default function RoomsBrowseScreen() {
       if (isOnline) {
         const { data, error } = await supabase
           .from("listings")
-          .select("id, title, listing_type, campus, area, city, price_from, room_types, image_urls, occupancy_mode, students_per_room, created_at")
+          .select("id, title, listing_type, campus, area, city, price_from, room_types, image_urls, occupancy_mode, students_per_room, latitude, longitude, created_at")
           .eq("is_active", true);
         if (error) throw error;
         const rows = (data ?? []) as ListingRow[];
@@ -252,23 +256,34 @@ export default function RoomsBrowseScreen() {
     const term = query.trim().toLowerCase();
     let rows = all.filter((row) => {
       const matchesTerm = !term || [row.title, row.area, row.city, row.campus].some((v) => (v ?? "").toLowerCase().includes(term));
-      if (!matchesTerm) return false;
-      if (!nearMeOn) return true;
-      const campus = (row.campus ?? "").toUpperCase();
-      return campus.includes("MUST");
+      return matchesTerm;
     });
 
     if (sortMode === "affordable") {
       rows = rows
         .slice()
-        .sort((a, b) => (a.price_from ?? Number.MAX_SAFE_INTEGER) - (b.price_from ?? Number.MAX_SAFE_INTEGER));
+        .sort((a, b) => {
+          const priceDelta = (a.price_from ?? Number.MAX_SAFE_INTEGER) - (b.price_from ?? Number.MAX_SAFE_INTEGER);
+          if (priceDelta !== 0) return priceDelta;
+          const rankA = rankRoomListing({ item: a, liveLocation });
+          const rankB = rankRoomListing({ item: b, liveLocation });
+          return rankB.score - rankA.score || (rankA.distanceMeters ?? Number.MAX_SAFE_INTEGER) - (rankB.distanceMeters ?? Number.MAX_SAFE_INTEGER);
+        });
     } else {
       rows = rows
         .slice()
-        .sort((a, b) => (b.visibility_rank ?? 0) - (a.visibility_rank ?? 0) || new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
+        .sort((a, b) => {
+          const rankA = rankRoomListing({ item: a, liveLocation });
+          const rankB = rankRoomListing({ item: b, liveLocation });
+          return (
+            rankB.score - rankA.score ||
+            (rankA.distanceMeters ?? Number.MAX_SAFE_INTEGER) - (rankB.distanceMeters ?? Number.MAX_SAFE_INTEGER) ||
+            new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+          );
+        });
     }
     return rows;
-  }, [all, nearMeOn, query, sortMode]);
+  }, [all, liveLocation, query, sortMode]);
 
   const topPicks = filtered.slice(0, 10);
 
@@ -352,12 +367,6 @@ export default function RoomsBrowseScreen() {
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
-              <QuickChip
-                active={nearMeOn}
-                icon={<MapPin size={16} color={nearMeOn ? "#6a4c00" : "#0f2450"} />}
-                label="Near me"
-                onPress={() => setNearMeOn((v) => !v)}
-              />
               <QuickChip
                 active={sortMode === "affordable"}
                 icon={<PiggyBank size={16} color={sortMode === "affordable" ? "#0b4e3a" : "#0f2450"} />}

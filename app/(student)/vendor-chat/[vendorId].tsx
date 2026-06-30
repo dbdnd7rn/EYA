@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Image, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowLeft, CalendarClock, Heart, ImagePlus, MapPin, Send } from "lucide-react-native";
+import { ArrowLeft, Heart, ImagePlus, MapPin, Send } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "@/providers/AuthProvider";
 import { getVendorById } from "@/lib/newApp/vendors";
@@ -55,6 +55,7 @@ export default function StudentVendorChatPage() {
   const { isOnline } = useNetwork();
   const params = useLocalSearchParams<{ vendorId?: string; channel?: string; message?: string; itemId?: string; subject?: string; requestId?: string; itemName?: string; image?: string; price?: string; category?: string; vendorName?: string }>();
   const vendorId = typeof params.vendorId === "string" ? params.vendorId : "";
+  const userId = user?.id ?? "";
   const channel = (params.channel === "food" ? "food" : "market") as SalesChannel;
   const initialMessage = typeof params.message === "string" ? params.message : "";
   const itemId = typeof params.itemId === "string" ? params.itemId : "";
@@ -90,7 +91,7 @@ export default function StudentVendorChatPage() {
   };
 
   useEffect(() => {
-    if (!user || !vendorId) return;
+    if (!userId || !vendorId) return;
     let active = true;
 
     const run = async () => {
@@ -98,7 +99,7 @@ export default function StudentVendorChatPage() {
         getVendorById(vendorId),
         getOrCreateVendorConversation({
           vendorId,
-          customerId: user.id,
+          customerId: userId,
           channel,
           catalogItemId: itemId || undefined,
           subject: initialSubject || (channel === "food" ? "Food enquiry" : "Shop enquiry"),
@@ -116,7 +117,7 @@ export default function StudentVendorChatPage() {
     return () => {
       active = false;
     };
-  }, [channel, initialSubject, itemId, user?.id, vendorId]);
+  }, [channel, initialSubject, itemId, userId, vendorId]);
 
   useEffect(() => {
     if (!conversationId) return;

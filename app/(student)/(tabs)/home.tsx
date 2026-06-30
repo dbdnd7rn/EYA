@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Animated, Easing, ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BedDouble, ChevronRight, Clock3, MapPin, Mic, Search, ShoppingBag, Sparkles, Star, UtensilsCrossed } from "lucide-react-native";
+import { BedDouble, ChevronRight, MapPin, Mic, Search, ShoppingBag, Sparkles, Star, UtensilsCrossed } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { supabase } from "@/lib/supabase";
@@ -24,7 +24,7 @@ type FeaturedCard = {
   image: string;
   status?: "Open" | "Closed";
   cta: string;
-  href: "/(eya)/(tabs)/rooms" | "/(student)/(tabs)/marketplace" | "/(food)/(tabs)/food";
+  href: "/(student)/(tabs)/rooms" | "/(student)/market" | "/(food)/(tabs)/food";
 };
 
 type VendorMini = {
@@ -66,56 +66,6 @@ type DiscoveryCard = {
   tone: string;
 };
 
-const FALLBACK_FEATURED_CARDS: FeaturedCard[] = [
-  {
-    id: "s1",
-    mode: "stay",
-    title: "MUST Prime Hostel",
-    subtitle: "Bedsitter and single rooms",
-    rating: "4.7",
-    location: "Soche",
-    image: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80",
-    status: "Open",
-    cta: "Browse rooms",
-    href: "/(eya)/(tabs)/rooms",
-  },
-  {
-    id: "s2",
-    mode: "stay",
-    title: "Green Court Residences",
-    subtitle: "Quiet study zones and fast Wi-Fi",
-    rating: "4.6",
-    location: "Naperi",
-    image: "https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=1200&q=80",
-    status: "Open",
-    cta: "View",
-    href: "/(eya)/(tabs)/rooms",
-  },
-  {
-    id: "m1",
-    mode: "market",
-    title: "Campus Essentials",
-    subtitle: "Study gear and daily needs",
-    rating: "4.5",
-    location: "Namiwawa",
-    image: "https://images.unsplash.com/photo-1604719312566-8912e9c8a213?auto=format&fit=crop&w=1200&q=80",
-    status: "Open",
-    cta: "Browse",
-    href: "/(student)/(tabs)/marketplace",
-  },
-  {
-    id: "f1",
-    mode: "food",
-    title: "BurgerZone",
-    subtitle: "Fast campus meals",
-    rating: "4.8",
-    location: "Blantyre",
-    image: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=1200&q=80",
-    status: "Open",
-    cta: "Order",
-    href: "/(food)/(tabs)/food",
-  },
-];
 const FEATURED_CACHE_KEY = "student_home_featured_v1";
 
 function ratingFromId(id: string) {
@@ -161,7 +111,7 @@ async function loadFeaturedCards(): Promise<FeaturedCard[]> {
     image: r.image_urls?.[0] || "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80",
     status: "Open",
     cta: "Browse rooms",
-    href: "/(eya)/(tabs)/rooms",
+    href: "/(student)/(tabs)/rooms",
   }));
 
   const markets: FeaturedCard[] = marketRows.map((r) => {
@@ -173,10 +123,10 @@ async function loadFeaturedCards(): Promise<FeaturedCard[]> {
       subtitle: v?.name ? `${v.name} | ${Number(r.price_mwk).toLocaleString("en-MW")} MWK` : "Campus marketplace item",
       rating: ratingFromId(r.id),
       location: safeLocation(v?.area, v?.campus, v?.city),
-      image: r.image_url || "https://images.unsplash.com/photo-1604719312566-8912e9c8a213?auto=format&fit=crop&w=1200&q=80",
+      image: r.image_urls?.[0] || r.image_url || "https://images.unsplash.com/photo-1604719312566-8912e9c8a213?auto=format&fit=crop&w=1200&q=80",
       status: v?.is_active === false ? "Closed" : "Open",
       cta: "Browse",
-      href: "/(student)/(tabs)/marketplace",
+      href: "/(student)/market",
     };
   });
 
@@ -189,7 +139,7 @@ async function loadFeaturedCards(): Promise<FeaturedCard[]> {
       subtitle: v?.name ? `${v.name} | ${Number(r.price_mwk).toLocaleString("en-MW")} MWK` : "Campus food item",
       rating: ratingFromId(r.id),
       location: safeLocation(v?.area, v?.campus, v?.city),
-      image: r.image_url || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80",
+      image: r.image_urls?.[0] || r.image_url || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80",
       status: v?.is_active === false ? "Closed" : "Open",
       cta: "Order",
       href: "/(food)/(tabs)/food",
@@ -226,7 +176,7 @@ function resolveInitials(profile: ProfileMini | null, email?: string | null) {
   const emailName = (email ?? "").split("@")[0]?.trim();
   if (emailName) return emailName.slice(0, 2).toUpperCase();
 
-  return "PP";
+  return "ST";
 }
 
 function timeGreetingLabel(hour: number) {
@@ -295,9 +245,9 @@ export default function StudentHomeScreen() {
   const preferredLocation = usePreferredLocation().location;
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
-  const [cards, setCards] = useState<FeaturedCard[]>(FALLBACK_FEATURED_CARDS);
+  const [cards, setCards] = useState<FeaturedCard[]>([]);
   const [displayName, setDisplayName] = useState("Student");
-  const [avatarInitials, setAvatarInitials] = useState("PP");
+  const [avatarInitials, setAvatarInitials] = useState("ST");
   const [currentHour, setCurrentHour] = useState(() => new Date().getHours());
   const waveAnim = React.useRef(new Animated.Value(0)).current;
 
@@ -316,12 +266,11 @@ export default function StudentHomeScreen() {
       try {
         const remoteCards = await loadFeaturedCards();
         if (!active) return;
-        const nextCards = remoteCards.length ? remoteCards : FALLBACK_FEATURED_CARDS;
-        setCards(nextCards);
-        await setCachedJson(FEATURED_CACHE_KEY, nextCards);
+        setCards(remoteCards);
+        await setCachedJson(FEATURED_CACHE_KEY, remoteCards);
       } catch {
         if (!active) return;
-        if (!cached?.data?.length) setCards(FALLBACK_FEATURED_CARDS);
+        if (!cached?.data?.length) setCards([]);
       } finally {
         if (active) setLoading(false);
       }
@@ -337,7 +286,7 @@ export default function StudentHomeScreen() {
     const loadProfileMini = async () => {
       if (!user?.id) {
         setDisplayName("Student");
-        setAvatarInitials("PP");
+        setAvatarInitials("ST");
         return;
       }
 
@@ -479,14 +428,14 @@ export default function StudentHomeScreen() {
             text="Find rooms"
             icon={<BedDouble size={26} color="#688ac2" />}
             bg={["#dceeff", "#eff4ff"]}
-            onPress={() => router.push("/(eya)/(tabs)/rooms")}
+            onPress={() => router.push("/(student)/(tabs)/rooms")}
           />
           <CategoryCard
             title="Market"
             text="Buy anything"
             icon={<ShoppingBag size={26} color="#6f63cc" />}
             bg={["#ebe6ff", "#f4f1ff"]}
-            onPress={() => router.push("/(student)/(tabs)/marketplace")}
+            onPress={() => router.push("/(student)/market" as any)}
           />
           <CategoryCard
             title="Food"
@@ -497,56 +446,64 @@ export default function StudentHomeScreen() {
           />
         </View>
 
-        <SectionHeader title="Near you" subtitle="Fresh campus options matched to your area" accent="*" onPress={() => router.push("/(student)/(tabs)/marketplace")} />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
-          {nearbyCards.map((card) => (
-            <Pressable key={card.id} style={styles.discoveryCard} onPress={() => router.push(card.href)}>
-              <ImageBackground source={{ uri: card.image }} style={styles.discoveryMedia} imageStyle={styles.discoveryMediaImg}>
-                <View style={styles.discoveryMediaShade} />
-                <View style={styles.discoveryTopRow}>
-                  <View style={styles.discoveryEyebrow}>
-                    <Sparkles size={12} color="#13285f" />
-                    <Text style={styles.discoveryEyebrowText}>{card.eyebrow}</Text>
+        <SectionHeader title="Near you" subtitle="Fresh campus options matched to your area" accent="*" onPress={() => router.push("/(student)/market" as any)} />
+        {nearbyCards.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+            {nearbyCards.map((card) => (
+              <Pressable key={card.id} style={styles.discoveryCard} onPress={() => router.push(card.href as any)}>
+                <ImageBackground source={{ uri: card.image }} style={styles.discoveryMedia} imageStyle={styles.discoveryMediaImg}>
+                  <View style={styles.discoveryMediaShade} />
+                  <View style={styles.discoveryTopRow}>
+                    <View style={styles.discoveryEyebrow}>
+                      <Sparkles size={12} color="#13285f" />
+                      <Text style={styles.discoveryEyebrowText}>{card.eyebrow}</Text>
+                    </View>
+                    {card.badge ? <Text style={styles.discoveryBadge}>{card.badge}</Text> : null}
                   </View>
-                  {card.badge ? <Text style={styles.discoveryBadge}>{card.badge}</Text> : null}
+                </ImageBackground>
+                <View style={styles.discoveryBody}>
+                  <Text numberOfLines={2} style={styles.discoveryTitle}>{card.title}</Text>
+                  <Text numberOfLines={1} style={styles.discoveryPrice}>{card.lineOne}</Text>
+                  <View style={styles.discoveryMetaRow}>
+                    <MapPin size={14} color="#6c7595" />
+                    <Text numberOfLines={1} style={styles.discoveryMetaText}>{card.lineTwo}</Text>
+                    <View style={[styles.discoveryDot, { backgroundColor: card.tone }]} />
+                  </View>
                 </View>
-              </ImageBackground>
-              <View style={styles.discoveryBody}>
-                <Text numberOfLines={2} style={styles.discoveryTitle}>{card.title}</Text>
-                <Text numberOfLines={1} style={styles.discoveryPrice}>{card.lineOne}</Text>
-                <View style={styles.discoveryMetaRow}>
-                  <MapPin size={14} color="#6c7595" />
-                  <Text numberOfLines={1} style={styles.discoveryMetaText}>{card.lineTwo}</Text>
-                  <View style={[styles.discoveryDot, { backgroundColor: card.tone }]} />
-                </View>
-              </View>
-            </Pressable>
-          ))}
-        </ScrollView>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : (
+          <EmptyHomeCard title="No live picks yet" text="Rooms, food, and market listings will appear here when vendors publish them." />
+        )}
 
-        <SectionHeader title="Featured on EYA" subtitle="Top picks near you" accent="*" onPress={() => router.push("/(eya)/(tabs)/rooms")} />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
-          {stayCards.slice(0, 5).map((card, index) => (
-            <Pressable key={card.id} onPress={() => router.push(card.href)}>
-              <ImageBackground source={{ uri: card.image }} style={[styles.featureCard, index > 0 && styles.featureCardSmall]} imageStyle={styles.featureImage}>
-                <View style={styles.overlay} />
-                <Text style={styles.topPickChip}>{index === 0 ? "Top pick" : "Browse"}</Text>
-                <View style={styles.featureBottom}>
-                  <Text numberOfLines={2} style={styles.featureTitle}>{card.title}</Text>
-                  <View style={styles.featureMetaRow}>
-                    <Star size={14} color="#ffd166" fill="#ffd166" />
-                    <Text style={styles.featureMetaText}>{card.rating}</Text>
-                    <MapPin size={14} color="#ffffff" />
-                    <Text style={styles.featureMetaText}>{card.location}</Text>
+        <SectionHeader title="Featured on EYA" subtitle="Top picks near you" accent="*" onPress={() => router.push("/(student)/(tabs)/rooms")} />
+        {stayCards.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+            {stayCards.slice(0, 5).map((card, index) => (
+              <Pressable key={card.id} onPress={() => router.push(card.href as any)}>
+                <ImageBackground source={{ uri: card.image }} style={[styles.featureCard, index > 0 && styles.featureCardSmall]} imageStyle={styles.featureImage}>
+                  <View style={styles.overlay} />
+                  <Text style={styles.topPickChip}>{index === 0 ? "Top pick" : "Browse"}</Text>
+                  <View style={styles.featureBottom}>
+                    <Text numberOfLines={2} style={styles.featureTitle}>{card.title}</Text>
+                    <View style={styles.featureMetaRow}>
+                      <Star size={14} color="#ffd166" fill="#ffd166" />
+                      <Text style={styles.featureMetaText}>{card.rating}</Text>
+                      <MapPin size={14} color="#ffffff" />
+                      <Text style={styles.featureMetaText}>{card.location}</Text>
+                    </View>
+                    <View style={styles.primaryPill}>
+                      <Text style={styles.primaryPillText}>{card.cta}</Text>
+                    </View>
                   </View>
-                  <View style={styles.primaryPill}>
-                    <Text style={styles.primaryPillText}>{card.cta}</Text>
-                  </View>
-                </View>
-              </ImageBackground>
-            </Pressable>
-          ))}
-        </ScrollView>
+                </ImageBackground>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : (
+          <EmptyHomeCard title="No featured rooms yet" text="Approved rooms from landlords will show here automatically." />
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -597,6 +554,16 @@ function SectionHeader({
       <Pressable onPress={onPress}>
         <ChevronRight size={22} color={theme.textSoft} />
       </Pressable>
+    </View>
+  );
+}
+
+function EmptyHomeCard({ text, title }: { text: string; title: string }) {
+  const { theme } = useStudentTheme();
+  return (
+    <View style={[styles.emptyHomeCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <Text style={[styles.emptyHomeTitle, { color: theme.text }]}>{title}</Text>
+      <Text style={[styles.emptyHomeText, { color: theme.textMuted }]}>{text}</Text>
     </View>
   );
 }
@@ -670,6 +637,16 @@ const styles = StyleSheet.create({
   sectionAccent: { color: "#ffcc63" },
   sectionSub: { marginTop: 4, color: "#6e7892", fontSize: 14, fontWeight: "600" },
   rail: { gap: 12, paddingRight: 6 },
+  emptyHomeCard: {
+    minHeight: 118,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 16,
+    justifyContent: "center",
+    gap: 6,
+  },
+  emptyHomeTitle: { fontSize: 18, fontWeight: "900" },
+  emptyHomeText: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
 
   discoveryCard: {
     width: 276,

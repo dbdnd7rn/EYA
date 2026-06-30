@@ -66,7 +66,14 @@ function sectionForPath(pathname: string | null): BadgeSection | null {
   if (!pathname) return null;
   if (pathname === "/(student)/(tabs)/orders" || pathname.startsWith("/(student)/delivery/")) return "orders";
   if (pathname === "/(student)/(tabs)/wallet") return "wallet";
-  if (pathname === "/(student)/(tabs)/messages" || pathname.startsWith("/(student)/chat/") || pathname.startsWith("/(student)/vendor-chat/")) return "messages";
+  if (
+    pathname === "/(student)/(tabs)/messages" ||
+    pathname === "/(student)/(tabs)/room-messages" ||
+    pathname.startsWith("/(student)/chat/") ||
+    pathname.startsWith("/(student)/vendor-chat/")
+  ) {
+    return "messages";
+  }
   return null;
 }
 

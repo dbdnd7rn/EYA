@@ -20,9 +20,10 @@ import {
 import { kwacha } from "@/lib/currency";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { listFoodCards, type FoodCard } from "@/lib/newApp/browse";
-import { formatPreferredLocation, locationMatchScore, usePreferredLocationOptional } from "@/providers/PreferredLocationProvider";
+import { locationMatchScore, usePreferredLocationOptional } from "@/providers/PreferredLocationProvider";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 type Props = {
   detailRoute: "/(food)/item/[id]" | "/(student)/food/[id]";
@@ -108,7 +109,7 @@ function toRestaurantPreviews(items: FoodCard[]): FoodRestaurantPreview[] {
       image: lead.image,
       menuCount: vendorItems.length,
       menuPreview: previews,
-      summary: previews.join(" · "),
+      summary: previews.join(" - "),
     };
   });
 }
@@ -123,6 +124,7 @@ function initials(fullName?: string | null, email?: string | null) {
 
 export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }: Props) {
   const router = useRouter();
+  const { theme } = useStudentTheme();
   const restaurantRoute = detailRoute === "/(student)/food/[id]" ? "/(student)/food/restaurant/[vendorId]" : "/(food)/restaurant/[vendorId]";
   const ordersRoute = detailRoute === "/(student)/food/[id]" ? "/(student)/(tabs)/orders" : "/(food)/(tabs)/orders";
   const homeRoute = "/(student)/(tabs)/home";
@@ -273,32 +275,35 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
   }, [campusFilter, cuisineFilter, items, openNowOnly, preferredLocation, query]);
 
   const featured = React.useMemo(() => filtered.slice(0, 3), [filtered]);
-  const locationTitle = preferredLocation?.city || preferredLocation?.campus || "Blantyre";
-  const locationSub = preferredLocation ? formatPreferredLocation(preferredLocation) : "Auto-detecting your area";
+  const foodHeaderName =
+    (profileFullName ?? "").trim() ||
+    String(user?.user_metadata?.full_name ?? "").trim() ||
+    user?.email?.split("@")[0] ||
+    "Food";
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
         <View style={styles.skeletonWrap}>
-          <View style={styles.skeletonHero} />
-          <View style={styles.skeletonSearch} />
-          <View style={styles.skeletonCard} />
-          <View style={styles.skeletonCard} />
+          <View style={[styles.skeletonHero, { backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonSearch, { backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { backgroundColor: theme.surfaceMuted }]} />
+          <View style={[styles.skeletonCard, { backgroundColor: theme.surfaceMuted }]} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topSection}>
           <View style={styles.brandRow}>
             <BackHomeButton onPress={() => router.replace(homeRoute as any)} />
-            <Text style={styles.brandTag}>EYA food</Text>
+            <Text style={[styles.brandTag, { color: theme.heading }]}>EYA food</Text>
           </View>
           <View style={styles.topRow}>
-            <Pressable style={styles.locationRow} onPress={() => router.push("/(student)/address")}>
+            <View style={styles.locationRow}>
               {profileAvatarUrl ? (
                 <Image source={{ uri: profileAvatarUrl }} style={styles.avatar} />
               ) : (
@@ -307,29 +312,29 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
                 </View>
               )}
               <View style={{ flex: 1 }}>
-                <Text style={styles.locationTitle}>{locationTitle}</Text>
+                <Text style={[styles.locationTitle, { color: theme.text }]} numberOfLines={1}>{foodHeaderName}</Text>
                 <View style={styles.locationMeta}>
-                  <MapPin size={13} color="#0f8a8f" />
-                  <Text style={styles.locationSub} numberOfLines={1}>{locationSub}</Text>
+                  <UtensilsCrossed size={13} color={theme.accent} />
+                  <Text style={[styles.locationSub, { color: theme.textMuted }]} numberOfLines={1}>Browse food and restaurants</Text>
                 </View>
               </View>
-            </Pressable>
+            </View>
             <View style={styles.headerActions}>
-              <HeaderButton icon={<Bell size={20} color="#16315f" />} badge="2" onPress={() => router.push("/(student)/requests")} />
-              <HeaderButton icon={<Bike size={20} color="#0f6d80" />} badge="2" accent onPress={() => router.push(ordersRoute as any)} />
+              <HeaderButton icon={<Bell size={20} color={theme.text} />} badge="2" onPress={() => router.push("/(student)/requests")} />
+              <HeaderButton icon={<Bike size={20} color={theme.accent} />} badge="2" accent onPress={() => router.push(ordersRoute as any)} />
             </View>
           </View>
 
-          <View style={styles.searchWrap}>
-            <Search size={20} color="#58717f" />
+          <View style={[styles.searchWrap, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Search size={20} color={theme.textSoft} />
             <TextInput
               value={query}
               onChangeText={setQuery}
-              style={styles.searchInput}
+              style={[styles.searchInput, { color: theme.text }]}
               placeholder="Search meals, restaurant, cuisines..."
-              placeholderTextColor="#7c92a0"
+              placeholderTextColor={theme.textSoft}
             />
-            <MessageCircle size={20} color="#58717f" />
+            <MessageCircle size={20} color={theme.textSoft} />
           </View>
 
           <ScrollView
@@ -342,10 +347,10 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
             onMomentumScrollEnd={(e) => setHeroIndex(Math.round(e.nativeEvent.contentOffset.x / HERO_WIDTH))}
           >
             {heroSlides.map((slide) => (
-              <View key={slide.id} style={[styles.heroCard, { backgroundColor: slide.tone }]}>
+              <View key={slide.id} style={[styles.heroCard, { backgroundColor: theme.isDark ? theme.surface : slide.tone, borderColor: theme.isDark ? theme.border : "transparent" }]}>
                 <View style={styles.heroCopy}>
-                  <Text style={styles.heroTitle}>{slide.title}</Text>
-                  <Text style={styles.heroSub}>{slide.sub}</Text>
+                  <Text style={[styles.heroTitle, { color: theme.isDark ? theme.text : "#16315f" }]}>{slide.title}</Text>
+                  <Text style={[styles.heroSub, { color: theme.isDark ? theme.textMuted : "#264b67" }]}>{slide.sub}</Text>
                   <View style={styles.heroPills}>
                     <HeroPill label="Live ETAs" />
                     <HeroPill label="Trusted vendors" />
@@ -380,27 +385,27 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
         </ScrollView>
 
         <View>
-          <Text style={styles.sectionTitle}>Browse cuisines</Text>
+          <Text style={[styles.sectionTitle, { color: theme.heading }]}>Browse cuisines</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cuisineRow}>
             {cuisineCards.map((card) => (
-              <View key={card.id} style={styles.cuisineCard}>
+              <View key={card.id} style={[styles.cuisineCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <View style={[styles.cuisineIconWrap, { backgroundColor: card.bg }]}>{card.icon}</View>
-                <Text style={styles.cuisineLabel}>{card.label}</Text>
+                <Text style={[styles.cuisineLabel, { color: theme.text }]}>{card.label}</Text>
               </View>
             ))}
           </ScrollView>
         </View>
 
         {error ? (
-          <View style={styles.noticeCard}>
-            <Text style={styles.noticeTitle}>Could not load food section</Text>
-            <Text style={styles.noticeSub}>{error}</Text>
+          <View style={[styles.noticeCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Text style={[styles.noticeTitle, { color: theme.text }]}>Could not load food section</Text>
+            <Text style={[styles.noticeSub, { color: theme.textMuted }]}>{error}</Text>
           </View>
         ) : null}
 
         {featured.length ? (
           <View>
-            <Text style={styles.sectionTitle}>Explore by craving</Text>
+            <Text style={[styles.sectionTitle, { color: theme.heading }]}>Explore by craving</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featuredRow}>
               {featured.map((item) => (
                 <Pressable
@@ -416,7 +421,7 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
                   </View>
                   <View style={styles.featuredBottom}>
                     <Text style={styles.featuredName} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.featuredMeal} numberOfLines={1}>{item.menuCount} menu items · {item.summary}</Text>
+                    <Text style={styles.featuredMeal} numberOfLines={1}>{item.menuCount} menu items - {item.summary}</Text>
                     <View style={styles.featuredMeta}>
                       <MetaTag icon={<Star size={12} color="#f1b634" fill="#f1b634" />} label={item.rating.toFixed(1)} />
                       <MetaTag icon={<Clock3 size={12} color="#ffffff" />} label={`${item.etaMins} mins`} />
@@ -431,14 +436,14 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
 
         <View>
           <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>Restaurants near you</Text>
-            <Text style={styles.sectionCount}>{filtered.length} results</Text>
+            <Text style={[styles.sectionTitle, { color: theme.heading }]}>Restaurants</Text>
+            <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{filtered.length} results</Text>
           </View>
 
           {filtered.length === 0 ? (
-            <View style={styles.noticeCard}>
-              <Text style={styles.noticeTitle}>No food results</Text>
-              <Text style={styles.noticeSub}>Try a different cuisine, campus, or search term.</Text>
+            <View style={[styles.noticeCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <Text style={[styles.noticeTitle, { color: theme.text }]}>No food results</Text>
+              <Text style={[styles.noticeSub, { color: theme.textMuted }]}>Try a different cuisine, campus, or search term.</Text>
             </View>
           ) : (
             <View style={styles.listColumn}>
@@ -446,17 +451,17 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
                 return (
                   <Pressable
                     key={item.vendorId}
-                    style={styles.listCard}
+                    style={[styles.listCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
                     onPress={() => router.push({ pathname: restaurantRoute, params: { vendorId: item.vendorId } })}
                   >
                     <Image source={{ uri: item.image }} style={styles.listImage} />
                     <View style={styles.listBody}>
                       <View style={styles.listTopRow}>
                         <View style={styles.listTitleWrap}>
-                          <Text style={styles.listName} numberOfLines={1}>{item.name}</Text>
-                          <Text style={styles.listSub} numberOfLines={1}>{item.menuCount} meals inside</Text>
+                          <Text style={[styles.listName, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
+                          <Text style={[styles.listSub, { color: theme.textMuted }]} numberOfLines={1}>{item.menuCount} meals inside</Text>
                         </View>
-                        <Text style={styles.listPrice}>From {kwacha(item.startingPrice)}</Text>
+                        <Text style={[styles.listPrice, { color: theme.text }]}>From {kwacha(item.startingPrice)}</Text>
                       </View>
 
                       <View style={styles.metaWrap}>
@@ -465,12 +470,12 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
                         <MetaTag icon={<MapPin size={12} color="#17315d" />} label={`${item.area}, ${item.campus}`} dark />
                       </View>
 
-                      <Text style={styles.vendorMood}>{item.summary || item.cuisine}</Text>
+                      <Text style={[styles.vendorMood, { color: theme.accent }]}>{item.summary || item.cuisine}</Text>
 
                       <View style={styles.cardFooter}>
                         <View>
-                          <Text style={styles.deliveryFee}>Delivery from {kwacha(item.deliveryFee)}</Text>
-                          <Text style={styles.totalFee}>{item.menuPreview.join(" · ")}</Text>
+                          <Text style={[styles.deliveryFee, { color: theme.textMuted }]}>Delivery from {kwacha(item.deliveryFee)}</Text>
+                          <Text style={[styles.totalFee, { color: theme.text }]}>{item.menuPreview.join(" - ")}</Text>
                         </View>
                         <Pressable
                           style={[styles.deliveryBtn, styles.deliveryBtnActive]}
@@ -514,10 +519,11 @@ function HeaderButton({
   onPress: () => void;
   accent?: boolean;
 }) {
+  const { theme } = useStudentTheme();
   return (
-    <Pressable style={styles.headerButton} onPress={onPress}>
+    <Pressable style={[styles.headerButton, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: theme.accent }]} onPress={onPress}>
       {icon}
-      <View style={[styles.headerBadge, accent && styles.headerBadgeAccent]}>
+      <View style={[styles.headerBadge, accent && { backgroundColor: theme.accent }]}>
         <Text style={styles.headerBadgeText}>{badge}</Text>
       </View>
     </Pressable>
@@ -525,14 +531,15 @@ function HeaderButton({
 }
 
 function BackHomeButton({ onPress }: { onPress: () => void }) {
+  const { theme } = useStudentTheme();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel="Back to home" hitSlop={10} style={styles.backHomeBtn} onPress={onPress}>
-      <View style={styles.backHomeTrail} />
-      <View style={styles.backHomeCore}>
+      <View style={[styles.backHomeTrail, { backgroundColor: theme.isDark ? "rgba(255,208,120,0.22)" : "#ffd8c6" }]} />
+      <View style={[styles.backHomeCore, { backgroundColor: theme.accent, borderColor: theme.surface, shadowColor: theme.accent }]}>
         <ArrowLeft size={19} color="#ffffff" strokeWidth={3} />
       </View>
-      <View style={styles.backHomeBadge}>
-        <Home size={12} color="#0f6d80" strokeWidth={3} />
+      <View style={[styles.backHomeBadge, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <Home size={12} color={theme.accent} strokeWidth={3} />
       </View>
     </Pressable>
   );
@@ -549,18 +556,28 @@ function FilterChip({
   onPress: () => void;
   soft?: boolean;
 }) {
+  const { theme } = useStudentTheme();
   return (
-    <Pressable style={[styles.filterChip, soft && styles.filterChipSoft, active && styles.filterChipActive]} onPress={onPress}>
-      <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
+    <Pressable
+      style={[
+        styles.filterChip,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+        soft && { backgroundColor: theme.surfaceAlt, borderColor: theme.border },
+        active && { backgroundColor: theme.accent, borderColor: theme.accent },
+      ]}
+      onPress={onPress}
+    >
+      <Text style={[styles.filterChipText, { color: theme.text }, active && styles.filterChipTextActive]}>{label}</Text>
     </Pressable>
   );
 }
 
 function MetaTag({ icon, label, dark = false }: { icon: React.ReactNode; label: string; dark?: boolean }) {
+  const { theme } = useStudentTheme();
   return (
-    <View style={[styles.metaTag, dark && styles.metaTagDark]}>
+    <View style={[styles.metaTag, dark && styles.metaTagDark, dark && theme.isDark && { backgroundColor: theme.surfaceAlt }]}>
       {icon}
-      <Text style={[styles.metaTagText, dark && styles.metaTagTextDark]} numberOfLines={1}>
+      <Text style={[styles.metaTagText, dark && styles.metaTagTextDark, dark && theme.isDark && { color: theme.text }]} numberOfLines={1}>
         {label}
       </Text>
     </View>
@@ -648,6 +665,7 @@ const styles = StyleSheet.create({
   heroCard: {
     width: 296,
     borderRadius: 30,
+    borderWidth: 1,
     minHeight: 198,
     padding: 20,
     flexDirection: "row",

@@ -117,8 +117,9 @@ async function uploadChatImageExpo(asset: { uri: string; fileName?: string | nul
 export default function StudentEnquiryChat() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const params = useLocalSearchParams<{ enquiryId?: string }>();
+  const params = useLocalSearchParams<{ enquiryId?: string; from?: string }>();
   const enquiryId = typeof params.enquiryId === "string" ? params.enquiryId : null;
+  const backFallback = params.from === "rooms" ? "/(student)/(tabs)/room-messages" : "/(student)/(tabs)/messages";
 
   const [enquiry, setEnquiry] = useState<EnquiryJoin | null>(null);
   const [messages, setMessages] = useState<ChatMessageRow[]>([]);
@@ -197,7 +198,7 @@ export default function StudentEnquiryChat() {
       .maybeSingle();
 
     if (enquiryErr || !enquiryData) {
-      router.replace("/(student)/(tabs)/messages");
+      router.replace(backFallback);
       return;
     }
 
@@ -457,7 +458,7 @@ export default function StudentEnquiryChat() {
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 12}
       >
       <View style={styles.headerBar}>
-        <Pressable onPress={() => goBackOrFallback(router, "/(student)/(tabs)/messages")} style={styles.backBtn}>
+        <Pressable onPress={() => goBackOrFallback(router, backFallback)} style={styles.backBtn}>
           <ArrowLeft size={18} color="#0e2756" />
         </Pressable>
 

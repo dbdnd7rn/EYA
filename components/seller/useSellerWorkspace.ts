@@ -96,6 +96,7 @@ type SellerProductInput = {
   stock_qty?: number | null;
   channel: SalesChannel;
   image_url?: string | null;
+  image_urls?: string[] | null;
 };
 
 type UseSellerWorkspaceOptions = {
@@ -489,6 +490,7 @@ export function useSellerWorkspace(channel: SalesChannel = "market", options: Us
         stock_qty: input.stock_qty ?? null,
         channel: input.channel,
         image_url: input.image_url ?? null,
+        image_urls: input.image_urls ?? (input.image_url ? [input.image_url] : []),
       });
       const optimistic: CatalogItemRow = {
         id: input.itemId ?? queued.payload.localItemId ?? `local-product:${Date.now()}`,
@@ -499,6 +501,7 @@ export function useSellerWorkspace(channel: SalesChannel = "market", options: Us
         price_mwk: input.price_mwk,
         stock_qty: input.stock_qty ?? null,
         image_url: input.image_url ?? null,
+        image_urls: input.image_urls ?? (input.image_url ? [input.image_url] : []),
         is_active: true,
         created_at: new Date(queued.queuedAt).toISOString(),
         updated_at: new Date(queued.queuedAt).toISOString(),
@@ -519,6 +522,7 @@ export function useSellerWorkspace(channel: SalesChannel = "market", options: Us
           price_mwk: input.price_mwk,
           stock_qty: input.stock_qty ?? null,
           image_url: input.image_url ?? null,
+          image_urls: input.image_urls ?? (input.image_url ? [input.image_url] : []),
         })
       : await createCatalogItem({
           vendor_id: workspace.vendor.id,
@@ -528,6 +532,7 @@ export function useSellerWorkspace(channel: SalesChannel = "market", options: Us
           price_mwk: input.price_mwk,
           stock_qty: input.stock_qty ?? null,
           image_url: input.image_url ?? null,
+          image_urls: input.image_urls ?? (input.image_url ? [input.image_url] : []),
         });
 
     await refresh();

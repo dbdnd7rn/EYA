@@ -19,13 +19,13 @@ export default function StudentSettingsPage() {
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.heading }]}>Settings</Text>
-            <Text style={[styles.subtitle, { color: theme.textMuted }]}>Choose how the student role should feel across home, orders, chats, account, and the tab shell.</Text>
+            <Text style={[styles.subtitle, { color: theme.textMuted }]}>Choose how EYA should feel across home, rooms, food, marketplace, orders, chats, account, and workspace tabs.</Text>
           </View>
         </View>
 
         <View style={[styles.panel, { backgroundColor: theme.shell, borderColor: theme.border }]}>
           <Text style={[styles.panelTitle, { color: theme.heading }]}>Theme</Text>
-          <Text style={[styles.panelSub, { color: theme.textMuted }]}>Pick a full student-role look. The app remembers your choice on this account.</Text>
+          <Text style={[styles.panelSub, { color: theme.textMuted }]}>Pick a full app look. The app remembers your choice on this account and applies it across sections.</Text>
 
           <Pressable
             style={[
@@ -34,12 +34,12 @@ export default function StudentSettingsPage() {
             ]}
             onPress={() => void setMode("light")}
           >
-            <View style={[styles.optionIcon, { backgroundColor: "#eef1fb" }]}>
-              <SunMedium size={18} color="#465d97" />
+            <View style={[styles.optionIcon, { backgroundColor: mode === "light" ? theme.accentSoft : "#eef1fb" }]}>
+              <SunMedium size={18} color={mode === "light" ? theme.accent : "#465d97"} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.optionTitle, { color: theme.heading }]}>Light Theme</Text>
-              <Text style={[styles.optionText, { color: theme.textMuted }]}>Bright cards, soft glass surfaces, and the current student look.</Text>
+              <Text style={[styles.optionText, { color: theme.textMuted }]}>Bright cards, soft glass surfaces, and clean daylight navigation.</Text>
             </View>
             {mode === "light" ? (
               <View style={[styles.check, { backgroundColor: theme.accent }]}>
@@ -55,12 +55,12 @@ export default function StudentSettingsPage() {
             ]}
             onPress={() => void setMode("dark")}
           >
-            <View style={[styles.optionIcon, { backgroundColor: "#24365c" }]}>
+            <View style={[styles.optionIcon, { backgroundColor: mode === "dark" ? theme.accentSoft : "#24365c" }]}>
               <MoonStar size={18} color="#dce6ff" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.optionTitle, { color: theme.heading }]}>Dark Theme</Text>
-              <Text style={[styles.optionText, { color: theme.textMuted }]}>Midnight palette for the whole student role with darker cards and tab chrome.</Text>
+              <Text style={[styles.optionText, { color: theme.textMuted }]}>Midnight surfaces, richer contrast, and darker navigation across the app.</Text>
             </View>
             {mode === "dark" ? (
               <View style={[styles.check, { backgroundColor: theme.accent }]}>
@@ -72,12 +72,20 @@ export default function StudentSettingsPage() {
 
         <View style={[styles.previewPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[styles.previewEyebrow, { color: theme.textSoft }]}>{ready ? theme.name : "Loading theme..."}</Text>
-          <Text style={[styles.previewTitle, { color: theme.heading }]}>Student role preview</Text>
-          <View style={styles.previewRow}>
-            <View style={[styles.previewSwatch, { backgroundColor: theme.background }]} />
-            <View style={[styles.previewSwatch, { backgroundColor: theme.shell }]} />
-            <View style={[styles.previewSwatch, { backgroundColor: theme.surface }]} />
-            <View style={[styles.previewSwatch, { backgroundColor: theme.accent }]} />
+          <Text style={[styles.previewTitle, { color: theme.heading }]}>App theme preview</Text>
+          <View style={[styles.previewMock, { backgroundColor: theme.backgroundAlt, borderColor: theme.borderSoft }]}>
+            <View style={styles.previewMockTop}>
+              <View style={[styles.previewDot, { backgroundColor: theme.accent }]} />
+              <View style={{ flex: 1, gap: 6 }}>
+                <View style={[styles.previewLine, { backgroundColor: theme.textMuted, width: "62%" }]} />
+                <View style={[styles.previewLine, { backgroundColor: theme.surfaceMuted, width: "44%" }]} />
+              </View>
+            </View>
+            <View style={styles.previewRow}>
+              <View style={[styles.previewSwatch, { backgroundColor: theme.shell }]} />
+              <View style={[styles.previewSwatch, { backgroundColor: theme.surfaceAlt }]} />
+              <View style={[styles.previewSwatch, { backgroundColor: theme.accent }]} />
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -110,6 +118,10 @@ const styles = StyleSheet.create({
   previewPanel: { borderRadius: 24, borderWidth: 1, padding: 16, gap: 12 },
   previewEyebrow: { fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6 },
   previewTitle: { fontSize: 20, fontWeight: "900" },
+  previewMock: { borderRadius: 22, borderWidth: 1, padding: 14, gap: 14 },
+  previewMockTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  previewDot: { width: 46, height: 46, borderRadius: 23 },
+  previewLine: { height: 10, borderRadius: 999, opacity: 0.9 },
   previewRow: { flexDirection: "row", gap: 10 },
   previewSwatch: { flex: 1, height: 56, borderRadius: 18 },
 });

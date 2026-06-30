@@ -1,14 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Animated, Easing, Image, type ImageSourcePropType, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowLeft, BellRing, BriefcaseBusiness, Check, ChevronRight, ClipboardCheck, Clock3, House, Send, ShieldCheck, ShoppingBag, Store, UserRound, UtensilsCrossed } from "lucide-react-native";
+import { ArrowLeft, BellRing, BriefcaseBusiness, Building2, Camera, Check, CheckCircle2, ChevronRight, ClipboardCheck, Clock3, CreditCard, FileUp, House, MapPin, Send, ShieldCheck, Smartphone, Store, UserRound, UtensilsCrossed, WalletCards } from "lucide-react-native";
+import MapPicker from "@/components/MapPicker";
+import PaymentBrandLogo from "@/components/payment/PaymentBrandLogo";
 import SoftPageGlow from "@/components/SoftPageGlow";
 import { normalizeAppRole } from "@/lib/roleRouting";
-import { listMyRoleApplications, submitRoleApplication, type RoleApplication, type RoleApplicationStatus } from "@/lib/roleApplications";
+import { listMyRoleApplications, submitRoleApplication, syncLocalRoleApplications, type RoleApplication, type RoleApplicationStatus } from "@/lib/roleApplications";
 import { getFallbackWorkspaceRole, getWorkspaceLabel, getWorkspaceStatuses, type WorkspaceRole, type WorkspaceStatus } from "@/lib/workspaceAccess";
 import { useAuth } from "@/providers/AuthProvider";
 
-type FlowKey = "landlord" | "restaurant" | "seller" | "delivery";
+type FlowKey = "landlord" | "restaurant" | "delivery";
 
 type RoleFlow = {
   key: FlowKey;
@@ -32,7 +35,37 @@ type FlowPreviewCard = {
   accent: string;
 };
 
+type LatLng = { lat: number; lng: number };
+type UploadRecord = { uri: string; name: string; type: "document" | "photo" };
+type PayoutDraft = {
+  mobileMethods: string[];
+  airtelNumber: string;
+  mpambaNumber: string;
+  banks: string[];
+  bankNames: Record<string, string>;
+  bankNumbers: Record<string, string>;
+};
+
 const ROLE_ORDER: WorkspaceRole[] = ["student", "vendor", "landlord", "agent"];
+
+const PROPERTY_TYPES = ["Single room", "Double room", "Multiple rooms"];
+const FOOD_PROVIDER_TYPES = ["Restaurant", "Home Kitchen", "Food Stall", "Catering & Bakery"];
+const OPENING_TIMES = ["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00"];
+const CLOSING_TIMES = ["17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"];
+const MOBILE_MONEY_OPTIONS = [
+  { id: "airtel_money", label: "Airtel Money", subtitle: "Add an Airtel wallet number" },
+  { id: "mpamba", label: "TNM Mpamba", subtitle: "Add a TNM Mpamba number" },
+] as const;
+const BANK_OPTIONS = [
+  { id: "national_bank", name: "National Bank of Malawi", short: "NB", color: "#3346a3", logo: require("../../assets/payment/national-bank.png") },
+  { id: "standard_bank", name: "Standard Bank Malawi", short: "SB", color: "#1f5fbf", logo: require("../../assets/payment/standard-bank.png") },
+  { id: "fdh_bank", name: "FDH Bank", short: "FDH", color: "#0f66a8", logo: require("../../assets/payment/fdh-bank.png") },
+  { id: "nbs_bank", name: "NBS Bank", short: "NBS", color: "#d31f3c", logo: require("../../assets/payment/nbs-bank.png") },
+  { id: "first_capital", name: "First Capital Bank", short: "FCB", color: "#234c9f", logo: require("../../assets/payment/first-capital-bank.png") },
+  { id: "centenary_bank", name: "Centenary Bank", short: "CB", color: "#f0b323", logo: require("../../assets/payment/centenary-bank.png") },
+  { id: "ecobank", name: "Ecobank Malawi", short: "ECO", color: "#0a9a61", logo: require("../../assets/payment/ecobank.png") },
+  { id: "other_bank", name: "Other Bank", short: "OB", color: "#7b85a4", logo: undefined },
+] as const;
 
 const EYA_THEME = {
   background: "#f4f2fb",
@@ -72,15 +105,15 @@ const LANDLORD_PREVIEW_CARDS: FlowPreviewCard[] = [
     id: 3,
     title: "Property Details",
     subtitle: "Describe what you manage and where it is located.",
-    fields: ["Type of properties", "Number of Properties", "Years of Experience", "Operating Location"],
+    fields: ["Type of properties", "Number of Properties", "Operating Location"],
     cta: "Continue",
     accent: "#5e73dd",
   },
   {
     id: 4,
     title: "Verification",
-    subtitle: "Upload the following documents for review.",
-    fields: ["National ID", "Proof of Ownership / Tenancy", "Business License (Optional)"],
+    subtitle: "Add your ID or passport number and upload ownership proof if available.",
+    fields: ["ID Number or Passport Number", "Proof of Ownership Document (Optional)"],
     cta: "Continue",
     accent: "#5e73dd",
   },
@@ -88,7 +121,7 @@ const LANDLORD_PREVIEW_CARDS: FlowPreviewCard[] = [
     id: 5,
     title: "Payout Details",
     subtitle: "Tell us how you would like to receive payments.",
-    fields: ["Payout Method", "Mobile Money Provider", "Mobile Number"],
+    fields: ["Payout Accounts"],
     cta: "Continue",
     accent: "#5e73dd",
   },
@@ -105,17 +138,17 @@ const LANDLORD_PREVIEW_CARDS: FlowPreviewCard[] = [
 const RESTAURANT_PREVIEW_CARDS: FlowPreviewCard[] = [
   {
     id: 1,
-    title: "Register as a Restaurant",
-    subtitle: "Join EYA and start selling your delicious meals to students.",
+    title: "Register as a Food Provider",
+    subtitle: "Join EYA and start selling your meals to students.",
     bullets: ["Increase your orders", "Manage your menu", "Track earnings", "Fast payouts"],
     cta: "Get Started",
     accent: "#ef7b2d",
   },
   {
     id: 2,
-    title: "Restaurant Information",
-    subtitle: "Add your restaurant details and how students will find you.",
-    fields: ["Restaurant Name", "Cuisine Type", "Restaurant Type", "Opening Hours"],
+    title: "Food Provider Information",
+    subtitle: "Add your food provider details and how students will find you.",
+    fields: ["Food Provider Name", "Food Provider Type", "Opening Hours"],
     cta: "Continue",
     accent: "#5e73dd",
   },
@@ -123,7 +156,7 @@ const RESTAURANT_PREVIEW_CARDS: FlowPreviewCard[] = [
     id: 3,
     title: "Business Details",
     subtitle: "Tell us about your experience, location and business contacts.",
-    fields: ["Years in Business", "Business License", "Restaurant Location", "Phone Number"],
+    fields: ["Business License (Optional)", "Food Provider Location", "Phone Number"],
     cta: "Continue",
     accent: "#5e73dd",
   },
@@ -131,7 +164,7 @@ const RESTAURANT_PREVIEW_CARDS: FlowPreviewCard[] = [
     id: 4,
     title: "Verification",
     subtitle: "Upload the following documents for review.",
-    fields: ["National ID", "Business License", "Food Handling Certificate (If available)"],
+    fields: ["National ID"],
     cta: "Continue",
     accent: "#5e73dd",
   },
@@ -139,66 +172,15 @@ const RESTAURANT_PREVIEW_CARDS: FlowPreviewCard[] = [
     id: 5,
     title: "Payout Details",
     subtitle: "Tell us how you would like to receive payments.",
-    fields: ["Payout Method", "Mobile Money Provider", "Mobile Number"],
+    fields: ["Payout Accounts"],
     cta: "Continue",
     accent: "#5e73dd",
   },
   {
     id: 6,
     title: "Submitted!",
-    subtitle: "Your restaurant application has been submitted. We'll review your information and notify you once approved.",
-    fields: ["Role Applied: Restaurant", "Status: Pending Review"],
-    cta: "Submit Application",
-    accent: "#35b77f",
-  },
-];
-
-const SELLER_PREVIEW_CARDS: FlowPreviewCard[] = [
-  {
-    id: 1,
-    title: "Become a Seller",
-    subtitle: "Sell products to students across the campus marketplace.",
-    bullets: ["Reach more students", "Easy product management", "Secure payments", "Grow your business"],
-    cta: "Get Started",
-    accent: "#2f6fed",
-  },
-  {
-    id: 2,
-    title: "Store Information",
-    subtitle: "Add the store details students will see.",
-    fields: ["Store Name", "Store Category", "Phone Number", "Email Address", "Store Location"],
-    cta: "Continue",
-    accent: "#5e73dd",
-  },
-  {
-    id: 3,
-    title: "Business Details",
-    subtitle: "Tell us what you sell and your customer policies.",
-    fields: ["Years in Business", "What do you sell?", "Return Policy", "About your store"],
-    cta: "Continue",
-    accent: "#5e73dd",
-  },
-  {
-    id: 4,
-    title: "Verification",
-    subtitle: "Upload the following documents for review.",
-    fields: ["National ID", "Business License (If available)", "Store / Product Photos"],
-    cta: "Continue",
-    accent: "#5e73dd",
-  },
-  {
-    id: 5,
-    title: "Payout Details",
-    subtitle: "Tell us how you would like to receive payments.",
-    fields: ["Payout Method", "Mobile Money Provider", "Mobile Number"],
-    cta: "Continue",
-    accent: "#5e73dd",
-  },
-  {
-    id: 6,
-    title: "Submitted!",
-    subtitle: "Your seller application has been submitted. We'll review your information and notify you once approved.",
-    fields: ["Role Applied: Seller", "Status: Pending Review"],
+    subtitle: "Your food provider application has been submitted. We'll review your information and notify you once approved.",
+    fields: ["Role Applied: Food Provider", "Status: Pending Review"],
     cta: "Submit Application",
     accent: "#35b77f",
   },
@@ -233,7 +215,7 @@ const DELIVERY_PREVIEW_CARDS: FlowPreviewCard[] = [
     id: 4,
     title: "Verification",
     subtitle: "Upload the following documents for review.",
-    fields: ["National ID", "Riding License", "Vehicle Registration / Logbook", "Profile Photo"],
+    fields: ["National ID", "Profile Photo"],
     cta: "Continue",
     accent: "#5e73dd",
   },
@@ -241,7 +223,7 @@ const DELIVERY_PREVIEW_CARDS: FlowPreviewCard[] = [
     id: 5,
     title: "Payout Details",
     subtitle: "Tell us how you would like to receive payments.",
-    fields: ["Payout Method", "Mobile Money Provider", "Mobile Number"],
+    fields: ["Payout Accounts"],
     cta: "Continue",
     accent: "#5e73dd",
   },
@@ -259,8 +241,8 @@ function getFlowFocusFromParam(value?: string | string[] | null): FlowKey | null
   const raw = String(Array.isArray(value) ? value[0] : (value ?? ""))
     .trim()
     .toLowerCase();
-  if (raw === "seller" || raw === "merchant" || raw === "market") return "seller";
-  if (raw === "restaurant" || raw === "food_provider" || raw === "food provider") return "restaurant";
+  if (raw === "seller" || raw === "merchant" || raw === "market") return null;
+  if (raw === "restaurant" || raw === "food_provider" || raw === "food provider" || raw === "food-provider" || raw === "foodprovider") return "restaurant";
   const normalized = normalizeAppRole(raw);
   if (normalized === "landlord") return "landlord";
   if (normalized === "agent") return "delivery";
@@ -270,9 +252,9 @@ function getFlowFocusFromParam(value?: string | string[] | null): FlowKey | null
 
 function roleActions(role: WorkspaceRole) {
   if (role === "landlord") return ["List rooms and hostels", "Receive enquiries from students", "Manage your property listings", "Track tenant demand"];
-  if (role === "vendor") return ["Manage your store or restaurant", "Publish products or menu items", "Track orders and earnings", "Handle customer chats"];
+  if (role === "vendor") return ["Manage your food provider workspace", "Publish menu items", "Track orders and earnings", "Handle customer chats"];
   if (role === "agent") return ["Accept active deliveries", "Track delivery route progress", "View payout and earnings status", "Manage rider profile details"];
-  return ["Browse rooms and hostels", "Shop in the market", "Order food and track delivery", "Chat with sellers and providers"];
+  return ["Browse rooms and hostels", "Shop in the market", "Order food and track delivery", "Chat with providers"];
 }
 
 function roleIcon(role: WorkspaceRole) {
@@ -282,19 +264,56 @@ function roleIcon(role: WorkspaceRole) {
   return UserRound;
 }
 
-function getPreviewCards(flowKey: FlowKey | null) {
+function getPreviewCards(flowKey: FlowKey | null): FlowPreviewCard[] | null {
   if (flowKey === "landlord") return LANDLORD_PREVIEW_CARDS;
   if (flowKey === "restaurant") return RESTAURANT_PREVIEW_CARDS;
-  if (flowKey === "seller") return SELLER_PREVIEW_CARDS;
   if (flowKey === "delivery") return DELIVERY_PREVIEW_CARDS;
   return null;
 }
 
 function getFlowTone(flowKey: FlowKey | null) {
   if (flowKey === "restaurant") return { background: "#fff5ec", border: "#ffdcbf" };
-  if (flowKey === "seller") return { background: "#eef4ff", border: "#cfddff" };
   if (flowKey === "delivery") return { background: "#effaf2", border: "#d1f0da" };
   return { background: "#fff1f2", border: "#ffd7dd" };
+}
+
+function csvToList(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function listToCsv(value: string[]) {
+  return Array.from(new Set(value)).join(",");
+}
+
+function formatLocation(value: LatLng) {
+  return `Google location selected (${value.lat.toFixed(6)}, ${value.lng.toFixed(6)})`;
+}
+
+function isUploadField(field: string) {
+  return /national id|business license|proof of ownership|profile photo/i.test(field);
+}
+
+function uploadKind(field: string): UploadRecord["type"] {
+  return /photo|photos/i.test(field) ? "photo" : "document";
+}
+
+function buildPayoutSummary(input: PayoutDraft) {
+  const mobile = input.mobileMethods.map((method) => {
+    if (method === "airtel_money") return `Airtel Money${input.airtelNumber ? ` (${input.airtelNumber})` : ""}`;
+    return `TNM Mpamba${input.mpambaNumber ? ` (${input.mpambaNumber})` : ""}`;
+  });
+  const banks = input.banks.map((bankId) => {
+    const bank = BANK_OPTIONS.find((item) => item.id === bankId);
+    const details = [input.bankNames[bankId], input.bankNumbers[bankId]].filter(Boolean).join(" / ");
+    return `${bank?.name ?? bankId}${details ? ` (${details})` : ""}`;
+  });
+  const parts = [];
+  if (mobile.length) parts.push(`Mobile money: ${mobile.join("; ")}`);
+  if (banks.length) parts.push(`Banks: ${banks.join("; ")}`);
+  return parts.join(" | ");
 }
 
 export default function OnboardingPage() {
@@ -316,7 +335,10 @@ export default function OnboardingPage() {
   const [previewFlow, setPreviewFlow] = useState<FlowKey | null>(null);
   const [previewStepIndex, setPreviewStepIndex] = useState(0);
   const [applicationDraft, setApplicationDraft] = useState<Record<string, string>>({});
+  const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadRecord>>({});
+  const [pickedLocations, setPickedLocations] = useState<Record<string, LatLng>>({});
   const [submittingApplication, setSubmittingApplication] = useState(false);
+  const roleGlow = useRef(new Animated.Value(0)).current;
 
   const currentRole = (activeRole ?? getFallbackWorkspaceRole(role, user?.email ?? null)) as WorkspaceRole;
 
@@ -330,10 +352,22 @@ export default function OnboardingPage() {
     if (nextFocus) setShowRolePicker(true);
   }, [params.role]);
 
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(roleGlow, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(roleGlow, { toValue: 0, duration: 1600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [roleGlow]);
+
   const loadStatuses = useCallback(async () => {
     if (!user?.id) return;
     try {
       setLoading(true);
+      await syncLocalRoleApplications(user.id).catch(() => null);
       const [next, nextApplications] = await Promise.all([getWorkspaceStatuses(user.id, user.email), listMyRoleApplications(user.id).catch(() => [])]);
       setStatuses(next);
       setRoleApplications(nextApplications);
@@ -348,6 +382,7 @@ export default function OnboardingPage() {
       if (!user?.id) return;
       try {
         setLoading(true);
+        await syncLocalRoleApplications(user.id).catch(() => null);
         const [next, nextApplications] = await Promise.all([getWorkspaceStatuses(user.id, user.email), listMyRoleApplications(user.id).catch(() => [])]);
         if (active) {
           setStatuses(next);
@@ -394,23 +429,12 @@ export default function OnboardingPage() {
       {
         key: "restaurant",
         role: "vendor",
-        title: "Register as a Restaurant",
-        subtitle: "Sell food to students and manage your restaurant.",
+        title: "Register as a Food Provider",
+        subtitle: "Sell food to students and manage your food provider workspace.",
         accent: "#ef7b2d",
         icon: UtensilsCrossed,
         routeWhenPending: "/(market)/setup",
         routeWhenReady: "/(market)/(tabs)/dashboard",
-        status: vendorStatus,
-      },
-      {
-        key: "seller",
-        role: "vendor",
-        title: "Become a Seller",
-        subtitle: "Sell products in the campus marketplace.",
-        accent: "#2f6fed",
-        icon: ShoppingBag,
-        routeWhenPending: "/sell/setup",
-        routeWhenReady: "/sell/products",
         status: vendorStatus,
       },
       {
@@ -455,24 +479,262 @@ export default function OnboardingPage() {
     setApplicationDraft((current) => ({ ...current, [draftKey(field, stepId)]: value }));
   };
   const isOptionalField = (field: string) => /optional|if available/i.test(field);
+
+  const pickUploadForField = async (field: string, stepId = activePreviewCard?.id ?? 0) => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Photo access needed", "Allow photo access to upload this file.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: field.toLowerCase().includes("profile") ? 0.85 : 0.75,
+      allowsEditing: field.toLowerCase().includes("profile"),
+      preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const record: UploadRecord = {
+      uri: asset.uri,
+      name: asset.fileName ?? `${field.replace(/\W+/g, "-").toLowerCase()}-${Date.now()}`,
+      type: uploadKind(field),
+    };
+    const key = draftKey(field, stepId);
+    setUploadedFiles((current) => ({ ...current, [key]: record }));
+    setFieldValue(field, `${record.type === "photo" ? "Photo" : "Document"} uploaded: ${record.name}`, stepId);
+  };
+
+  const setPayoutSummary = (stepId = activePreviewCard?.id ?? 0, overrides: Partial<PayoutDraft> = {}) => {
+    const current = getPayoutDraft(stepId);
+    const next = { ...current, ...overrides };
+    setFieldValue("Payout Accounts", buildPayoutSummary(next), stepId);
+  };
+
+  const getPayoutDraft = (stepId = activePreviewCard?.id ?? 0) => {
+    const banks = csvToList(applicationDraft[draftKey("Payout Banks", stepId)] ?? "");
+    const bankNames = Object.fromEntries(banks.map((bankId) => [bankId, applicationDraft[draftKey(`Bank ${bankId} account name`, stepId)] ?? ""]));
+    const bankNumbers = Object.fromEntries(banks.map((bankId) => [bankId, applicationDraft[draftKey(`Bank ${bankId} account number`, stepId)] ?? ""]));
+    return {
+      mobileMethods: csvToList(applicationDraft[draftKey("Payout Mobile Methods", stepId)] ?? ""),
+      airtelNumber: applicationDraft[draftKey("Airtel Money Number", stepId)] ?? "",
+      mpambaNumber: applicationDraft[draftKey("TNM Mpamba Number", stepId)] ?? "",
+      banks,
+      bankNames,
+      bankNumbers,
+    };
+  };
+
+  const togglePayoutMobile = (method: string, stepId = activePreviewCard?.id ?? 0) => {
+    const current = getPayoutDraft(stepId);
+    const nextMethods = current.mobileMethods.includes(method) ? current.mobileMethods.filter((item) => item !== method) : [...current.mobileMethods, method];
+    setFieldValue("Payout Mobile Methods", listToCsv(nextMethods), stepId);
+    setPayoutSummary(stepId, { mobileMethods: nextMethods });
+  };
+
+  const togglePayoutBank = (bankId: string, stepId = activePreviewCard?.id ?? 0) => {
+    const current = getPayoutDraft(stepId);
+    const nextBanks = current.banks.includes(bankId) ? current.banks.filter((item) => item !== bankId) : [...current.banks, bankId];
+    setFieldValue("Payout Banks", listToCsv(nextBanks), stepId);
+    setPayoutSummary(stepId, { banks: nextBanks });
+  };
+
+  const setPayoutTextValue = (field: string, value: string, stepId = activePreviewCard?.id ?? 0) => {
+    setFieldValue(field, value, stepId);
+    const nextDraft = getPayoutDraft(stepId);
+    if (field === "Airtel Money Number") nextDraft.airtelNumber = value;
+    if (field === "TNM Mpamba Number") nextDraft.mpambaNumber = value;
+    const bankNameMatch = field.match(/^Bank (.+) account name$/);
+    const bankNumberMatch = field.match(/^Bank (.+) account number$/);
+    if (bankNameMatch) nextDraft.bankNames[bankNameMatch[1]] = value;
+    if (bankNumberMatch) nextDraft.bankNumbers[bankNumberMatch[1]] = value;
+    setFieldValue("Payout Accounts", buildPayoutSummary(nextDraft), stepId);
+  };
+
+  const payoutMissingParts = (stepId: number) => {
+    const payout = getPayoutDraft(stepId);
+    const missing: string[] = [];
+    if (!payout.mobileMethods.length && !payout.banks.length) {
+      missing.push("Payout Accounts");
+      return missing;
+    }
+    if (payout.mobileMethods.includes("airtel_money") && !payout.airtelNumber.trim()) missing.push("Airtel Money Number");
+    if (payout.mobileMethods.includes("mpamba") && !payout.mpambaNumber.trim()) missing.push("TNM Mpamba Number");
+    payout.banks.forEach((bankId) => {
+      const bank = BANK_OPTIONS.find((item) => item.id === bankId);
+      const label = bank?.name ?? bankId;
+      if (!payout.bankNames[bankId]?.trim()) missing.push(`${label} account name`);
+      if (!payout.bankNumbers[bankId]?.trim()) missing.push(`${label} account number`);
+    });
+    return missing;
+  };
+
+  const fieldMissingReason = (field: string, stepId: number) => {
+    if (isOptionalField(field)) return null;
+    const key = draftKey(field, stepId);
+    if (field === "Opening Hours") {
+      return /^\d{2}:\d{2}\s-\s\d{2}:\d{2}$/.test(fieldValue(field, stepId).trim()) ? null : field;
+    }
+    if (field === "Payout Accounts") {
+      const missing = payoutMissingParts(stepId);
+      return missing.length ? missing.join(", ") : null;
+    }
+    if (/location/i.test(field)) {
+      return pickedLocations[key] ? null : field;
+    }
+    if (isUploadField(field)) {
+      return uploadedFiles[key] ? null : field;
+    }
+    const value = fieldValue(field, stepId).trim();
+    return value && value !== "Custom" ? null : field;
+  };
+
+  const missingRequiredFieldsForCard = (card: FlowPreviewCard) => {
+    if (!card.fields || card.id === activeStepCount) return [];
+    return card.fields.map((field) => fieldMissingReason(field, card.id)).filter(Boolean) as string[];
+  };
+
   const validateActiveStep = () => {
-    if (!activePreviewCard?.fields || activePreviewCard.id === activeStepCount) return true;
-    const missing = activePreviewCard.fields.filter((field) => !isOptionalField(field) && !fieldValue(field).trim());
-    if (missing.length) {
-      Alert.alert("Finish this step", `Please complete: ${missing.join(", ")}.`);
-      return false;
+    return true;
+  };
+
+  const validateAllApplicationSteps = () => {
+    const cards = activePreviewCards ?? [];
+    for (const card of cards) {
+      const missing = missingRequiredFieldsForCard(card);
+      if (missing.length) {
+        setPreviewStepIndex(Math.max(0, card.id - 1));
+        Alert.alert("Complete required fields", `Please fill in: ${missing.join(", ")}.`);
+        return false;
+      }
     }
     return true;
+  };
+
+  const fieldPayloadValue = (field: string, cardId: number) => {
+    const key = draftKey(field, cardId);
+    if (isUploadField(field)) {
+      const file = uploadedFiles[key];
+      return file ? `${file.type}: ${file.name} (${file.uri})` : "";
+    }
+    if (/location/i.test(field)) {
+      const location = pickedLocations[key];
+      return location ? formatLocation(location) : "";
+    }
+    if (field === "Payout Accounts") {
+      return buildPayoutSummary(getPayoutDraft(cardId));
+    }
+    return applicationDraft[key]?.trim() ?? "";
   };
   const collectApplicationPayload = () => {
     const payload: Record<string, string> = {};
     activePreviewCards?.forEach((card) => {
       card.fields?.forEach((field) => {
-        const value = applicationDraft[draftKey(field, card.id)]?.trim();
-        if (value) payload[`${card.title} - ${field}`] = value;
+        const value = fieldPayloadValue(field, card.id).trim();
+        if (value && value !== "Custom") payload[`${card.title} - ${field}`] = value;
       });
     });
     return payload;
+  };
+
+  const renderFieldControl = (field: string) => {
+    const stepId = activePreviewCard?.id ?? 0;
+    const key = draftKey(field, stepId);
+    const optional = isOptionalField(field);
+
+    if (field === "Type of properties") {
+      return (
+        <OptionPicker
+          key={field}
+          title={field}
+          value={fieldValue(field, stepId)}
+          options={PROPERTY_TYPES}
+          onChange={(value) => setFieldValue(field, value, stepId)}
+          allowCustom
+          customPlaceholder="Write property type"
+        />
+      );
+    }
+
+    if (field === "Food Provider Type") {
+      return (
+        <OptionPicker
+          key={field}
+          title={field}
+          value={fieldValue(field, stepId)}
+          options={FOOD_PROVIDER_TYPES}
+          onChange={(value) => setFieldValue(field, value, stepId)}
+        />
+      );
+    }
+
+    if (field === "Opening Hours") {
+      return (
+        <OpeningHoursPicker
+          key={field}
+          value={fieldValue(field, stepId)}
+          onChange={(value) => setFieldValue(field, value, stepId)}
+        />
+      );
+    }
+
+    if (/location/i.test(field)) {
+      return (
+        <View key={field} style={styles.locationFieldWrap}>
+          <View style={styles.fieldHeaderRow}>
+            <MapPin size={16} color={theme.accent} />
+            <Text style={[styles.fieldControlTitle, { color: theme.text }]}>{field}</Text>
+          </View>
+          <MapPicker
+            value={pickedLocations[key] ?? null}
+            onChange={(value) => {
+              setPickedLocations((current) => ({ ...current, [key]: value }));
+              setFieldValue(field, formatLocation(value), stepId);
+            }}
+            label={field}
+            initializeWithDefault={false}
+          />
+        </View>
+      );
+    }
+
+    if (field === "Payout Accounts") {
+      const payout = getPayoutDraft(stepId);
+      return (
+        <PayoutAccountsEditor
+          key={field}
+          payout={payout}
+          onToggleMobile={(method) => togglePayoutMobile(method, stepId)}
+          onToggleBank={(bankId) => togglePayoutBank(bankId, stepId)}
+          onTextChange={(targetField, value) => setPayoutTextValue(targetField, value, stepId)}
+        />
+      );
+    }
+
+    if (isUploadField(field)) {
+      return (
+        <UploadField
+          key={field}
+          label={field}
+          optional={optional}
+          file={uploadedFiles[key]}
+          onPress={() => void pickUploadForField(field, stepId)}
+        />
+      );
+    }
+
+    return (
+      <TextInput
+        key={field}
+        value={fieldValue(field, stepId)}
+        onChangeText={(value) => setFieldValue(field, value, stepId)}
+        placeholder={field}
+        placeholderTextColor={theme.textSoft}
+        returnKeyType="next"
+        style={[styles.previewField, styles.previewFieldInput, { backgroundColor: theme.surfaceAlt, borderColor: theme.border, color: theme.text }]}
+      />
+    );
   };
 
   const submitActiveApplication = async () => {
@@ -545,6 +807,9 @@ export default function OnboardingPage() {
       setBusyFlow(null);
     }
   };
+
+  const pickerHeroScale = roleGlow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.015] });
+  const pickerHeroLift = roleGlow.interpolate({ inputRange: [0, 1], outputRange: [0, -3] });
 
   if (authLoading || loading) {
     return (
@@ -727,17 +992,7 @@ export default function OnboardingPage() {
 
                 {activePreviewCard.fields && activePreviewCard.id !== activeStepCount ? (
                   <View style={styles.previewFields}>
-                    {activePreviewCard.fields.map((field) => (
-                      <TextInput
-                        key={field}
-                        value={fieldValue(field)}
-                        onChangeText={(value) => setFieldValue(field, value)}
-                        placeholder={field}
-                        placeholderTextColor={theme.textSoft}
-                        returnKeyType="next"
-                        style={[styles.previewField, styles.previewFieldInput, { backgroundColor: theme.surfaceAlt, borderColor: theme.border, color: theme.text }]}
-                      />
-                    ))}
+                    {activePreviewCard.fields.map((field) => renderFieldControl(field))}
                   </View>
                 ) : null}
 
@@ -805,11 +1060,24 @@ export default function OnboardingPage() {
         ) : (
           <View style={styles.pickerSection}>
             <View style={[styles.pickerCard, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}>
-              <View style={styles.pickerHero}>
-                <Text style={[styles.pickerEyebrow, { color: theme.textSoft }]}>Roles & Workspaces</Text>
-                <Text style={[styles.pickerPrompt, { color: theme.text }]}>Choose the workspace you want to run.</Text>
-                <Text style={[styles.pickerNote, { color: theme.textMuted }]}>Apply once. Approved sections open from here without changing accounts.</Text>
-              </View>
+              <Animated.View style={[styles.pickerHero, { transform: [{ translateY: pickerHeroLift }, { scale: pickerHeroScale }] }]}>
+                <View style={styles.pickerHeroCopy}>
+                  <Text style={[styles.pickerEyebrow, { color: theme.textSoft }]}>Roles & Workspaces</Text>
+                  <Text style={[styles.pickerPrompt, { color: theme.text }]}>Choose the workspace you want to run.</Text>
+                  <Text style={[styles.pickerNote, { color: theme.textMuted }]}>Apply once. Approved sections open from here without changing accounts.</Text>
+                </View>
+                <View style={styles.pickerHeroDecor}>
+                  <View style={[styles.pickerDecorBubble, { borderColor: "#ffd7dd", backgroundColor: "#fff1f2" }]}>
+                    <House size={15} color="#de4c5d" />
+                  </View>
+                  <View style={[styles.pickerDecorBubble, { borderColor: "#ffdcbf", backgroundColor: "#fff5ec" }]}>
+                    <UtensilsCrossed size={15} color="#ef7b2d" />
+                  </View>
+                  <View style={[styles.pickerDecorBubble, { borderColor: "#d1f0da", backgroundColor: "#effaf2" }]}>
+                    <BriefcaseBusiness size={15} color="#2e9b62" />
+                  </View>
+                </View>
+              </Animated.View>
 
               <View style={styles.pickerRows}>
                 {flows.map((flow) => {
@@ -892,17 +1160,6 @@ export default function OnboardingPage() {
                 <Text style={[styles.cancelBtnText, { color: theme.text }]}>Cancel</Text>
               </Pressable>
             </View>
-
-            <View style={[styles.mockTabs, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}>
-              {["Home", "Orders", "Chats", "Account"].map((tab) => (
-                <View
-                  key={tab}
-                  style={styles.mockTabItem}
-                >
-                  <Text style={[styles.mockTabText, { color: tab === "Account" ? theme.accent : theme.textMuted }]}>{tab}</Text>
-                </View>
-              ))}
-            </View>
           </View>
         )}
           </View>
@@ -912,13 +1169,250 @@ export default function OnboardingPage() {
   );
 }
 
+function OptionPicker({
+  title,
+  value,
+  options,
+  onChange,
+  allowCustom = false,
+  customPlaceholder = "Write custom option",
+}: {
+  title: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  allowCustom?: boolean;
+  customPlaceholder?: string;
+}) {
+  const customSelected = allowCustom && (value === "Custom" || (!!value && !options.includes(value)));
+  const customValue = value === "Custom" ? "" : value;
+
+  return (
+    <View style={styles.optionCard}>
+      <Text style={styles.fieldControlTitle}>{title}</Text>
+      <View style={styles.optionGrid}>
+        {options.map((option) => {
+          const active = value === option;
+          return (
+            <Pressable key={option} style={[styles.optionPill, active && styles.optionPillActive]} onPress={() => onChange(option)}>
+              <Text style={[styles.optionPillText, active && styles.optionPillTextActive]}>{option}</Text>
+            </Pressable>
+          );
+        })}
+        {allowCustom ? (
+          <Pressable style={[styles.optionPill, customSelected && styles.optionPillActive]} onPress={() => onChange("Custom")}>
+            <Text style={[styles.optionPillText, customSelected && styles.optionPillTextActive]}>Custom</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      {customSelected ? (
+        <TextInput
+          value={customValue}
+          onChangeText={(nextValue) => onChange(nextValue || "Custom")}
+          placeholder={customPlaceholder}
+          placeholderTextColor="#8a94af"
+          returnKeyType="next"
+          style={styles.compactInput}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function OpeningHoursPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [openValue = "", closeValue = ""] = value.includes(" - ") ? value.split(" - ") : ["", ""];
+  const setOpen = (next: string) => onChange(`${next} - ${closeValue}`);
+  const setClose = (next: string) => onChange(`${openValue} - ${next}`);
+
+  return (
+    <View style={styles.timeCard}>
+      <View style={styles.fieldHeaderRow}>
+        <Clock3 size={16} color="#5e73dd" />
+        <Text style={styles.fieldControlTitle}>Opening Hours</Text>
+      </View>
+      <Text style={styles.fieldControlSub}>Choose times instead of typing them.</Text>
+      <TimePickerRow title="Opens" value={openValue || "08:00"} options={OPENING_TIMES} onChange={setOpen} />
+      <TimePickerRow title="Closes" value={closeValue || "20:00"} options={CLOSING_TIMES} onChange={setClose} />
+      <View style={styles.timeSummary}>
+        <Text style={styles.timeSummaryLabel}>Selected</Text>
+        <Text style={styles.timeSummaryValue}>{value && openValue && closeValue ? value : "Select opening and closing time"}</Text>
+      </View>
+    </View>
+  );
+}
+
+function TimePickerRow({ title, value, options, onChange }: { title: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return (
+    <View style={styles.timePickerRow}>
+      <Text style={styles.timePickerTitle}>{title}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeOptions}>
+        {options.map((option) => {
+          const active = value === option;
+          return (
+            <Pressable key={option} style={[styles.timeOption, active && styles.timeOptionActive]} onPress={() => onChange(option)}>
+              <Text style={[styles.timeOptionText, active && styles.timeOptionTextActive]}>{option}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+function UploadField({ label, optional, file, onPress }: { label: string; optional: boolean; file?: UploadRecord; onPress: () => void }) {
+  const isPhoto = uploadKind(label) === "photo";
+  return (
+    <View style={styles.uploadCard}>
+      <View style={styles.uploadTopRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.fieldControlTitle}>{label}</Text>
+          <Text style={styles.fieldControlSub}>{optional ? "Optional: upload a document if you have one." : "Required for review before you can continue."}</Text>
+        </View>
+        {file ? (
+          <View style={styles.uploadStatusPill}>
+            <CheckCircle2 size={13} color="#168653" />
+            <Text style={styles.uploadStatusText}>{isPhoto ? "Photo uploaded" : "Document uploaded"}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {file?.type === "photo" ? <Image source={{ uri: file.uri }} style={styles.profilePreviewImage} /> : null}
+
+      <Pressable style={[styles.uploadButton, file && styles.uploadButtonDone]} onPress={onPress}>
+        {isPhoto ? <Camera size={18} color={file ? "#168653" : "#5e73dd"} /> : <FileUp size={18} color={file ? "#168653" : "#5e73dd"} />}
+        <Text style={[styles.uploadButtonText, file && styles.uploadButtonTextDone]}>{file ? file.name : isPhoto ? "Upload profile photo" : "Upload document"}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function PayoutAccountsEditor({
+  payout,
+  onToggleMobile,
+  onToggleBank,
+  onTextChange,
+}: {
+  payout: PayoutDraft;
+  onToggleMobile: (method: string) => void;
+  onToggleBank: (bankId: string) => void;
+  onTextChange: (field: string, value: string) => void;
+}) {
+  return (
+    <View style={styles.payoutCard}>
+      <View style={styles.fieldHeaderRow}>
+        <WalletCards size={17} color="#5e73dd" />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.fieldControlTitle}>Payout Accounts</Text>
+          <Text style={styles.fieldControlSub}>Choose one or many options. You can add Airtel, Mpamba, and multiple banks.</Text>
+        </View>
+      </View>
+
+      <Text style={styles.payoutSectionTitle}>Mobile money accounts</Text>
+      <View style={styles.payoutGrid}>
+        {MOBILE_MONEY_OPTIONS.map((method) => {
+          const active = payout.mobileMethods.includes(method.id);
+          return (
+            <Pressable key={method.id} style={[styles.payoutMethodCard, active && styles.payoutMethodCardActive]} onPress={() => onToggleMobile(method.id)}>
+              <PaymentBrandLogo brand={method.id} size={42} active={active} />
+              <View style={styles.payoutMethodCopy}>
+                <Text style={[styles.payoutMethodTitle, active && styles.payoutMethodTitleActive]}>{method.label}</Text>
+                <Text style={styles.payoutMethodSub}>{method.subtitle}</Text>
+              </View>
+              <View style={[styles.checkDot, active && styles.checkDotActive]}>{active ? <Check size={12} color="#ffffff" /> : null}</View>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {payout.mobileMethods.includes("airtel_money") ? (
+        <TextInput
+          value={payout.airtelNumber}
+          onChangeText={(value) => onTextChange("Airtel Money Number", value)}
+          placeholder="Airtel Money number"
+          placeholderTextColor="#8a94af"
+          keyboardType="phone-pad"
+          style={styles.compactInput}
+        />
+      ) : null}
+      {payout.mobileMethods.includes("mpamba") ? (
+        <TextInput
+          value={payout.mpambaNumber}
+          onChangeText={(value) => onTextChange("TNM Mpamba Number", value)}
+          placeholder="TNM Mpamba number"
+          placeholderTextColor="#8a94af"
+          keyboardType="phone-pad"
+          style={styles.compactInput}
+        />
+      ) : null}
+
+      <Text style={styles.payoutSectionTitle}>Bank accounts</Text>
+      <View style={styles.bankGrid}>
+        {BANK_OPTIONS.map((bank) => {
+          const active = payout.banks.includes(bank.id);
+          return (
+            <Pressable key={bank.id} style={[styles.bankCard, active && styles.bankCardActive]} onPress={() => onToggleBank(bank.id)}>
+              <BankLogoMark logo={bank.logo} short={bank.short} color={bank.color} active={active} />
+              <Text style={[styles.bankCardText, active && styles.bankCardTextActive]} numberOfLines={2}>
+                {bank.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {payout.banks.map((bankId) => {
+        const bank = BANK_OPTIONS.find((item) => item.id === bankId);
+        if (!bank) return null;
+        return (
+          <View key={bankId} style={styles.bankDetailsCard}>
+            <View style={styles.bankDetailsHeader}>
+              <BankLogoMark logo={bank.logo} short={bank.short} color={bank.color} active />
+              <Text style={styles.bankDetailsTitle}>{bank.name}</Text>
+            </View>
+            <TextInput
+              value={payout.bankNames[bankId] ?? ""}
+              onChangeText={(value) => onTextChange(`Bank ${bankId} account name`, value)}
+              placeholder="Account name"
+              placeholderTextColor="#8a94af"
+              style={styles.compactInput}
+            />
+            <TextInput
+              value={payout.bankNumbers[bankId] ?? ""}
+              onChangeText={(value) => onTextChange(`Bank ${bankId} account number`, value)}
+              placeholder="Account number"
+              placeholderTextColor="#8a94af"
+              keyboardType="number-pad"
+              style={styles.compactInput}
+            />
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function BankLogoMark({ logo, short, color, active }: { logo?: ImageSourcePropType; short: string; color: string; active?: boolean }) {
+  return (
+    <View style={[styles.bankLogo, { borderColor: active ? "#5e73dd" : "#dfe6f5" }, active && styles.bankLogoActive]}>
+      {logo ? (
+        <Image source={logo} style={styles.bankLogoImage} resizeMode="contain" />
+      ) : (
+        <View style={[styles.bankLogoFallback, { borderColor: color }]}>
+          <Building2 size={17} color={color} />
+          <Text style={[styles.bankLogoFallbackText, { color }]}>{short}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f5f7fd" },
   safeArea: { flex: 1 },
   content: {
     flexGrow: 1,
     width: "100%",
-    maxWidth: 540,
+    maxWidth: 760,
     alignSelf: "center",
     paddingHorizontal: 18,
     paddingTop: 10,
@@ -1064,6 +1558,9 @@ const styles = StyleSheet.create({
   previewListRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   previewListText: { color: "#8a94af", fontSize: 13, fontWeight: "700", flex: 1, lineHeight: 18 },
   previewFields: { gap: 9, marginTop: 2 },
+  fieldHeaderRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  fieldControlTitle: { color: "#0e2756", fontSize: 13, fontWeight: "900" },
+  fieldControlSub: { color: "#6e7892", fontSize: 11, fontWeight: "700", lineHeight: 16, marginTop: 3 },
   previewField: {
     minHeight: 42,
     borderRadius: 12,
@@ -1079,6 +1576,219 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   previewFieldText: { color: "#8a94af", fontSize: 10, fontWeight: "600" },
+  optionCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e8edf7",
+    backgroundColor: "#f7f8fe",
+    padding: 12,
+    gap: 10,
+  },
+  optionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  optionPill: {
+    flexGrow: 1,
+    minWidth: "46%",
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#dfe6f5",
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  optionPillActive: { backgroundColor: "#5e73dd", borderColor: "#5e73dd" },
+  optionPillText: { color: "#0e2756", fontSize: 12, fontWeight: "900", textAlign: "center" },
+  optionPillTextActive: { color: "#ffffff" },
+  timeCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e8edf7",
+    backgroundColor: "#f7f8fe",
+    padding: 12,
+    gap: 10,
+  },
+  timePickerRow: { gap: 7 },
+  timePickerTitle: { color: "#0e2756", fontSize: 12, fontWeight: "900" },
+  timeOptions: { gap: 7, paddingRight: 4 },
+  timeOption: {
+    minWidth: 66,
+    minHeight: 38,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "#dfe6f5",
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  timeOptionActive: { backgroundColor: "#5e73dd", borderColor: "#5e73dd" },
+  timeOptionText: { color: "#0e2756", fontSize: 12, fontWeight: "900" },
+  timeOptionTextActive: { color: "#ffffff" },
+  timeSummary: {
+    borderRadius: 14,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e8edf7",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  timeSummaryLabel: { color: "#8a94af", fontSize: 11, fontWeight: "900" },
+  timeSummaryValue: { color: "#0e2756", fontSize: 12, fontWeight: "900" },
+  uploadCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e8edf7",
+    backgroundColor: "#f7f8fe",
+    padding: 12,
+    gap: 10,
+  },
+  uploadTopRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  uploadStatusPill: {
+    borderRadius: 999,
+    backgroundColor: "#e8f8ef",
+    borderWidth: 1,
+    borderColor: "#ccefd9",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  uploadStatusText: { color: "#168653", fontSize: 10, fontWeight: "900" },
+  uploadButton: {
+    minHeight: 48,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#dfe6f5",
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  uploadButtonDone: { borderColor: "#ccefd9", backgroundColor: "#ffffff" },
+  uploadButtonText: { color: "#0e2756", fontSize: 13, fontWeight: "900", flexShrink: 1 },
+  uploadButtonTextDone: { color: "#168653" },
+  profilePreviewImage: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    alignSelf: "center",
+    borderWidth: 3,
+    borderColor: "#ffffff",
+  },
+  locationFieldWrap: { gap: 9 },
+  payoutCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e8edf7",
+    backgroundColor: "#f7f8fe",
+    padding: 12,
+    gap: 11,
+  },
+  payoutSectionTitle: { color: "#8a94af", fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
+  payoutGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+  payoutMethodCard: {
+    flex: 1,
+    minWidth: 220,
+    minHeight: 74,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#dfe6f5",
+    backgroundColor: "#ffffff",
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  payoutMethodCardActive: { borderColor: "#5e73dd", backgroundColor: "#eef2ff" },
+  payoutMethodCopy: { flex: 1, minWidth: 0 },
+  payoutMethodTitle: { color: "#0e2756", fontSize: 13, fontWeight: "900" },
+  payoutMethodTitleActive: { color: "#203bad" },
+  payoutMethodSub: { color: "#6e7892", fontSize: 10, fontWeight: "700", lineHeight: 14, marginTop: 2 },
+  checkDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "#dfe6f5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkDotActive: { backgroundColor: "#5e73dd", borderColor: "#5e73dd" },
+  compactInput: {
+    minHeight: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#dfe6f5",
+    backgroundColor: "#ffffff",
+    color: "#0e2756",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  bankGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  bankCard: {
+    flexGrow: 1,
+    flexBasis: "47%",
+    minHeight: 58,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#dfe6f5",
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  bankCardActive: { backgroundColor: "#eef2ff", borderColor: "#5e73dd" },
+  bankCardText: { color: "#0e2756", fontSize: 11, fontWeight: "900", flex: 1, lineHeight: 15 },
+  bankCardTextActive: { color: "#203bad" },
+  bankLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    overflow: "hidden",
+    padding: 4,
+  },
+  bankLogoActive: {
+    shadowColor: "#5e73dd",
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  bankLogoImage: { width: "100%", height: "100%" },
+  bankLogoFallback: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 11,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 1,
+  },
+  bankLogoFallbackText: { fontSize: 7, fontWeight: "900" },
+  bankDetailsCard: {
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: "#e8edf7",
+    backgroundColor: "#ffffff",
+    padding: 10,
+    gap: 8,
+  },
+  bankDetailsHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  bankDetailsTitle: { color: "#0e2756", fontSize: 13, fontWeight: "900", flex: 1 },
   previewCta: {
     minHeight: 48,
     borderRadius: 14,
@@ -1092,16 +1802,17 @@ const styles = StyleSheet.create({
   },
   previewCtaText: { color: "#ffffff", fontSize: 13, fontWeight: "900" },
   previewStepLabel: { color: "#6e7892", fontSize: 11, fontWeight: "800", textAlign: "center" },
-  pickerSection: { flex: 1, gap: 14 },
+  pickerSection: { flex: 1, gap: 14, justifyContent: "center" },
   pickerCard: {
     flex: 1,
     borderRadius: 28,
     borderWidth: 1,
     borderColor: "#eef1fb",
     backgroundColor: "#ffffff",
-    padding: 16,
-    gap: 12,
-    justifyContent: "flex-start",
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    gap: 13,
+    justifyContent: "center",
     shadowColor: "#8492c2",
     shadowOpacity: 0.08,
     shadowRadius: 20,
@@ -1114,7 +1825,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#f9fbff",
     paddingHorizontal: 14,
     paddingVertical: 14,
-    gap: 6,
+    gap: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  pickerHeroCopy: { flex: 1, gap: 6 },
+  pickerHeroDecor: { width: 76, alignItems: "center", gap: 6 },
+  pickerDecorBubble: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   pickerEyebrow: { fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
   pickerPrompt: { color: "#0e2756", fontSize: 20, fontWeight: "900", lineHeight: 26 },
@@ -1158,19 +1882,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cancelBtnText: { color: "#0e2756", fontSize: 16, fontWeight: "900" },
-  mockTabs: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#eef1fb",
-    backgroundColor: "#fff",
-    minHeight: 72,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  mockTabItem: { flex: 1, alignItems: "center" },
-  mockTabText: { color: "#6e7892", fontSize: 12, fontWeight: "700" },
   previewPhoneCard: {
     flex: 1,
     borderRadius: 28,

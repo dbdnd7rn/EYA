@@ -298,6 +298,7 @@ const styles = StyleSheet.create({
     minHeight: 82,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 8,
     paddingVertical: 8,
     shadowOpacity: 0.18,
@@ -321,6 +322,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   itemWrap: {
+    flex: 1,
     borderRadius: 28,
     shadowOffset: { width: 0, height: 0 },
   },

@@ -147,6 +147,18 @@ async function uploadProductImage(asset: { uri: string; fileName?: string | null
   return json.secure_url as string;
 }
 
+function uniqueImageUrls(values: (string | null | undefined)[]) {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  values.forEach((value) => {
+    const url = value?.trim();
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    output.push(url);
+  });
+  return output;
+}
+
 export default function AddProductPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -156,7 +168,7 @@ export default function AddProductPage() {
   const { workspace, saveProduct, archiveProduct } = useSellerWorkspace(isRestaurantFlow ? "food" : "market");
   const editing = useMemo(() => workspace.products.find((item) => item.id === params.itemId), [params.itemId, workspace.products]);
   const productsRoute = isOpenFlow ? "/sell/products" : "/(market)/(tabs)/products";
-  const homeRoute = isOpenFlow ? "/(student)/(tabs)/marketplace" : "/(market)/(tabs)/dashboard";
+  const homeRoute = isOpenFlow ? "/(student)/market" : "/(market)/(tabs)/dashboard";
   const activeCategoryOptions = isRestaurantFlow ? menuCategoryOptions : categoryOptions;
   const activeConditionOptions = isRestaurantFlow ? menuConditionOptions : conditionOptions;
 
@@ -171,7 +183,7 @@ export default function AddProductPage() {
   const [promotionValue, setPromotionValue] = useState("");
   const [inventoryHistory, setInventoryHistory] = useState<InventoryHistoryEntry[]>([]);
   const [channel, setChannel] = useState<SalesChannel>(isRestaurantFlow ? "food" : "market");
-  const [imageUrl, setImageUrl] = useState("");
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishedProductName, setPublishedProductName] = useState<string | null>(null);
@@ -188,7 +200,7 @@ export default function AddProductPage() {
       setDescription(parsedDescription.description ?? "");
       setStock(editing.stock_qty == null ? "" : String(editing.stock_qty));
       setChannel(editing.channel);
-      setImageUrl(editing.image_url ?? "");
+      setImageUrls(uniqueImageUrls([...(editing.image_urls ?? []), editing.image_url]));
       if (isRestaurantFlow) {
         const menuState = menuConfigToEditorState(parsedDescription.menuConfig);
         setBaseOptions(menuState.baseOptions);
@@ -224,6 +236,7 @@ export default function AddProductPage() {
         : null,
     [addonOptions, baseOptions, isRestaurantFlow, mealBuilderConfig, name, price],
   );
+  const coverImageUrl = imageUrls[0] ?? "";
 
   const pickImage = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -234,22 +247,31 @@ export default function AddProductPage() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: 0,
       quality: 0.88,
       preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
     });
     if (result.canceled) return;
-    const asset = result.assets?.[0];
-    if (!asset?.uri) return;
+    const assets = (result.assets ?? []).filter((asset) => !!asset?.uri);
+    if (!assets.length) return;
 
     setUploadingImage(true);
     try {
-      const url = await uploadProductImage(asset);
-      setImageUrl(url);
+      const uploadedUrls: string[] = [];
+      for (const asset of assets) {
+        uploadedUrls.push(await uploadProductImage(asset));
+      }
+      setImageUrls((current) => uniqueImageUrls([...current, ...uploadedUrls]));
     } catch (err: any) {
-      Alert.alert("Upload failed", err?.message ?? "Could not upload image.");
+      Alert.alert("Upload failed", err?.message ?? "Could not upload images.");
     } finally {
       setUploadingImage(false);
     }
+  };
+
+  const removeImage = (url: string) => {
+    setImageUrls((current) => current.filter((value) => value !== url));
   };
 
   const submit = async () => {
@@ -274,7 +296,8 @@ export default function AddProductPage() {
         description: encodedDescription,
         stock_qty: stock.trim() ? Number(stock) : null,
         channel,
-        image_url: imageUrl.trim() || null,
+        image_url: coverImageUrl || null,
+        image_urls: imageUrls,
       });
       const productId = (saved as { id?: string } | null)?.id ?? editing?.id;
       if (productId) {
@@ -317,7 +340,7 @@ export default function AddProductPage() {
     setCondition(isRestaurantFlow ? "Ready fast" : "Brand new");
     setPromotionTitle("");
     setPromotionValue("");
-    setImageUrl("");
+    setImageUrls([]);
     if (isRestaurantFlow) {
       const menuState = menuConfigToEditorState(buildDefaultFoodMenuConfig());
       setBaseOptions(menuState.baseOptions);
@@ -404,7 +427,7 @@ export default function AddProductPage() {
             <Pressable style={styles.primaryBtn} onPress={resetForm}>
               <Text style={styles.primaryBtnText}>{isRestaurantFlow ? "Add another menu item" : "Add another product"}</Text>
             </Pressable>
-            <Pressable style={styles.secondaryBtn} onPress={() => router.replace(homeRoute)}>
+          <Pressable style={styles.secondaryBtn} onPress={() => router.replace(homeRoute as any)}>
               <Text style={styles.secondaryBtnText}>{isOpenFlow ? "Back to marketplace" : "Go to dashboard"}</Text>
             </Pressable>
           </View>
@@ -429,11 +452,28 @@ export default function AddProductPage() {
 
         <View style={styles.imageHero}>
           <View style={styles.imageHeroBackdrop} />
-          {imageUrl ? <Image source={{ uri: imageUrl }} style={styles.heroPreviewImage} /> : <ImagePlus size={42} color="#102a54" />}
+          {coverImageUrl ? <Image source={{ uri: coverImageUrl }} style={styles.heroPreviewImage} /> : <ImagePlus size={42} color="#102a54" />}
+          {imageUrls.length ? (
+            <View style={styles.photoGrid}>
+              {imageUrls.map((url, index) => (
+                <View key={`${url}-${index}`} style={styles.photoTile}>
+                  <Image source={{ uri: url }} style={styles.photoTileImage} />
+                  {index === 0 ? (
+                    <View style={styles.coverBadge}>
+                      <Text style={styles.coverBadgeText}>Cover</Text>
+                    </View>
+                  ) : null}
+                  <Pressable style={styles.removePhotoBtn} onPress={() => removeImage(url)}>
+                    <Trash2 size={13} color="#ffffff" />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
           <Pressable style={styles.uploadBtn} onPress={pickImage} disabled={uploadingImage || !workspace.hasVendor}>
-            <Text style={styles.uploadBtnText}>{uploadingImage ? "Uploading..." : imageUrl ? `Change ${isRestaurantFlow ? "menu" : "product"} photo` : `Upload ${isRestaurantFlow ? "menu" : "product"} photos`}</Text>
+            <Text style={styles.uploadBtnText}>{uploadingImage ? "Uploading..." : imageUrls.length ? `Add more ${isRestaurantFlow ? "menu" : "product"} photos` : `Upload ${isRestaurantFlow ? "menu" : "product"} photos`}</Text>
           </Pressable>
-          <Text style={styles.uploadHint}>Up to 5 photos. First photo will be the cover.</Text>
+          <Text style={styles.uploadHint}>{imageUrls.length ? `${imageUrls.length} photos selected` : "No photos selected"}</Text>
         </View>
 
         <View style={styles.formCard}>
@@ -725,6 +765,44 @@ const styles = StyleSheet.create({
   },
   imageHeroBackdrop: { position: "absolute", width: 240, height: 240, borderRadius: 120, backgroundColor: "#dce8ff", top: -80, opacity: 0.7 },
   heroPreviewImage: { width: 180, height: 180, borderRadius: 28, backgroundColor: "#eef3ff" },
+  photoGrid: {
+    width: "100%",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 10,
+  },
+  photoTile: {
+    width: 76,
+    height: 76,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#eef3ff",
+    borderWidth: 1,
+    borderColor: "#dfe7f8",
+  },
+  photoTileImage: { width: "100%", height: "100%" },
+  coverBadge: {
+    position: "absolute",
+    left: 6,
+    bottom: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(16,42,84,0.88)",
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  coverBadgeText: { color: "#ffffff", fontSize: 10, fontWeight: "900" },
+  removePhotoBtn: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(176,60,102,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   uploadBtn: {
     borderRadius: 999,
     backgroundColor: "#102a54",

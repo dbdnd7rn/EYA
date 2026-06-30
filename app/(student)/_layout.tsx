@@ -2,7 +2,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import StudentGuard from "@/components/StudentGuard";
 import { PreferredLocationProvider } from "@/providers/PreferredLocationProvider";
-import { StudentThemeProvider, useStudentTheme } from "@/providers/StudentThemeProvider";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 function StudentStack() {
   const { mode } = useStudentTheme();
@@ -24,11 +24,9 @@ function StudentStack() {
 export default function StudentLayout() {
   return (
     <StudentGuard>
-      <StudentThemeProvider>
-        <PreferredLocationProvider>
-          <StudentStack />
-        </PreferredLocationProvider>
-      </StudentThemeProvider>
+      <PreferredLocationProvider>
+        <StudentStack />
+      </PreferredLocationProvider>
     </StudentGuard>
   );
 }

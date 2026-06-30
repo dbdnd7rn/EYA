@@ -21,7 +21,7 @@ export type WorkspaceStatus = {
 
 export function getWorkspaceLabel(role: WorkspaceRole) {
   if (role === "student") return "User";
-  if (role === "vendor") return "Restaurant";
+  if (role === "vendor") return "Food Provider";
   if (role === "landlord") return "Landlord";
   if (role === "agent") return "Delivery Agent";
   return "Admin";
@@ -45,7 +45,7 @@ export function getWorkspaceSetupRoute(role: Exclude<WorkspaceRole, "admin">) {
 export function getWorkspaceSteps(role: Exclude<WorkspaceRole, "admin">) {
   if (role === "vendor") {
     return [
-      "Open your restaurant profile.",
+      "Open your food provider profile.",
       "Add business details and location.",
       "Publish your menu and start receiving orders.",
     ];
@@ -116,19 +116,19 @@ export async function getWorkspaceStatuses(userId: string, _email?: string | nul
     },
     {
       role: "vendor",
-      label: "Restaurant",
+      label: "Food Provider",
       ready: vendorApproved,
       description: vendorApproved
         ? hasVendor
-          ? "Restaurant workspace is approved and ready to use."
-          : "Restaurant workspace is approved. Complete your shop setup."
+          ? "Food provider workspace is approved and ready to use."
+          : "Food provider workspace is approved. Complete your setup."
         : vendorApplicationStatus === "pending"
-          ? "Restaurant workspace application is pending admin review."
-          : "Apply for restaurant or seller access before setup opens.",
+          ? "Food provider workspace application is pending admin review."
+          : "Apply for food provider access before setup opens.",
       homeRoute: getWorkspaceHomeRoute("vendor"),
       setupRoute: getWorkspaceSetupRoute("vendor"),
-      ctaReady: "Open restaurant",
-      ctaSetup: "Set up restaurant",
+      ctaReady: "Open food provider",
+      ctaSetup: "Set up food provider",
       applicationStatus: vendorApplicationStatus,
     },
     {

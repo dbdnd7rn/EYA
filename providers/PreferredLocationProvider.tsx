@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
@@ -64,7 +64,7 @@ export function locationMatchScore(
 
 export function formatPreferredLocation(location: PreferredLocation | null) {
   if (!location) return "Set your location";
-  return [location.area, location.campus || location.city].filter(Boolean).join(" • ");
+  return [location.area, location.campus || location.city].filter(Boolean).join(" - ");
 }
 
 export function PreferredLocationProvider({ children }: { children: React.ReactNode }) {
@@ -128,7 +128,7 @@ export function PreferredLocationProvider({ children }: { children: React.ReactN
     };
   }, [user?.id]);
 
-  const saveLocation = async (next: Omit<PreferredLocation, "updatedAt">) => {
+  const saveLocation = useCallback(async (next: Omit<PreferredLocation, "updatedAt">) => {
     if (!user?.id) return;
 
     const payload: PreferredLocation = {
@@ -150,13 +150,13 @@ export function PreferredLocationProvider({ children }: { children: React.ReactN
         area: payload.area || null,
       })
       .eq("id", user.id);
-  };
+  }, [user?.id]);
 
-  const clearLocation = async () => {
+  const clearLocation = useCallback(async () => {
     if (!user?.id) return;
     await AsyncStorage.removeItem(storageKey(user.id));
     setLocation(null);
-  };
+  }, [user?.id]);
 
   const value = useMemo<PreferredLocationContextValue>(
     () => ({
@@ -165,7 +165,7 @@ export function PreferredLocationProvider({ children }: { children: React.ReactN
       saveLocation,
       clearLocation,
     }),
-    [location, loading],
+    [clearLocation, location, loading, saveLocation],
   );
 
   return <PreferredLocationContext.Provider value={value}>{children}</PreferredLocationContext.Provider>;

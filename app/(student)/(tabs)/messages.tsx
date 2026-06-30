@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { House, MapPin, MessageCircle, Search, ShoppingBag, Store, UtensilsCrossed } from "lucide-react-native";
@@ -9,9 +9,13 @@ import { listVendorConversationsForCustomer } from "@/lib/newApp/vendorMessages"
 import type { CatalogItemRow, SalesChannel, VendorConversationRow, VendorRow } from "@/lib/newApp/types";
 import { supabaseNewApp } from "@/lib/supabaseNewApp";
 import { supabase } from "@/lib/supabase";
+import RoomsBottomNav from "@/components/rooms/RoomsBottomNav";
+import RoomsSectionHeader from "@/components/rooms/RoomsSectionHeader";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
+
+export type StudentMessagesScope = "all" | "rooms";
 
 type InboxKind = "hostel" | "market" | "food";
 
@@ -65,8 +69,8 @@ type ChatInboxEntry = {
   requestLabel?: string | null;
 };
 
-function inboxCacheKey(userId: string) {
-  return `student-chat-inbox:${userId}`;
+function inboxCacheKey(userId: string, scope: StudentMessagesScope) {
+  return `student-chat-inbox:${scope}:${userId}`;
 }
 
 function formatTime(iso: string) {
@@ -234,19 +238,29 @@ async function loadVendorEntries(userId: string): Promise<ChatInboxEntry[]> {
   });
 }
 
-export default function StudentMessagesScreen() {
+export default function StudentMessagesScreen({
+  contentBottomPadding = 120,
+  scope = "all",
+  showRoomsNav = false,
+}: {
+  contentBottomPadding?: number;
+  scope?: StudentMessagesScope;
+  showRoomsNav?: boolean;
+}) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { isOnline } = useNetwork();
   const { theme } = useStudentTheme();
+  const roomsOnly = scope === "rooms";
   const [rows, setRows] = useState<ChatInboxEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
-  const refreshInbox = async (opts?: { silent?: boolean }) => {
-    if (!user?.id) {
+  const refreshInbox = useCallback(async (opts?: { silent?: boolean }) => {
+    const userId = user?.id;
+    if (!userId) {
       setRows([]);
       setLoading(false);
       return;
@@ -257,25 +271,27 @@ export default function StudentMessagesScreen() {
       setError(null);
 
       if (!isOnline) {
-        const cached = await getCachedJson<ChatInboxEntry[]>(inboxCacheKey(user.id));
+        const cached = await getCachedJson<ChatInboxEntry[]>(inboxCacheKey(userId, scope));
         setRows(cached?.data ?? []);
-        setError(cached?.data?.length ? null : "No chats available offline yet.");
+        setError(cached?.data?.length ? null : roomsOnly ? "No room chats available offline yet." : "No chats available offline yet.");
         return;
       }
 
-      const [hostelEntries, vendorEntries] = await Promise.all([loadHostelEntries(user.id), loadVendorEntries(user.id)]);
+      const [hostelEntries, vendorEntries] = roomsOnly
+        ? [await loadHostelEntries(userId), []]
+        : await Promise.all([loadHostelEntries(userId), loadVendorEntries(userId)]);
       const nextRows = [...hostelEntries, ...vendorEntries].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
-      await setCachedJson(inboxCacheKey(user.id), nextRows);
+      await setCachedJson(inboxCacheKey(userId, scope), nextRows);
       setRows(nextRows);
     } catch (err: any) {
-      const cached = await getCachedJson<ChatInboxEntry[]>(inboxCacheKey(user?.id));
+      const cached = await getCachedJson<ChatInboxEntry[]>(inboxCacheKey(userId, scope));
       setRows(cached?.data ?? []);
       setError(cached?.data?.length ? "Showing saved chats. Live refresh failed." : (err?.message ?? "Could not load chats right now."));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [isOnline, roomsOnly, scope, user?.id]);
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/(auth)/login");
@@ -283,7 +299,7 @@ export default function StudentMessagesScreen() {
 
   useEffect(() => {
     if (!authLoading) void refreshInbox();
-  }, [authLoading, isOnline, user?.id]);
+  }, [authLoading, refreshInbox]);
 
   useEffect(() => {
     if (!user?.id || !isOnline) return;
@@ -301,24 +317,26 @@ export default function StudentMessagesScreen() {
       })
       .subscribe();
 
-    const vendorChannel = supabaseNewApp
-      .channel(`student-chat-inbox-vendor-${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "vendor_conversations", filter: `customer_id=eq.${user.id}` }, () => {
-        void refreshInbox({ silent: true });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "vendor_messages", filter: `receiver_id=eq.${user.id}` }, () => {
-        void refreshInbox({ silent: true });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "vendor_messages", filter: `sender_id=eq.${user.id}` }, () => {
-        void refreshInbox({ silent: true });
-      })
-      .subscribe();
+    const vendorChannel = roomsOnly
+      ? null
+      : supabaseNewApp
+          .channel(`student-chat-inbox-vendor-${user.id}`)
+          .on("postgres_changes", { event: "*", schema: "public", table: "vendor_conversations", filter: `customer_id=eq.${user.id}` }, () => {
+            void refreshInbox({ silent: true });
+          })
+          .on("postgres_changes", { event: "*", schema: "public", table: "vendor_messages", filter: `receiver_id=eq.${user.id}` }, () => {
+            void refreshInbox({ silent: true });
+          })
+          .on("postgres_changes", { event: "*", schema: "public", table: "vendor_messages", filter: `sender_id=eq.${user.id}` }, () => {
+            void refreshInbox({ silent: true });
+          })
+          .subscribe();
 
     return () => {
       supabase.removeChannel(hostelChannel);
-      supabaseNewApp.removeChannel(vendorChannel);
+      if (vendorChannel) supabaseNewApp.removeChannel(vendorChannel);
     };
-  }, [isOnline, user?.id]);
+  }, [isOnline, refreshInbox, roomsOnly, user?.id]);
 
   const visibleRows = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -336,7 +354,10 @@ export default function StudentMessagesScreen() {
 
   const openChat = (row: ChatInboxEntry) => {
     if (row.kind === "hostel" && row.enquiryId) {
-      router.push({ pathname: "/(student)/chat/[enquiryId]", params: { enquiryId: row.enquiryId } });
+      router.push({
+        pathname: "/(student)/chat/[enquiryId]",
+        params: { enquiryId: row.enquiryId, ...(roomsOnly ? { from: "rooms" } : {}) },
+      });
       return;
     }
     if (!row.vendorId || !row.channel) return;
@@ -370,21 +391,25 @@ export default function StudentMessagesScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }, showRoomsNav && styles.contentWithRoomsNav]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void refreshInbox({ silent: true }); }} tintColor="#0f6d80" />}
         showsVerticalScrollIndicator={false}
       >
+        {showRoomsNav ? <RoomsSectionHeader /> : null}
+
         <View style={[styles.heroCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={[styles.heroOrbLarge, { backgroundColor: theme.glowTop }]} />
           <View style={[styles.heroOrbSmall, { backgroundColor: theme.glowMiddle }]} />
-          <Text style={[styles.heroEyebrow, { color: theme.textMuted }]}>Student inbox</Text>
-          <Text style={[styles.heroTitle, { color: theme.text }]}>Chats</Text>
-          <Text style={[styles.heroSub, { color: theme.textMuted }]}>All your hostel, market, food, and delivery conversations in one place.</Text>
+          <Text style={[styles.heroEyebrow, { color: theme.textMuted }]}>{roomsOnly ? "Rooms inbox" : "Student inbox"}</Text>
+          <Text style={[styles.heroTitle, { color: theme.text }]}>{roomsOnly ? "Room chats" : "Chats"}</Text>
+          <Text style={[styles.heroSub, { color: theme.textMuted }]}>
+            {roomsOnly ? "Chats between tenants and landlords about room enquiries." : "All your hostel, market, food, and delivery conversations in one place."}
+          </Text>
 
           <View style={styles.metricsRow}>
             <MetricCard label="Total" value={String(totalChats)} tint="#e9f9f2" textColor="#156b45" />
             <MetricCard label="Hostels" value={String(hostelCount)} tint="#edf4ff" textColor="#2351a6" />
-            <MetricCard label="Delivery" value={String(deliveryCount)} tint="#fff4e8" textColor="#995522" />
+            {!roomsOnly ? <MetricCard label="Delivery" value={String(deliveryCount)} tint="#fff4e8" textColor="#995522" /> : null}
           </View>
         </View>
 
@@ -393,7 +418,7 @@ export default function StudentMessagesScreen() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search chats, shops, hostels..."
+            placeholder={roomsOnly ? "Search room chats, hostels..." : "Search chats, shops, hostels..."}
             placeholderTextColor={theme.textSoft}
             style={[styles.searchInput, { color: theme.text }]}
           />
@@ -454,12 +479,15 @@ export default function StudentMessagesScreen() {
               <View style={styles.emptyIconWrap}>
                 <MessageCircle size={24} color="#0f6d80" />
               </View>
-              <Text style={[styles.emptyTitle, { color: theme.text }]}>No chats yet</Text>
-              <Text style={[styles.emptySub, { color: theme.textMuted }]}>Start a hostel enquiry or message a seller and it will appear here.</Text>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>{roomsOnly ? "No room chats yet" : "No chats yet"}</Text>
+              <Text style={[styles.emptySub, { color: theme.textMuted }]}>
+                {roomsOnly ? "Start a room enquiry and landlord chats will appear here." : "Start a hostel enquiry or message a seller and it will appear here."}
+              </Text>
             </View>
           )}
         </View>
       </ScrollView>
+      {showRoomsNav ? <RoomsBottomNav active="chats" /> : null}
     </SafeAreaView>
   );
 }
@@ -475,7 +503,8 @@ function MetricCard({ label, value, tint, textColor }: { label: string; value: s
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
-  content: { padding: 16, paddingBottom: 120, gap: 14 },
+  content: { padding: 16, gap: 14 },
+  contentWithRoomsNav: { paddingBottom: 164 },
   skeletonWrap: { padding: 16, gap: 12 },
   skeletonRow: { height: 96, borderRadius: 26 },
   heroCard: {

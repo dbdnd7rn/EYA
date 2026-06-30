@@ -127,7 +127,7 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
           </View>
           <View style={styles.heroBottom}>
             <Text style={styles.heroTitle}>{item.meal}</Text>
-            <Text style={styles.heroMeal}>{item.name} · {item.cuisine}</Text>
+            <Text style={styles.heroMeal}>{item.name} - {item.cuisine}</Text>
             <View style={styles.heroMeta}>
               <MetaPill icon={<Star size={12} color="#f1b634" fill="#f1b634" />} label={item.rating.toFixed(1)} />
               <MetaPill icon={<Clock3 size={12} color="#ffffff" />} label={`${item.etaMins} mins`} />
@@ -163,7 +163,7 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
                     <View style={styles.customizerHead}>
                       <Text style={styles.customizerSectionTitle}>{section.title}</Text>
                       <Text style={styles.customizerSectionMeta}>
-                        {section.required ? "Required" : "Optional"} · {section.selection === "single" ? "Pick one" : "Pick any"}
+                        {section.required ? "Required" : "Optional"} - {section.selection === "single" ? "Pick one" : "Pick any"}
                       </Text>
                     </View>
                     <View style={styles.optionGrid}>
@@ -191,7 +191,7 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
                 <Text style={styles.currentPlateLabel}>Current plate</Text>
                 <Text style={styles.currentPlateTitle}>{selectionSummary.itemTitle}</Text>
                 <Text style={styles.currentPlateText}>
-                  {selectionSummary.selectedOptionNames.length ? selectionSummary.selectedOptionNames.join(" · ") : "Plain meal"}
+                  {selectionSummary.selectedOptionNames.length ? selectionSummary.selectedOptionNames.join(" - ") : "Plain meal"}
                 </Text>
               </View>
             </View>

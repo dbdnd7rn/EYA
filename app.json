@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "EYA",
-    "slug": "pa-level",
+    "slug": "eya",
     "scheme": "eya",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -34,7 +34,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.vac.eya"
+      "package": "com.vac.eya",
+      "versionCode": 5
     },
     "plugins": [
       "expo-router",

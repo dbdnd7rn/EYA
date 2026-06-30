@@ -1,6 +1,5 @@
-import React from "react";
-import FoodBrowseScreen from "@/components/food/FoodBrowseScreen";
+import { Redirect } from "expo-router";
 
 export default function StudentFoodTabPage() {
-  return <FoodBrowseScreen detailRoute="/(student)/food/[id]" showModeSwitch />;
+  return <Redirect href="/(food)/(tabs)/food" />;
 }

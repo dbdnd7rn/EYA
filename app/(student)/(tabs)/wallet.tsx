@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { ArrowRight, Eye, EyeOff, HandCoins, Landmark, Send, ShieldCheck, ShoppingBag, Smartphone } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -57,10 +57,6 @@ const DEFAULT_STATE: WalletState = {
   points: 0,
   activity: [],
 };
-
-function nowLabel() {
-  return new Date().toLocaleString();
-}
 
 function formatCurrency(amount: number) {
   return `MWK ${Math.abs(amount).toLocaleString("en-MW")}`;
@@ -136,13 +132,13 @@ export default function WalletScreen() {
   const [msg, setMsg] = useState<string | null>(null);
   const noticeAnim = React.useRef(new Animated.Value(0)).current;
 
-  const saveLocal = async (next: WalletState) => {
+  const saveLocal = useCallback(async (next: WalletState) => {
     setState(next);
     await saveWalletSnapshot(user?.id, next as WalletSnapshot);
     setCacheTime(Date.now());
-  };
+  }, [user?.id]);
 
-  const loadLocal = async () => {
+  const loadLocal = useCallback(async () => {
     const cached = await getWalletSnapshot(user?.id);
     if (cached?.data) {
       const parsed = cached.data as WalletState;
@@ -151,9 +147,9 @@ export default function WalletScreen() {
       return parsed;
     }
     return DEFAULT_STATE;
-  };
+  }, [user?.id]);
 
-  const loadRemote = async () => {
+  const loadRemote = useCallback(async () => {
     if (!ENV.PAYCHANGU_BACKEND) {
       throw new Error("PayChangu backend URL is not configured.");
     }
@@ -184,9 +180,9 @@ export default function WalletScreen() {
 
     await saveLocal(mapped);
     return mapped;
-  };
+  }, [saveLocal, session?.access_token]);
 
-  const refreshWallet = async (silent = false) => {
+  const refreshWallet = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setMsg(null);
 
@@ -210,7 +206,7 @@ export default function WalletScreen() {
       setSyncing(false);
       if (!silent) setLoading(false);
     }
-  };
+  }, [isOnline, loadLocal, loadRemote, user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -263,7 +259,7 @@ export default function WalletScreen() {
     return () => {
       active = false;
     };
-  }, [isOnline, user?.id]);
+  }, [isOnline, loadRemote, user?.id]);
 
   useEffect(() => {
     if (!msg) {

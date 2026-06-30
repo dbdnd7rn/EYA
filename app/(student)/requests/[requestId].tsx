@@ -3,10 +3,12 @@ import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } fr
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CalendarClock, CheckCircle2, ChevronLeft, MapPin, MessageCircle, XCircle } from "lucide-react-native";
 import { getMarketRequestById, setMarketRequestStatus, type MarketInterestRequest } from "@/lib/marketInterest";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 export default function StudentRequestDetailPage() {
   const router = useRouter();
   const params = useLocalSearchParams<{ requestId?: string }>();
+  const { theme } = useStudentTheme();
   const [request, setRequest] = useState<MarketInterestRequest | null>(null);
 
   useEffect(() => {
@@ -24,8 +26,8 @@ export default function StudentRequestDetailPage() {
 
   if (!request) {
     return (
-      <SafeAreaView style={styles.root}>
-        <View style={styles.center}><Text style={styles.title}>Request not found</Text></View>
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+        <View style={styles.center}><Text style={[styles.title, { color: theme.heading }]}>Request not found</Text></View>
       </SafeAreaView>
     );
   }
@@ -44,24 +46,24 @@ export default function StudentRequestDetailPage() {
   };
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Pressable style={styles.iconBtn} onPress={() => router.back()}>
-            <ChevronLeft size={22} color="#102a54" />
+          <Pressable style={[styles.iconBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => router.back()}>
+            <ChevronLeft size={22} color={theme.text} />
           </Pressable>
-          <Text style={styles.title}>{request.status === "completed" ? "Pickup Confirmed" : "Pickup Details"}</Text>
-          <View style={styles.iconBtn} />
+          <Text style={[styles.title, { color: theme.heading }]}>{request.status === "completed" ? "Pickup Confirmed" : "Pickup Details"}</Text>
+          <View style={[styles.iconBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} />
         </View>
 
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.heroRow}>
             <Image source={{ uri: request.image }} style={styles.image} />
             <View style={styles.meta}>
-              <Text style={styles.itemName}>{request.itemName}</Text>
-              <Text style={styles.price}>K{request.priceMwk.toLocaleString("en-MW")}</Text>
-              <Text style={styles.vendor}>{request.vendorName}</Text>
-              <Text style={styles.sub}>{request.category} • {request.condition}</Text>
+              <Text style={[styles.itemName, { color: theme.text }]}>{request.itemName}</Text>
+              <Text style={[styles.price, { color: theme.text }]}>K{request.priceMwk.toLocaleString("en-MW")}</Text>
+              <Text style={[styles.vendor, { color: theme.textMuted }]}>{request.vendorName}</Text>
+              <Text style={[styles.sub, { color: theme.textSoft }]}>{request.category} • {request.condition}</Text>
             </View>
           </View>
           <Text style={[styles.banner, request.status === "completed" ? styles.bannerCool : styles.bannerWarm]}>
@@ -69,35 +71,35 @@ export default function StudentRequestDetailPage() {
           </Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Pickup details</Text>
-          <InfoRow icon={<CalendarClock size={16} color="#102a54" />} label={request.pickupTimeLabel || "Tomorrow at 11:00 AM"} />
-          <InfoRow icon={<MapPin size={16} color="#102a54" />} label={request.pickupLocation || "Campus Library Entrance"} />
-          <Text style={styles.note}>{request.pickupNote || "Keep the meetup simple. Use chat if you need to reschedule."}</Text>
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Pickup details</Text>
+          <InfoRow icon={<CalendarClock size={16} color={theme.text} />} label={request.pickupTimeLabel || "Tomorrow at 11:00 AM"} />
+          <InfoRow icon={<MapPin size={16} color={theme.text} />} label={request.pickupLocation || "Campus Library Entrance"} />
+          <Text style={[styles.note, { color: theme.textMuted }]}>{request.pickupNote || "Keep the meetup simple. Use chat if you need to reschedule."}</Text>
           <View style={styles.actions}>
-            <Pressable style={styles.actionBtn} onPress={() => router.push({ pathname: "/(student)/vendor-chat/[vendorId]", params: { vendorId: request.vendorId, requestId: request.id, itemId: request.itemId, itemName: request.itemName, image: request.image, price: String(request.priceMwk), category: request.category, vendorName: request.vendorName, subject: `Pickup for ${request.itemName}` } })}>
-              <MessageCircle size={16} color="#102a54" />
-              <Text style={styles.actionText}>Open chat</Text>
+            <Pressable style={[styles.actionBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} onPress={() => router.push({ pathname: "/(student)/vendor-chat/[vendorId]", params: { vendorId: request.vendorId, requestId: request.id, itemId: request.itemId, itemName: request.itemName, image: request.image, price: String(request.priceMwk), category: request.category, vendorName: request.vendorName, subject: `Pickup for ${request.itemName}` } })}>
+              <MessageCircle size={16} color={theme.text} />
+              <Text style={[styles.actionText, { color: theme.text }]}>Open chat</Text>
             </Pressable>
-            <Pressable style={styles.actionBtn} onPress={() => router.push({ pathname: "/(student)/market/[id]", params: { id: request.itemId } })}>
-              <Text style={styles.actionText}>View product</Text>
+            <Pressable style={[styles.actionBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} onPress={() => router.push({ pathname: "/(student)/market/[id]", params: { id: request.itemId } })}>
+              <Text style={[styles.actionText, { color: theme.text }]}>View product</Text>
             </Pressable>
           </View>
         </View>
 
         {request.status !== "completed" ? (
           <View style={styles.actions}>
-            <Pressable style={styles.primaryBtn} onPress={complete}>
+            <Pressable style={[styles.primaryBtn, { backgroundColor: theme.accent }]} onPress={complete}>
               <CheckCircle2 size={18} color="#fff" />
               <Text style={styles.primaryText}>Mark as complete</Text>
             </Pressable>
-            <Pressable style={styles.secondaryBtn} onPress={cancel}>
+            <Pressable style={[styles.secondaryBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={cancel}>
               <XCircle size={18} color="#b5485f" />
               <Text style={styles.secondaryText}>Cancel pickup</Text>
             </Pressable>
           </View>
         ) : (
-          <Pressable style={styles.primaryWideBtn} onPress={() => router.replace({ pathname: "/(student)/feedback/[requestId]", params: { requestId: request.id } })}>
+          <Pressable style={[styles.primaryWideBtn, { backgroundColor: theme.accent }]} onPress={() => router.replace({ pathname: "/(student)/feedback/[requestId]", params: { requestId: request.id } })}>
             <Text style={styles.primaryText}>Leave feedback</Text>
           </Pressable>
         )}
@@ -107,7 +109,8 @@ export default function StudentRequestDetailPage() {
 }
 
 function InfoRow({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return <View style={styles.infoRow}>{icon}<Text style={styles.infoText}>{label}</Text></View>;
+  const { theme } = useStudentTheme();
+  return <View style={styles.infoRow}>{icon}<Text style={[styles.infoText, { color: theme.textMuted }]}>{label}</Text></View>;
 }
 
 const styles = StyleSheet.create({

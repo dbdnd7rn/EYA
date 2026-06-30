@@ -99,6 +99,7 @@ export default function RestaurantMenuPage() {
         stock_qty: item.stock_qty ?? null,
         channel: item.channel,
         image_url: item.image_url ?? null,
+        image_urls: item.image_urls ?? (item.image_url ? [item.image_url] : []),
       });
       Alert.alert("Listing renewed", "This item was moved forward in the marketplace feed.");
     } catch (err: any) {
@@ -161,10 +162,11 @@ export default function RestaurantMenuPage() {
                 (() => {
                   const parsed = isRestaurantFlow ? parseFoodDescription(item.description) : { description: item.description ?? "", menuConfig: null };
                   const menuSummary = summarizeFoodMenu(parsed.menuConfig);
+                  const coverImage = item.image_urls?.[0] ?? item.image_url;
                   return (
                     <View key={item.id} style={styles.itemCard}>
                       <View style={styles.itemLeft}>
-                        {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.image} /> : <View style={styles.imageFallback} />}
+                        {coverImage ? <Image source={{ uri: coverImage }} style={styles.image} /> : <View style={styles.imageFallback} />}
                         <View style={styles.itemCopy}>
                           <Text style={styles.itemName}>{item.name}</Text>
                           <Text style={styles.itemPrice}>

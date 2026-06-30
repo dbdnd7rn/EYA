@@ -29,7 +29,6 @@ type EnquiryDbRow = {
   id: string;
   status: string | null;
   created_at: string;
-  updated_at: string | null;
   student_id: string;
   message: string | null;
   listings: { title: string | null }[] | { title: string | null } | null;
@@ -134,14 +133,13 @@ export default function LandlordEnquiriesScreen() {
         id,
         status,
         created_at,
-        updated_at,
         student_id,
         message,
         listings:listing_id ( title )
       `,
       )
       .eq("landlord_id", user.id)
-      .order("updated_at", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (enquiryErr) {
       setErr(enquiryErr.message);
@@ -195,7 +193,7 @@ export default function LandlordEnquiriesScreen() {
           avatarUrl: profile?.avatar_url ?? null,
           listingTitle: listingTitleFromJoin(row.listings),
           preview: previewFromMessage(lastMessage, row.message),
-          lastActivityAt: lastMessage?.created_at ?? row.updated_at ?? row.created_at,
+          lastActivityAt: lastMessage?.created_at ?? row.created_at,
           unreadCount,
           needsResponse: !hasLandlordReply || String(row.status ?? "").toLowerCase() === "new",
         } satisfies ConversationRow;

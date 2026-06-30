@@ -37,6 +37,11 @@ export type OrderHandoffDetails = {
     delivery_fee_mwk: number;
     service_fee_mwk: number;
   };
+  rider?: {
+    id: string;
+    name: string | null;
+    phone: string | null;
+  } | null;
 };
 
 function authHeaders(accessToken?: string | null): Record<string, string> {

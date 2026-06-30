@@ -45,6 +45,7 @@ export default function SellerOrderDetailsPage() {
   const order = useMemo(() => workspace.orders.find((row) => row.id === params.id), [params.id, workspace.orders]);
   const items = order ? workspace.orderItemsByOrderId[order.id] ?? [] : [];
   const firstProduct = items[0] ? workspace.products.find((row) => row.id === items[0].item_id) : null;
+  const firstProductImage = firstProduct?.image_urls?.[0] ?? firstProduct?.image_url;
   const customer = order ? workspace.customersById[order.customer_id] : null;
   const delivery = order ? workspace.deliveriesByOrderId[order.id] : null;
   const handoff = order ? workspace.handoffsByOrderId[order.id] : null;
@@ -85,7 +86,7 @@ export default function SellerOrderDetailsPage() {
           <Text style={styles.timestampText}>Placed {formatOrderTime(order.created_at)}</Text>
 
           <View style={styles.itemRow}>
-            {firstProduct?.image_url ? <Image source={{ uri: firstProduct.image_url }} style={styles.image} /> : <View style={styles.imageFallback} />}
+            {firstProductImage ? <Image source={{ uri: firstProductImage }} style={styles.image} /> : <View style={styles.imageFallback} />}
             <View style={styles.itemMeta}>
               <Text style={styles.itemName}>{items[0]?.item_name_snapshot ?? "Order item"}</Text>
               <Text style={styles.itemPrice}>{money(Number(order.total_mwk))} | x{items[0]?.quantity ?? 1}</Text>

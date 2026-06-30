@@ -1,12 +1,12 @@
 import { supabaseNewApp } from "../supabaseNewApp";
 import {
-  buildDefaultFoodMenuConfig,
   type FoodMenuConfig,
   parseFoodDescription,
   summarizeFoodMenu,
 } from "../foodMenu";
 import { getSellerProductMetaMap, getSellerShopMeta } from "../sellerEnhancements";
 import { getSellerStorefrontMeta } from "../sellerStorefront";
+import { listCatalogItems } from "./catalog";
 import type { CatalogItemRow, VendorRow } from "./types";
 
 export type MarketCard = {
@@ -17,10 +17,13 @@ export type MarketCard = {
   category: string;
   area: string;
   campus: string;
+  latitude: number | null;
+  longitude: number | null;
   price: number;
   deliveryFee: number;
   rating: number;
   image: string;
+  images: string[];
   description: string;
   listedAt: string;
   refreshedAt: string;
@@ -41,6 +44,7 @@ export type FoodCard = {
   rating: number;
   isOpen: boolean;
   image: string;
+  images: string[];
   description: string;
   menuConfig: FoodMenuConfig | null;
   menuSummary: string;
@@ -89,66 +93,6 @@ const LEGACY_MARKET_SEED_SIGNATURES = [
   { name: "Desk Lamp", description: "Soft light for late reading", price_mwk: 18000, stock_qty: 8 },
   { name: "Microwave", description: "Quick hostel kitchen essential", price_mwk: 5200, stock_qty: 2 },
 ] as const;
-
-const DEV_FOOD_CARDS: FoodCard[] = [
-  {
-    id: "dev-food-1",
-    vendorId: "dev-food-vendor-1",
-    name: "Soche Canteen",
-    cuisine: "Local meals",
-    area: "Soche East",
-    campus: "MUST",
-    etaMins: 25,
-    meal: "Lunch plate",
-    mealPrice: 3500,
-    deliveryFee: 1800,
-    rating: 4.8,
-    isOpen: true,
-    image: "https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=1200&q=80",
-    description: "Build your lunch with rice, nsima, spaghetti, or macaroni and add the protein you want.",
-    menuConfig: buildDefaultFoodMenuConfig(),
-    menuSummary: summarizeFoodMenu(buildDefaultFoodMenuConfig()),
-    hasCustomization: true,
-  },
-  {
-    id: "dev-food-2",
-    vendorId: "dev-food-vendor-2",
-    name: "Poly Kitchen",
-    cuisine: "Student plates",
-    area: "Namiwawa",
-    campus: "MUBAS",
-    etaMins: 22,
-    meal: "Dinner special",
-    mealPrice: 4200,
-    deliveryFee: 2000,
-    rating: 4.5,
-    isOpen: true,
-    image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1200&q=80",
-    description: "Choose your starch, then add fish, beef, chicken, or sausage depending on your budget.",
-    menuConfig: buildDefaultFoodMenuConfig(),
-    menuSummary: summarizeFoodMenu(buildDefaultFoodMenuConfig()),
-    hasCustomization: true,
-  },
-  {
-    id: "dev-food-3",
-    vendorId: "dev-food-vendor-3",
-    name: "Hostel Bites",
-    cuisine: "Local meals",
-    area: "Old Naisi",
-    campus: "UNIMA",
-    etaMins: 28,
-    meal: "Quick plate",
-    mealPrice: 3000,
-    deliveryFee: 1500,
-    rating: 4.6,
-    isOpen: true,
-    image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1200&q=80",
-    description: "Affordable plates for study nights with flexible base meals and protein add-ons.",
-    menuConfig: buildDefaultFoodMenuConfig(),
-    menuSummary: summarizeFoodMenu(buildDefaultFoodMenuConfig()),
-    hasCustomization: true,
-  },
-];
 
 type TrustRow = {
   entity_id: string;
@@ -232,21 +176,17 @@ async function fetchChannelRows(channel: "market" | "food"): Promise<{
   vendorsById: Map<string, VendorRow>;
   ratingsByVendorId: Map<string, number>;
 }> {
-  const { data: itemRows, error: itemError } = await supabaseNewApp
-    .from("catalog_items")
-    .select("id, vendor_id, channel, name, description, price_mwk, stock_qty, image_url, is_active, created_at, updated_at")
-    .eq("channel", channel)
-    .eq("is_active", true)
-    .order("created_at", { ascending: false });
-  if (itemError) {
-    if (isUnavailableSchemaError(itemError.message)) {
-      console.warn(`[newApp] ${itemError.message}`);
+  let items: CatalogItemRow[];
+  try {
+    items = await listCatalogItems({ channel, isActiveOnly: true });
+  } catch (error: any) {
+    if (isUnavailableSchemaError(String(error?.message ?? ""))) {
+      console.warn(`[newApp] ${error?.message}`);
       return { items: [], vendorsById: new Map(), ratingsByVendorId: new Map() };
     }
-    throw new Error(itemError.message);
+    throw error;
   }
 
-  const items = (itemRows ?? []) as CatalogItemRow[];
   const vendorIds = Array.from(new Set(items.map((item) => item.vendor_id)));
   if (!vendorIds.length) {
     return { items, vendorsById: new Map(), ratingsByVendorId: new Map() };
@@ -293,6 +233,7 @@ export async function listMarketCards(): Promise<MarketCard[]> {
     const rating = ratingsByVendorId.get(item.vendor_id) ?? 4.5;
     const category = productMeta[item.id]?.category?.trim() || inferMarketCategory({ name: item.name, description: item.description ?? "" });
     const refreshedAt = item.updated_at || item.created_at;
+    const images = uniqueImages([...(item.image_urls ?? []), item.image_url, MARKET_PLACEHOLDER]);
     return {
       id: item.id,
       vendorId: item.vendor_id,
@@ -301,10 +242,13 @@ export async function listMarketCards(): Promise<MarketCard[]> {
       category,
       area: vendor?.area ?? "Near campus",
       campus: vendor?.campus ?? "Campus",
+      latitude: vendor?.latitude ?? null,
+      longitude: vendor?.longitude ?? null,
       price: Number(item.price_mwk) || 0,
       deliveryFee: 2500,
       rating,
-      image: item.image_url ?? MARKET_PLACEHOLDER,
+      image: images[0],
+      images,
       description: item.description ?? "Available now from trusted campus vendors.",
       listedAt: item.created_at,
       refreshedAt,
@@ -334,6 +278,7 @@ export async function listFoodCards(): Promise<FoodCard[]> {
   const liveCards = items.map((item) => {
     const vendor = vendorsById.get(item.vendor_id);
     const parsed = parseFoodDescription(item.description);
+    const images = uniqueImages([...(item.image_urls ?? []), item.image_url, FOOD_PLACEHOLDER]);
     return {
       id: item.id,
       vendorId: item.vendor_id,
@@ -347,7 +292,8 @@ export async function listFoodCards(): Promise<FoodCard[]> {
       deliveryFee: 2500,
       rating: ratingsByVendorId.get(item.vendor_id) ?? 4.5,
       isOpen: vendor?.is_active ?? true,
-      image: item.image_url ?? FOOD_PLACEHOLDER,
+      image: images[0],
+      images,
       description: parsed.description || "Fresh meals delivered near your campus.",
       menuConfig: parsed.menuConfig,
       menuSummary: summarizeFoodMenu(parsed.menuConfig),
@@ -355,7 +301,7 @@ export async function listFoodCards(): Promise<FoodCard[]> {
     };
   });
 
-  return liveCards.length ? liveCards : DEV_FOOD_CARDS;
+  return liveCards;
 }
 
 export async function getFoodCardById(itemId: string): Promise<FoodCard | null> {
@@ -372,7 +318,7 @@ export async function getMarketShopByVendorId(vendorId: string): Promise<VendorC
       ...item,
       description:
         productMeta[item.id]?.promotion?.active
-          ? `${item.description} • ${productMeta[item.id]?.promotion?.title}`
+          ? `${item.description} - ${productMeta[item.id]?.promotion?.title}`
           : item.description,
     }));
   const focus = items[0];
@@ -401,7 +347,7 @@ export async function getMarketShopByVendorId(vendorId: string): Promise<VendorC
     galleryImages: uniqueImages([
       storefront?.bannerUrl,
       storefront?.avatarUrl,
-      ...items.map((item) => item.image),
+      ...items.flatMap((item) => item.images?.length ? item.images : [item.image]),
     ]),
     items,
   };
@@ -416,7 +362,7 @@ export async function getFoodRestaurantByVendorId(vendorId: string): Promise<Ven
       ...item,
       description:
         productMeta[item.id]?.promotion?.active
-          ? `${item.description} • ${productMeta[item.id]?.promotion?.title}`
+          ? `${item.description} - ${productMeta[item.id]?.promotion?.title}`
           : item.description,
     }));
   const focus = items[0];
@@ -429,7 +375,7 @@ export async function getFoodRestaurantByVendorId(vendorId: string): Promise<Ven
     storefront?.bannerUrl,
     ...(storefront?.galleryUrls ?? []),
     storefront?.avatarUrl,
-    ...items.map((item) => item.image),
+    ...items.flatMap((item) => item.images?.length ? item.images : [item.image]),
   ]);
 
   return {

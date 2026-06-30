@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { syncMutationOutbox } from "@/lib/mutationOutbox";
+import { syncLocalRoleApplications } from "@/lib/roleApplications";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
 
@@ -23,7 +24,7 @@ export function MutationOutboxSyncProvider({ children }: { children: React.React
 
     void (async () => {
       try {
-        await syncMutationOutbox(user.id);
+        await Promise.all([syncMutationOutbox(user.id), syncLocalRoleApplications(user.id)]);
       } finally {
         syncingRef.current = false;
       }

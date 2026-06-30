@@ -1,95 +1,120 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Image, StyleSheet, View, useWindowDimensions } from "react-native";
 
 type Props = {
   onComplete: () => void;
 };
 
-const LETTERS = ["E", "Y", "A"] as const;
-const NAVY = "#102a54";
-const PINK = "#ff1f6a";
+const LOGO = require("../assets/eya-logo-transparent.png");
 
 export default function EyaLaunchAnimation({ onComplete }: Props) {
-  const letterAnim = useRef(LETTERS.map(() => new Animated.Value(0))).current;
+  const { width } = useWindowDimensions();
   const containerFade = useRef(new Animated.Value(1)).current;
-  const logoScale = useRef(new Animated.Value(0.98)).current;
-  const taglineFade = useRef(new Animated.Value(0)).current;
+  const logoProgress = useRef(new Animated.Value(0)).current;
+  const glowProgress = useRef(new Animated.Value(0)).current;
+  const underlineProgress = useRef(new Animated.Value(0)).current;
+
+  const logoWidth = Math.min(width - 56, 360);
 
   useEffect(() => {
-    const revealSequence = letterAnim.map((value, index) =>
-      Animated.timing(value, {
-        toValue: 1,
-        duration: 340,
-        delay: index === 0 ? 140 : 0,
-        easing: Easing.bezier(0.2, 0.9, 0.2, 1),
-        useNativeDriver: true,
-      })
-    );
-
     Animated.sequence([
       Animated.parallel([
-        Animated.sequence([
-          Animated.timing(logoScale, {
-            toValue: 1.02,
-            duration: 420,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(logoScale, {
-            toValue: 1,
-            duration: 260,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.stagger(100, revealSequence),
+        Animated.timing(logoProgress, {
+          toValue: 1,
+          duration: 760,
+          easing: Easing.bezier(0.16, 1, 0.3, 1),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowProgress, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
       ]),
-      Animated.timing(taglineFade, {
+      Animated.timing(underlineProgress, {
         toValue: 1,
-        duration: 260,
-        easing: Easing.out(Easing.quad),
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
-      Animated.delay(420),
+      Animated.delay(780),
       Animated.timing(containerFade, {
         toValue: 0,
-        duration: 380,
+        duration: 420,
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
     ]).start(({ finished }) => {
       if (finished) onComplete();
     });
-  }, [containerFade, letterAnim, logoScale, onComplete, taglineFade]);
+  }, [containerFade, glowProgress, logoProgress, onComplete, underlineProgress]);
+
+  const logoTranslateX = logoProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [width * 0.62, 0],
+  });
+
+  const logoTranslateY = logoProgress.interpolate({
+    inputRange: [0, 0.76, 1],
+    outputRange: [8, -4, 0],
+  });
+
+  const logoScale = logoProgress.interpolate({
+    inputRange: [0, 0.78, 1],
+    outputRange: [0.9, 1.04, 1],
+  });
+
+  const logoOpacity = logoProgress.interpolate({
+    inputRange: [0, 0.16, 1],
+    outputRange: [0, 1, 1],
+  });
+
+  const glowScale = glowProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.76, 1.2],
+  });
+
+  const glowOpacity = glowProgress.interpolate({
+    inputRange: [0, 0.48, 1],
+    outputRange: [0, 0.16, 0],
+  });
 
   return (
     <Animated.View style={[styles.overlay, { opacity: containerFade }]}>
-      <Animated.View style={[styles.row, { transform: [{ scale: logoScale }] }]}>
-        {LETTERS.map((letter, index) => {
-          const translateX = letterAnim[index].interpolate({
-            inputRange: [0, 1],
-            outputRange: [44, 0],
-          });
+      <View style={styles.stage}>
+        <Animated.View
+          style={[
+            styles.glow,
+            {
+              opacity: glowOpacity,
+              transform: [{ scale: glowScale }],
+            },
+          ]}
+        />
 
-          const opacity = letterAnim[index].interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, 1],
-          });
+        <Animated.View
+          style={[
+            styles.logoWrap,
+            {
+              opacity: logoOpacity,
+              transform: [{ translateX: logoTranslateX }, { translateY: logoTranslateY }, { scale: logoScale }],
+            },
+          ]}
+        >
+          <Image source={LOGO} style={[styles.logo, { width: logoWidth }]} resizeMode="contain" />
+        </Animated.View>
 
-          return (
-            <Animated.Text
-              key={`${letter}-${index}`}
-              style={[
-                styles.letter,
-                { color: index === 1 ? PINK : NAVY, opacity, transform: [{ translateX }] },
-              ]}
-            >
-              {letter}
-            </Animated.Text>
-          );
-        })}
-      </Animated.View>
-      <Animated.Text style={[styles.tagline, { opacity: taglineFade }]}>everything a student needs</Animated.Text>
+        <Animated.View
+          style={[
+            styles.underline,
+            {
+              opacity: underlineProgress,
+              transform: [{ scaleX: underlineProgress }],
+            },
+          ]}
+        />
+      </View>
     </Animated.View>
   );
 }
@@ -100,23 +125,36 @@ const styles = StyleSheet.create({
     zIndex: 100,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f0f1f4",
+    backgroundColor: "#ffffff",
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "baseline",
+  stage: {
+    width: "100%",
+    minHeight: 330,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
   },
-  letter: {
-    fontSize: 64,
-    fontWeight: "900",
-    letterSpacing: -1.4,
-    lineHeight: 74,
+  glow: {
+    position: "absolute",
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: "#eef3ff",
+    borderWidth: 1,
+    borderColor: "#f02268",
   },
-  tagline: {
-    marginTop: 10,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-    color: "#6f7482",
+  logoWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logo: {
+    height: 170,
+  },
+  underline: {
+    marginTop: 6,
+    width: 150,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: "#102a54",
   },
 });

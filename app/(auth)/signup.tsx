@@ -138,7 +138,7 @@ export default function SignupScreen() {
     setGoogleLoading(true);
 
     try {
-      const result = await signInWithGoogle(null, "signup");
+      const result = await signInWithGoogle("student", "signup");
       if (!result.redirected && !result.cancelled) {
         router.replace("/redirect");
       }
@@ -159,23 +159,14 @@ export default function SignupScreen() {
                 <EyaWordmark width={220} height={72} withTagline />
               </View>
 
-              <Text style={styles.title}>Create your EYA account</Text>
-              <Text style={styles.subtitle}>Create your user account first. Add other workspaces later from profile.</Text>
+              <Text style={styles.title}>Create your user account</Text>
+              <Text style={styles.subtitle}>Start as a user. After signup, request landlord, seller, restaurant, or agent access from your profile.</Text>
 
               {ENV.DEV_AUTH_MODE ? (
                 <View style={styles.infoBox}>
                   <Text style={styles.infoText}>Dev auth mode is enabled on this device.</Text>
                 </View>
               ) : null}
-
-              <Text style={styles.sectionLabel}>Sign up as</Text>
-
-              <View style={styles.selectButton}>
-                <View style={styles.inputIconWrap}>
-                  <UserRound size={22} color="#4a5b87" />
-                </View>
-                <Text style={styles.selectButtonText}>User</Text>
-              </View>
 
               <View style={styles.inputStack}>
                 <View style={styles.inlineInputs}>
@@ -267,7 +258,7 @@ export default function SignupScreen() {
                     </Defs>
                     <Rect x="0" y="0" width="100%" height="100%" rx="999" fill="url(#signup-gradient)" />
                   </Svg>
-                  <Text style={styles.primaryButtonText}>{loading ? "Creating..." : "Sign Up"}</Text>
+                  <Text style={styles.primaryButtonText}>{loading ? "Creating..." : "Create User Account"}</Text>
                 </View>
               </Pressable>
 
@@ -338,52 +329,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   infoText: { color: "#18325d", fontSize: 13, fontWeight: "600" },
-  sectionLabel: { marginTop: 26, marginBottom: 12, color: "#0f2c68", fontSize: 16, fontWeight: "800" },
-  selectButton: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "#d6ddee",
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 18,
-    shadowColor: "#aeb8d4",
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 5,
-  },
-  inputIconWrap: {
-    width: 34,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  selectButtonText: { flex: 1, color: "#0f2c68", fontSize: 16, fontWeight: "700" },
-  roleMenu: {
-    marginTop: 8,
-    overflow: "hidden",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#d6ddee",
-    backgroundColor: "#ffffff",
-    shadowColor: "#aeb8d4",
-    shadowOpacity: 0.24,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  roleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-  },
-  roleRowBorder: { borderBottomWidth: 1, borderBottomColor: "#e8edf7" },
-  roleRowSelected: { backgroundColor: "#f8faff" },
-  roleText: { color: "#0f2c68", fontSize: 16, fontWeight: "700" },
-  roleTextSelected: { color: "#102968" },
-  inputStack: { marginTop: 12, gap: 12 },
+  inputStack: { marginTop: 24, gap: 12 },
   inlineInputs: { flexDirection: "row", gap: 12 },
   inlineInput: { flex: 1 },
   inputWrap: {

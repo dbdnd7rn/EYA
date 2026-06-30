@@ -9,10 +9,12 @@ export default function MapPicker({
   value,
   onChange,
   label = "Location",
+  initializeWithDefault = true,
 }: {
   value: LatLng | null;
   onChange: (v: LatLng) => void;
   label?: string;
+  initializeWithDefault?: boolean;
 }) {
   const defaultCenter = useMemo<LatLng>(() => value ?? { lat: -13.9626, lng: 33.7741 }, [value]);
   const mapRef = useRef<MapView | null>(null);
@@ -30,9 +32,9 @@ export default function MapPicker({
   );
 
   useEffect(() => {
-    if (!value) onChange(defaultCenter);
+    if (initializeWithDefault && !value) onChange(defaultCenter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initializeWithDefault]);
 
   const onMapPress = (event: MapPressEvent) => {
     const { latitude, longitude } = event.nativeEvent.coordinate;

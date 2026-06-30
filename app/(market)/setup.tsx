@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { Check, ChevronLeft, ChevronRight, CreditCard, ImagePlus, MapPin, ShoppingBag, Store } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import SoftPageGlow from "@/components/SoftPageGlow";
 import { createVendor, listMyVendors, updateVendor } from "@/lib/newApp/vendors";
 import { getSellerStorefrontMeta, setSellerStorefrontMeta } from "@/lib/sellerStorefront";
@@ -15,6 +16,12 @@ type ShopCategoryOption = {
   id: string;
   label: string;
   hint: string;
+};
+
+type ShopCoords = {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
 };
 
 const marketCategories: ShopCategoryOption[] = [
@@ -73,6 +80,16 @@ const restaurantFeatures = [
   },
 ];
 
+function guessCampus(input: string) {
+  const text = input.toLowerCase();
+  if (text.includes("mubas")) return "MUBAS";
+  if (text.includes("must") || text.includes("poly")) return "MUST";
+  if (text.includes("unima")) return "UNIMA";
+  if (text.includes("luanar")) return "LUANAR";
+  if (text.includes("kuhes")) return "KUHeS";
+  return "MUST";
+}
+
 export default function SellerSetupPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -107,6 +124,9 @@ export default function SellerSetupPage() {
   const [galleryUrls, setGalleryUrls] = useState<string[]>([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
+  const [shopCoords, setShopCoords] = useState<ShopCoords | null>(null);
+  const [locatingShop, setLocatingShop] = useState(false);
+  const [autoLocationAttempted, setAutoLocationAttempted] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -125,6 +145,11 @@ export default function SellerSetupPage() {
         setCampus(current.campus ?? "MUST");
         setArea(current.area ?? "Soche");
         setCity(current.city ?? "Blantyre");
+        setShopCoords(
+          current.latitude != null && current.longitude != null
+            ? { latitude: current.latitude, longitude: current.longitude, accuracy: null }
+            : null,
+        );
         const storefront = await getSellerStorefrontMeta(current.id);
         if (!active) return;
         setAvatarUrl(storefront?.avatarUrl ?? "");
@@ -195,6 +220,48 @@ export default function SellerSetupPage() {
     }
   };
 
+  const captureShopLocation = useCallback(async () => {
+    setLocatingShop(true);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        return;
+      }
+
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const latitude = Number(pos.coords.latitude);
+      const longitude = Number(pos.coords.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return;
+      }
+
+      setShopCoords({
+        latitude,
+        longitude,
+        accuracy: typeof pos.coords.accuracy === "number" && Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null,
+      });
+
+      const reverse = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
+      const place = reverse[0];
+      const nextArea = place?.district || place?.subregion || place?.street || area;
+      const nextCity = place?.city || place?.region || city;
+      const label = [place?.name, nextArea, nextCity].filter(Boolean).join(", ");
+      setArea(nextArea || area);
+      setCity(nextCity || city);
+      setCampus(guessCampus(label || `${nextArea} ${nextCity}`));
+    } catch {
+      // Location is opportunistic here; the form remains usable without coordinates.
+    } finally {
+      setLocatingShop(false);
+    }
+  }, [area, city]);
+
+  useEffect(() => {
+    if (step !== "form" || shopCoords || locatingShop || autoLocationAttempted) return;
+    setAutoLocationAttempted(true);
+    void captureShopLocation();
+  }, [autoLocationAttempted, captureShopLocation, locatingShop, shopCoords, step]);
+
   const submit = async () => {
     if (!user) return;
     if (!name.trim()) {
@@ -215,6 +282,8 @@ export default function SellerSetupPage() {
         campus: campus.trim() || null,
         area: area.trim() || null,
         city: city.trim() || null,
+        latitude: shopCoords?.latitude ?? null,
+        longitude: shopCoords?.longitude ?? null,
         supports_market: !isRestaurantFlow,
         supports_food: isRestaurantFlow,
         is_active: true,
@@ -237,6 +306,8 @@ export default function SellerSetupPage() {
             campus: updatePayload.campus,
             area: updatePayload.area,
             city: updatePayload.city,
+            latitude: updatePayload.latitude,
+            longitude: updatePayload.longitude,
             supports_market: !isRestaurantFlow,
             supports_food: isRestaurantFlow,
           });
@@ -317,7 +388,7 @@ export default function SellerSetupPage() {
             ) : null}
             <Pressable
               style={styles.secondaryGhost}
-              onPress={() => router.replace(isOpenFlow ? "/(student)/(tabs)/marketplace" : "/(market)/(tabs)/dashboard")}
+              onPress={() => router.replace((isOpenFlow ? "/(student)/market" : "/(market)/(tabs)/dashboard") as any)}
             >
               <Text style={styles.secondaryGhostText}>{isOpenFlow ? "Back to marketplace" : "Go to dashboard"}</Text>
             </Pressable>
@@ -457,7 +528,7 @@ export default function SellerSetupPage() {
             <Pressable style={styles.primaryBtn} onPress={() => router.replace(isOpenFlow ? "/sell/add-product" : "/(market)/add-product")}>
               <Text style={styles.primaryBtnText}>{isRestaurantFlow ? "Add a menu item" : "Add a product"}</Text>
             </Pressable>
-            <Pressable style={styles.secondaryBtn} onPress={() => router.replace(isOpenFlow ? "/(student)/(tabs)/marketplace" : "/(market)/(tabs)/dashboard")}>
+            <Pressable style={styles.secondaryBtn} onPress={() => router.replace((isOpenFlow ? "/(student)/market" : "/(market)/(tabs)/dashboard") as any)}>
               <Text style={styles.secondaryBtnText}>{isOpenFlow ? "Back to marketplace" : "Go to dashboard"}</Text>
             </Pressable>
           </View>

@@ -180,7 +180,7 @@ export function summarizeFoodMenu(menuConfig: FoodMenuConfig | null | undefined)
       return optionNames.length ? `${section.title}: ${optionNames.join(", ")}` : "";
     })
     .filter(Boolean)
-    .join(" · ");
+    .join(" - ");
 }
 
 export function getFoodPriceRange(basePrice: number, menuConfig: FoodMenuConfig | null | undefined) {
@@ -259,6 +259,6 @@ export function buildFoodSelectionSummary(
     selectedOptionNames,
     unitPrice,
     itemTitle: `${mealName}${suffix}`,
-    summaryText: selectedOptionNames.length ? selectedOptionNames.join(" · ") : mealName,
+    summaryText: selectedOptionNames.length ? selectedOptionNames.join(" - ") : mealName,
   };
 }

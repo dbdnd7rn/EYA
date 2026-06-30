@@ -5,16 +5,16 @@ import {
   Image,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Bookmark, MapPin, Trash2, Search } from "lucide-react-native";
-import TopNav from "@/components/TopNav";
 import RoomsBottomNav from "@/components/rooms/RoomsBottomNav";
+import RoomsSectionHeader from "@/components/rooms/RoomsSectionHeader";
 import {
   applyPendingSavedOpsToRows,
   getSavedRoomsCache,
@@ -26,6 +26,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 type ListingRow = {
   id: string;
@@ -57,6 +58,7 @@ function formatPrice(amount?: number | null) {
 export default function SavedRoomsScreen() {
   const { user, loading: authLoading } = useAuth();
   const { isOnline } = useNetwork();
+  const { theme } = useStudentTheme();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -220,11 +222,13 @@ export default function SavedRoomsScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
-        <TopNav title="Saved rooms" />
+      <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
+        <View style={styles.headerWrap}>
+          <RoomsSectionHeader />
+        </View>
         <View style={styles.loadingWrap}>
           {Array.from({ length: 4 }).map((_, i) => (
-            <View key={i} style={styles.skeletonCard} />
+            <View key={i} style={[styles.skeletonCard, { backgroundColor: theme.surfaceMuted }]} />
           ))}
         </View>
       </SafeAreaView>
@@ -232,30 +236,28 @@ export default function SavedRoomsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
-      <TopNav title="Saved rooms" />
+    <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView
+        style={styles.scroller}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ff0f64" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}
       >
+        <RoomsSectionHeader />
+
         <View style={styles.headerBlock}>
           <View>
-            <Text style={styles.h1}>Saved rooms</Text>
-            <Text style={styles.sub}>Rooms you've bookmarked for later.</Text>
+            <Text style={[styles.h1, { color: theme.heading }]}>Saved rooms</Text>
+            <Text style={[styles.sub, { color: theme.textMuted }]}>Rooms you've bookmarked for later.</Text>
           </View>
 
           <View style={styles.headerActions}>
-            <Pressable style={styles.sortBtn} onPress={cycleSort}>
-              <Text style={styles.sortBtnText}>
+            <Pressable style={[styles.sortBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={cycleSort}>
+              <Text style={[styles.sortBtnText, { color: theme.text }]}>
                 {sort === "newest" ? "Newest" : sort === "price_asc" ? "Price: Low -> High" : "Price: High -> Low"}
               </Text>
             </Pressable>
 
-            <Pressable style={styles.secondaryBtn} onPress={() => router.push("/(student)/(tabs)/home")}>
-              <Text style={styles.secondaryBtnText}>Back to home</Text>
-            </Pressable>
-
-            <Pressable style={styles.primaryBtn} onPress={() => router.push("/(student)/(tabs)/rooms")}>
+            <Pressable style={[styles.primaryBtn, { backgroundColor: theme.accent }]} onPress={() => router.push("/(student)/(tabs)/rooms")}>
               <Search size={16} color="#fff" />
               <Text style={styles.primaryBtnText}>Find rooms</Text>
             </Pressable>
@@ -263,19 +265,19 @@ export default function SavedRoomsScreen() {
         </View>
 
         {err ? (
-          <View style={styles.errBox}>
-            <Text style={styles.errText}>{err}</Text>
+          <View style={[styles.errBox, { backgroundColor: theme.isDark ? "#2a1e28" : "#fff0f6", borderColor: theme.isDark ? "#52313f" : "#ffd4e3" }]}>
+            <Text style={[styles.errText, { color: theme.isDark ? "#ffb3c6" : "#b0003a" }]}>{err}</Text>
           </View>
         ) : null}
 
         {sortedSaved.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <View style={styles.emptyIcon}>
-              <Bookmark size={24} color="#ff0f64" />
+          <View style={[styles.emptyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={[styles.emptyIcon, { backgroundColor: theme.accentSoft }]}>
+              <Bookmark size={24} color={theme.accent} />
             </View>
-            <Text style={styles.emptyTitle}>No saved rooms yet</Text>
-            <Text style={styles.emptySub}>When you save rooms, they'll appear here so you can compare later.</Text>
-            <Pressable style={styles.primaryWide} onPress={() => router.push("/(student)/(tabs)/rooms")}>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>No saved rooms yet</Text>
+            <Text style={[styles.emptySub, { color: theme.textMuted }]}>When you save rooms, they'll appear here so you can compare later.</Text>
+            <Pressable style={[styles.primaryWide, { backgroundColor: theme.accent }]} onPress={() => router.push("/(student)/(tabs)/rooms")}>
               <Search size={16} color="#fff" />
               <Text style={styles.primaryWideText}>Browse rooms</Text>
             </Pressable>
@@ -292,15 +294,15 @@ export default function SavedRoomsScreen() {
               return (
                 <Pressable
                   key={s.id}
-                  style={styles.card}
+                  style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
                   onPress={() => router.push({ pathname: "/(student)/room/[id]", params: { id: r.id } })}
                 >
-                  <View style={styles.imageWrap}>
+                  <View style={[styles.imageWrap, { backgroundColor: theme.surfaceMuted }]}>
                     {photo ? (
                       <Image source={{ uri: photo }} style={styles.cover} resizeMode="cover" />
                     ) : (
                       <View style={[styles.cover, styles.coverEmpty]}>
-                        <Text style={styles.coverEmptyText}>No photo</Text>
+                        <Text style={[styles.coverEmptyText, { color: theme.textMuted }]}>No photo</Text>
                       </View>
                     )}
 
@@ -322,16 +324,16 @@ export default function SavedRoomsScreen() {
                   </View>
 
                   <View style={styles.cardBody}>
-                    <Text numberOfLines={1} style={styles.title}>{r.title}</Text>
+                    <Text numberOfLines={1} style={[styles.title, { color: theme.text }]}>{r.title}</Text>
 
                     <View style={styles.locRow}>
-                      <MapPin size={14} color="#5f6b85" />
-                      <Text numberOfLines={1} style={styles.locText}>{loc || "Location not provided"}</Text>
+                      <MapPin size={14} color={theme.textSoft} />
+                      <Text numberOfLines={1} style={[styles.locText, { color: theme.textMuted }]}>{loc || "Location not provided"}</Text>
                     </View>
 
                     <View style={styles.rowBetween}>
-                      <Text style={styles.price}>{formatPrice(r.price_from)}</Text>
-                      <Text style={styles.viewLink}>View {'>'}</Text>
+                      <Text style={[styles.price, { color: theme.text }]}>{formatPrice(r.price_from)}</Text>
+                      <Text style={[styles.viewLink, { color: theme.accent }]}>View {'>'}</Text>
                     </View>
                   </View>
                 </Pressable>
@@ -348,7 +350,9 @@ export default function SavedRoomsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
-  content: { padding: 16, paddingBottom: 120, gap: 12 },
+  scroller: { flex: 1 },
+  content: { padding: 16, paddingBottom: 164, gap: 12 },
+  headerWrap: { padding: 16, paddingBottom: 0 },
   loadingWrap: { padding: 16, gap: 12 },
   skeletonCard: { height: 220, borderRadius: 24, backgroundColor: "#dde6ff" },
   headerBlock: { gap: 10 },
@@ -365,15 +369,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   sortBtnText: { color: "#0e2756", fontWeight: "800", fontSize: 12 },
-  secondaryBtn: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e7eaf6",
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  secondaryBtnText: { color: "#0e2756", fontWeight: "800" },
   primaryBtn: {
     backgroundColor: "#ff0f64",
     borderRadius: 14,
@@ -388,6 +383,7 @@ const styles = StyleSheet.create({
   errText: { color: "#b0003a", fontWeight: "900" },
   emptyCard: {
     backgroundColor: "#fff",
+    borderWidth: 1,
     borderRadius: 22,
     padding: 20,
     alignItems: "center",
@@ -415,6 +411,7 @@ const styles = StyleSheet.create({
   grid: { gap: 14 },
   card: {
     backgroundColor: "#fff",
+    borderWidth: 1,
     borderRadius: 24,
     overflow: "hidden",
     shadowColor: "#000",

@@ -8,12 +8,13 @@ import { goBackOrFallback } from "@/lib/navigation";
 import { isShopSaved, toggleSavedShop } from "@/lib/marketInterest";
 
 type Props = {
-  fallbackRoute: "/(market)/(tabs)/marketplace" | "/(student)/(tabs)/marketplace";
+  fallbackRoute: "/(market)/(tabs)/marketplace" | "/(student)/(tabs)/marketplace" | "/(student)/market";
 };
 
 export default function MarketShopProfileScreen({ fallbackRoute }: Props) {
   const router = useRouter();
   const params = useLocalSearchParams<{ vendorId?: string }>();
+  const isStudentView = fallbackRoute !== "/(market)/(tabs)/marketplace";
   const [shop, setShop] = React.useState<Awaited<ReturnType<typeof getMarketShopByVendorId>>>(null);
   const [loading, setLoading] = React.useState(true);
   const [saved, setSaved] = React.useState(false);
@@ -66,7 +67,7 @@ export default function MarketShopProfileScreen({ fallbackRoute }: Props) {
   return (
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Pressable style={styles.backBtn} onPress={() => goBackOrFallback(router, fallbackRoute)}>
+        <Pressable style={styles.backBtn} onPress={() => goBackOrFallback(router, fallbackRoute as any)}>
           <ArrowLeft size={18} color="#0d3950" />
           <Text style={styles.backText}>Back</Text>
         </Pressable>
@@ -163,7 +164,7 @@ export default function MarketShopProfileScreen({ fallbackRoute }: Props) {
                     item={item}
                     onPress={() =>
                       router.push({
-                        pathname: fallbackRoute === "/(market)/(tabs)/marketplace" ? "/(market)/item/[id]" : "/(student)/market/[id]",
+                        pathname: isStudentView ? "/(student)/market/[id]" : "/(market)/item/[id]",
                         params: { id: item.id },
                       })
                     }
@@ -186,7 +187,7 @@ export default function MarketShopProfileScreen({ fallbackRoute }: Props) {
                 item={item as MarketCard}
                 onPress={() =>
                   router.push({
-                    pathname: fallbackRoute === "/(market)/(tabs)/marketplace" ? "/(market)/item/[id]" : "/(student)/market/[id]",
+                    pathname: isStudentView ? "/(student)/market/[id]" : "/(market)/item/[id]",
                     params: { id: item.id },
                   })
                 }

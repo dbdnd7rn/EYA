@@ -9,12 +9,14 @@ function throwIfError(error: { message: string } | null) {
 }
 
 const DEV_CATALOG_KEY = "eya_dev_catalog_items_v1";
+const CATALOG_SELECT = "id, vendor_id, channel, name, description, price_mwk, stock_qty, image_url, image_urls, is_active, created_at, updated_at";
+const CATALOG_SELECT_LEGACY = "id, vendor_id, channel, name, description, price_mwk, stock_qty, image_url, is_active, created_at, updated_at";
 
 async function getDevCatalogItems(): Promise<CatalogItemRow[]> {
   const raw = await AsyncStorage.getItem(DEV_CATALOG_KEY);
   if (!raw) return [];
   try {
-    return JSON.parse(raw) as CatalogItemRow[];
+    return (JSON.parse(raw) as CatalogItemRow[]).map(normalizeCatalogRow);
   } catch {
     return [];
   }
@@ -33,6 +35,40 @@ type CatalogFilters = {
   limit?: number;
 };
 
+function normalizeImageUrls(values: unknown) {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<string>();
+  const output: string[] = [];
+  values.forEach((value) => {
+    const url = typeof value === "string" ? value.trim() : "";
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    output.push(url);
+  });
+  return output;
+}
+
+function imageUrlsForWrite(input: { image_url?: string | null; image_urls?: string[] | null }) {
+  const uploaded = normalizeImageUrls(input.image_urls);
+  const cover = typeof input.image_url === "string" && input.image_url.trim() ? input.image_url.trim() : uploaded[0] ?? null;
+  const imageUrls = uploaded.length ? uploaded : cover ? [cover] : [];
+  return { cover, imageUrls };
+}
+
+function normalizeCatalogRow(row: CatalogItemRow): CatalogItemRow {
+  const imageUrls = normalizeImageUrls((row as CatalogItemRow & { image_urls?: unknown }).image_urls);
+  const cover = row.image_url?.trim() || imageUrls[0] || null;
+  return {
+    ...row,
+    image_url: cover,
+    image_urls: imageUrls.length ? imageUrls : cover ? [cover] : [],
+  };
+}
+
+function isMissingImageUrlsError(error: { message: string } | null) {
+  return !!error && /image_urls|schema cache|column/i.test(error.message);
+}
+
 export async function listCatalogItems(filters?: CatalogFilters): Promise<CatalogItemRow[]> {
   if (ENV.DEV_AUTH_MODE) {
     let items = await getDevCatalogItems();
@@ -49,24 +85,30 @@ export async function listCatalogItems(filters?: CatalogFilters): Promise<Catalo
       items = items.filter((row) => allowed.has(row.vendor_id));
     }
     if (filters?.limit && filters.limit > 0) items = items.slice(0, filters.limit);
-    return items.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+    return items.map(normalizeCatalogRow).sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
   }
 
-  let query = supabaseNewApp
-    .from("catalog_items")
-    .select("id, vendor_id, channel, name, description, price_mwk, stock_qty, image_url, is_active, created_at, updated_at")
-    .order("created_at", { ascending: false });
+  const buildQuery = (selectClause: string) => {
+    let query = supabaseNewApp
+      .from("catalog_items")
+      .select(selectClause)
+      .order("created_at", { ascending: false });
 
-  if (filters?.vendorId) query = query.eq("vendor_id", filters.vendorId);
-  if (filters?.channel) query = query.eq("channel", filters.channel);
-  if (filters?.isActiveOnly ?? true) query = query.eq("is_active", true);
-  if (filters?.q?.trim()) query = query.ilike("name", `%${filters.q.trim()}%`);
-  if (filters?.limit && filters.limit > 0) query = query.limit(filters.limit);
+    if (filters?.vendorId) query = query.eq("vendor_id", filters.vendorId);
+    if (filters?.channel) query = query.eq("channel", filters.channel);
+    if (filters?.isActiveOnly ?? true) query = query.eq("is_active", true);
+    if (filters?.q?.trim()) query = query.ilike("name", `%${filters.q.trim()}%`);
+    if (filters?.limit && filters.limit > 0) query = query.limit(filters.limit);
+    return query;
+  };
 
-  const { data, error } = await query;
+  let { data, error } = await buildQuery(CATALOG_SELECT);
+  if (isMissingImageUrlsError(error)) {
+    ({ data, error } = await buildQuery(CATALOG_SELECT_LEGACY));
+  }
   throwIfError(error);
 
-  let items = (data ?? []) as CatalogItemRow[];
+  let items = ((data ?? []) as unknown as CatalogItemRow[]).map(normalizeCatalogRow);
 
   if (filters?.campus) {
     const { data: vendorRows, error: vendorError } = await supabaseNewApp
@@ -87,16 +129,24 @@ export async function getCatalogItemById(itemId: string): Promise<CatalogItemRow
     return items.find((row) => row.id === itemId) ?? null;
   }
 
-  const { data, error } = await supabaseNewApp
+  let { data, error } = await supabaseNewApp
     .from("catalog_items")
-    .select("id, vendor_id, channel, name, description, price_mwk, stock_qty, image_url, is_active, created_at, updated_at")
+    .select(CATALOG_SELECT)
     .eq("id", itemId)
     .maybeSingle();
+  if (isMissingImageUrlsError(error)) {
+    ({ data, error } = await supabaseNewApp
+      .from("catalog_items")
+      .select(CATALOG_SELECT_LEGACY)
+      .eq("id", itemId)
+      .maybeSingle());
+  }
   throwIfError(error);
-  return (data as CatalogItemRow | null) ?? null;
+  return data ? normalizeCatalogRow(data as CatalogItemRow) : null;
 }
 
 export async function createCatalogItem(input: CatalogItemCreateInput): Promise<CatalogItemRow> {
+  const { cover, imageUrls } = imageUrlsForWrite(input);
   if (ENV.DEV_AUTH_MODE) {
     const now = new Date().toISOString();
     const items = await getDevCatalogItems();
@@ -108,7 +158,8 @@ export async function createCatalogItem(input: CatalogItemCreateInput): Promise<
       description: input.description ?? null,
       price_mwk: input.price_mwk,
       stock_qty: input.stock_qty ?? null,
-      image_url: input.image_url ?? null,
+      image_url: cover,
+      image_urls: imageUrls,
       is_active: true,
       created_at: now,
       updated_at: now,
@@ -124,16 +175,25 @@ export async function createCatalogItem(input: CatalogItemCreateInput): Promise<
     description: input.description ?? null,
     price_mwk: input.price_mwk,
     stock_qty: input.stock_qty ?? null,
-    image_url: input.image_url ?? null,
+    image_url: cover,
+    image_urls: imageUrls,
   };
 
-  const { data, error } = await supabaseNewApp
+  let { data, error } = await supabaseNewApp
     .from("catalog_items")
     .insert(payload)
-    .select("id, vendor_id, channel, name, description, price_mwk, stock_qty, image_url, is_active, created_at, updated_at")
+    .select(CATALOG_SELECT)
     .single();
+  if (isMissingImageUrlsError(error)) {
+    const { image_urls, ...legacyPayload } = payload;
+    ({ data, error } = await supabaseNewApp
+      .from("catalog_items")
+      .insert(legacyPayload)
+      .select(CATALOG_SELECT_LEGACY)
+      .single());
+  }
   throwIfError(error);
-  return data as CatalogItemRow;
+  return normalizeCatalogRow(data as CatalogItemRow);
 }
 
 export async function updateCatalogItem(itemId: string, input: CatalogItemUpdateInput): Promise<CatalogItemRow> {
@@ -143,13 +203,14 @@ export async function updateCatalogItem(itemId: string, input: CatalogItemUpdate
     if (index < 0) throw new Error("Listing not found.");
 
     const current = items[index];
+    const nextImages = input.image_urls !== undefined || input.image_url !== undefined ? imageUrlsForWrite(input) : null;
     const updated: CatalogItemRow = {
       ...current,
       ...(input.name != null ? { name: input.name.trim() } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.price_mwk !== undefined ? { price_mwk: input.price_mwk } : {}),
       ...(input.stock_qty !== undefined ? { stock_qty: input.stock_qty } : {}),
-      ...(input.image_url !== undefined ? { image_url: input.image_url } : {}),
+      ...(nextImages ? { image_url: nextImages.cover, image_urls: nextImages.imageUrls } : {}),
       ...(input.is_active !== undefined ? { is_active: input.is_active } : {}),
       updated_at: new Date().toISOString(),
     };
@@ -160,23 +221,33 @@ export async function updateCatalogItem(itemId: string, input: CatalogItemUpdate
     return updated;
   }
 
+  const nextImages = input.image_urls !== undefined || input.image_url !== undefined ? imageUrlsForWrite(input) : null;
   const payload = {
     ...(input.name != null ? { name: input.name.trim() } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.price_mwk !== undefined ? { price_mwk: input.price_mwk } : {}),
     ...(input.stock_qty !== undefined ? { stock_qty: input.stock_qty } : {}),
-    ...(input.image_url !== undefined ? { image_url: input.image_url } : {}),
+    ...(nextImages ? { image_url: nextImages.cover, image_urls: nextImages.imageUrls } : {}),
     ...(input.is_active !== undefined ? { is_active: input.is_active } : {}),
   };
 
-  const { data, error } = await supabaseNewApp
+  let { data, error } = await supabaseNewApp
     .from("catalog_items")
     .update(payload)
     .eq("id", itemId)
-    .select("id, vendor_id, channel, name, description, price_mwk, stock_qty, image_url, is_active, created_at, updated_at")
+    .select(CATALOG_SELECT)
     .single();
+  if (isMissingImageUrlsError(error)) {
+    const { image_urls, ...legacyPayload } = payload;
+    ({ data, error } = await supabaseNewApp
+      .from("catalog_items")
+      .update(legacyPayload)
+      .eq("id", itemId)
+      .select(CATALOG_SELECT_LEGACY)
+      .single());
+  }
   throwIfError(error);
-  return data as CatalogItemRow;
+  return normalizeCatalogRow(data as CatalogItemRow);
 }
 
 export async function deleteCatalogItem(itemId: string): Promise<void> {

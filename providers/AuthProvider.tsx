@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase";
+import { clearSupabaseAuthStorage, isInvalidRefreshTokenError, supabase } from "../lib/supabase";
 import { normalizeAppRole } from "@/lib/roleRouting";
 import { ENV, isConfiguredAdminEmail } from "@/lib/env";
 import { clearDevAuthRecord, getDevAuthRecord, recordToUser, setDevAuthRecord } from "@/lib/devAuth";
@@ -37,6 +37,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<Role>(null);
   const [activeRole, setActiveRoleState] = useState<Role>(null);
   const [loading, setLoading] = useState(true);
+
+  const clearAuthState = async () => {
+    await clearSupabaseAuthStorage();
+    setSession(null);
+    setUser(null);
+    setRole(null);
+    setActiveRoleState(null);
+  };
 
   const hydrateActiveRole = async (nextUser: User | null, nextRole: Role) => {
     if (!nextUser?.id) {
@@ -139,8 +147,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const { data } = await supabase.auth.getSession();
+        const { data, error } = await supabase.auth.getSession();
         if (!alive) return;
+        if (error) {
+          if (isInvalidRefreshTokenError(error)) {
+            await clearAuthState();
+            return;
+          }
+          throw error;
+        }
         setSession(data.session ?? null);
         setUser(data.session?.user ?? null);
         await refreshRole(data.session?.user ?? null);
@@ -203,7 +218,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut();
+        if (error && !isInvalidRefreshTokenError(error)) throw error;
+        if (error) await clearSupabaseAuthStorage();
+        setSession(null);
+        setUser(null);
         setRole(null);
         setActiveRoleState(null);
       },
