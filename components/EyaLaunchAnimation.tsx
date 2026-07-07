@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Easing, Image, StyleSheet, useWindowDimensions } from "react-native";
+import { Image, StyleSheet, View, useWindowDimensions } from "react-native";
 
 type Props = {
   onComplete: () => void;
@@ -10,9 +10,6 @@ const LOGO = require("../assets/eya-logo-transparent.png");
 export default function EyaLaunchAnimation({ onComplete }: Props) {
   const { width } = useWindowDimensions();
   const completedRef = useRef(false);
-  const containerOpacity = useRef(new Animated.Value(1)).current;
-  const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoScale = useRef(new Animated.Value(0.94)).current;
   const logoWidth = Math.min(width - 56, 380);
 
   const complete = React.useCallback(() => {
@@ -22,56 +19,14 @@ export default function EyaLaunchAnimation({ onComplete }: Props) {
   }, [onComplete]);
 
   useEffect(() => {
-    const fallback = setTimeout(complete, 2200);
-    const animation = Animated.sequence([
-      Animated.parallel([
-        Animated.timing(logoOpacity, {
-          toValue: 1,
-          duration: 520,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(logoScale, {
-          toValue: 1,
-          duration: 620,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.delay(620),
-      Animated.timing(containerOpacity, {
-        toValue: 0,
-        duration: 420,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]);
-
-    animation.start(({ finished }) => {
-      if (finished) complete();
-    });
-
-    return () => {
-      clearTimeout(fallback);
-      animation.stop();
-    };
-  }, [complete, containerOpacity, logoOpacity, logoScale]);
+    const timer = setTimeout(complete, 1400);
+    return () => clearTimeout(timer);
+  }, [complete]);
 
   return (
-    <Animated.View style={[styles.overlay, { opacity: containerOpacity }]}>
-      <Animated.Image
-        source={LOGO}
-        style={[
-          styles.logo,
-          {
-            width: logoWidth,
-            opacity: logoOpacity,
-            transform: [{ scale: logoScale }],
-          },
-        ]}
-        resizeMode="contain"
-      />
-    </Animated.View>
+    <View style={styles.overlay}>
+      <Image source={LOGO} style={[styles.logo, { width: logoWidth }]} resizeMode="contain" />
+    </View>
   );
 }
 
