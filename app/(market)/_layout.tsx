@@ -7,8 +7,8 @@ export default function MarketLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          animation: "fade_from_bottom",
-          animationDuration: 220,
+          animation: "none",
+          freezeOnBlur: false,
         }}
       />
     </SellerGuard>
