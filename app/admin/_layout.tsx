@@ -4,7 +4,7 @@ import AdminGuard from "@/components/AdminGuard";
 export default function LegacyAdminLayout() {
   return (
     <AdminGuard>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false, animation: "none", freezeOnBlur: false }} />
     </AdminGuard>
   );
 }
