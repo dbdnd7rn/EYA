@@ -1,39 +1,46 @@
 import React from "react";
-import Svg, { Path, Rect, Text as SvgText } from "react-native-svg";
+import Svg, { Circle, Defs, G, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 
 type Brand = "airtel_money" | "mpamba";
 
 export default function PaymentBrandLogo({
   brand,
-  size = 34,
+  size = 42,
   active = false,
 }: {
   brand: Brand;
   size?: number;
   active?: boolean;
 }) {
-  if (brand === "airtel_money") {
-    return <AirtelMoneyLogo size={size} active={active} />;
-  }
+  if (brand === "airtel_money") return <AirtelMoneyLogo size={size} active={active} />;
   return <MpambaLogo size={size} active={active} />;
 }
 
 function AirtelMoneyLogo({ size, active }: { size: number; active: boolean }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 96 72" fill="none">
-      <Rect x="3" y="3" width="90" height="66" rx="16" fill="#FFFFFF" stroke={active ? "#ED1C24" : "#F6B2B6"} strokeWidth="2" />
-      <Path
-        d="M35.3 14.9C44.4 11.9 54 14.2 59.2 20.3C65.3 27.4 61.2 37.5 51.3 42.4C45.7 45.2 38.7 46.4 31.4 46.1C36.6 40.8 41.1 34.4 40.5 30.7C40.1 28.5 37.9 27.9 34.8 29.5C31.9 31 28.7 34.4 26.6 39.5C22.8 37.1 20.9 33.7 21.6 29.5C22.5 23.3 27.8 17.4 35.3 14.9Z"
-        fill="#ED1C24"
-      />
-      <Path
-        d="M28.7 46.3C31.1 43.6 34 42.3 36.2 43.2C38.7 44.2 38.2 47.2 34.9 50C31.7 52.8 26.3 54.8 21.4 54.8C19.7 54.8 18.8 53.5 19.7 52.1C21 50 24.1 47.9 28.7 46.3Z"
-        fill="#ED1C24"
-      />
-      <SvgText x="48" y="56" textAnchor="middle" fontSize="20" fontWeight="900" fill="#ED1C24">
+    <Svg width={size} height={size} viewBox="0 0 112 82" fill="none">
+      <Defs>
+        <LinearGradient id="airtelBg" x1="8" y1="8" x2="104" y2="74" gradientUnits="userSpaceOnUse">
+          <Stop offset="0" stopColor="#FFFFFF" />
+          <Stop offset="1" stopColor="#FFF1F2" />
+        </LinearGradient>
+      </Defs>
+      <Rect x="4" y="4" width="104" height="74" rx="18" fill="url(#airtelBg)" stroke={active ? "#E60012" : "#F3B4BB"} strokeWidth="2.4" />
+      <G transform="translate(13 8)">
+        <Circle cx="30" cy="23" r="18" fill="#E60012" />
+        <Path
+          d="M24.5 13.5C34.8 9.9 46.1 11.5 52.4 17.9C58.7 24.2 56.1 33.6 47.9 39.3C41.5 43.8 32.5 45.3 22.4 43.8C28.4 38.5 33 32.5 32.1 28.7C31.5 26.4 29.2 26 26.2 27.7C23.3 29.3 20.8 32.3 18.6 37.4C14.4 35.2 12.5 31.6 13.2 27.5C14.1 21.8 18.8 15.5 24.5 13.5Z"
+          fill="#FFFFFF"
+        />
+        <Path
+          d="M19.9 43.8C23.5 41.3 27.7 40.8 29.2 42.8C30.9 45 28.2 48.7 23.1 51.1C19.1 53 14.8 53.5 12.9 52.4C11.2 51.4 11.9 49.3 14.5 47.4C15.8 46.4 17.6 45.2 19.9 43.8Z"
+          fill="#FFFFFF"
+        />
+      </G>
+      <SvgText x="68" y="36" textAnchor="middle" fontSize="21" fontWeight="900" fill="#E60012">
         airtel
       </SvgText>
-      <SvgText x="48" y="65" textAnchor="middle" fontSize="9" fontWeight="800" fill="#ED1C24">
+      <SvgText x="68" y="56" textAnchor="middle" fontSize="15" fontWeight="900" fill="#E60012">
         money
       </SvgText>
     </Svg>
@@ -42,15 +49,23 @@ function AirtelMoneyLogo({ size, active }: { size: number; active: boolean }) {
 
 function MpambaLogo({ size, active }: { size: number; active: boolean }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 96 72" fill="none">
-      <Rect x="3" y="3" width="90" height="66" rx="16" fill="#FFFFFF" stroke={active ? "#25A64A" : "#D4E8D8"} strokeWidth="2" />
-      <Rect x="19" y="15" width="16" height="7" rx="3.5" fill="#25A64A" />
-      <Rect x="40" y="15" width="16" height="7" rx="3.5" fill="#FDB913" />
-      <Rect x="61" y="15" width="16" height="7" rx="3.5" fill="#1D71B8" />
-      <SvgText x="48" y="45" textAnchor="middle" fontSize="26" fontWeight="900" fill="#25A64A">
+    <Svg width={size} height={size} viewBox="0 0 112 82" fill="none">
+      <Defs>
+        <LinearGradient id="tnmBg" x1="8" y1="8" x2="104" y2="74" gradientUnits="userSpaceOnUse">
+          <Stop offset="0" stopColor="#FFFFFF" />
+          <Stop offset="1" stopColor="#F1FFF5" />
+        </LinearGradient>
+      </Defs>
+      <Rect x="4" y="4" width="104" height="74" rx="18" fill="url(#tnmBg)" stroke={active ? "#149447" : "#BFE5CA"} strokeWidth="2.4" />
+      <G transform="translate(17 12)">
+        <Rect x="0" y="0" width="22" height="10" rx="5" fill="#149447" />
+        <Rect x="28" y="0" width="22" height="10" rx="5" fill="#F4B400" />
+        <Rect x="56" y="0" width="22" height="10" rx="5" fill="#1E73BE" />
+      </G>
+      <SvgText x="56" y="44" textAnchor="middle" fontSize="29" fontWeight="900" fill="#149447">
         TNM
       </SvgText>
-      <SvgText x="48" y="59" textAnchor="middle" fontSize="13" fontWeight="900" fill="#171717">
+      <SvgText x="56" y="62" textAnchor="middle" fontSize="16" fontWeight="900" fill="#111827">
         Mpamba
       </SvgText>
     </Svg>
