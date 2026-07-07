@@ -12,7 +12,9 @@ export default function MarketBottomNav({ active }: { active: MarketNavKey }) {
     {
       key: "market",
       label: "Market",
-      onPress: () => router.replace("/(student)/market" as any),
+      onPress: () => {
+        if (active !== "market") router.replace("/(student)/market" as any);
+      },
       renderIcon: ({ color, size, strokeWidth }) => (
         <ShoppingBag color={color} size={size} strokeWidth={strokeWidth} />
       ),
@@ -20,7 +22,9 @@ export default function MarketBottomNav({ active }: { active: MarketNavKey }) {
     {
       key: "requests",
       label: "Requests",
-      onPress: () => router.replace("/(student)/market/requests" as any),
+      onPress: () => {
+        if (active !== "requests") router.replace("/(student)/market/requests" as any);
+      },
       renderIcon: ({ color, size, strokeWidth }) => (
         <ClipboardList color={color} size={size} strokeWidth={strokeWidth} />
       ),
@@ -28,7 +32,9 @@ export default function MarketBottomNav({ active }: { active: MarketNavKey }) {
     {
       key: "messages",
       label: "Chats",
-      onPress: () => router.replace("/(student)/market/messages" as any),
+      onPress: () => {
+        if (active !== "messages") router.replace("/(student)/market/messages" as any);
+      },
       renderIcon: ({ color, size, strokeWidth }) => (
         <MessageCircle color={color} size={size} strokeWidth={strokeWidth} />
       ),
