@@ -1,5 +1,5 @@
-import SelectTicketsScreen from "@/components/market/SelectTicketsScreen";
+import SelectTicketsScreenV2 from "@/components/market/SelectTicketsScreenV2";
 
 export default function StudentSelectTicketsPage() {
-  return <SelectTicketsScreen />;
+  return <SelectTicketsScreenV2 />;
 }
