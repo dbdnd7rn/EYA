@@ -1,5 +1,5 @@
-import EventDetailsScreen from "@/components/market/EventDetailsScreen";
+import EventDetailsScreenV2 from "@/components/market/EventDetailsScreenV2";
 
 export default function StudentEventDetailsPage() {
-  return <EventDetailsScreen />;
+  return <EventDetailsScreenV2 />;
 }
