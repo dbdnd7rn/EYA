@@ -12,26 +12,26 @@ export default function RoomsBottomNav({ active = "rooms" }: { active?: RoomsNav
     {
       key: "rooms",
       label: "Rooms",
-      onPress: () => router.replace("/(student)/(tabs)/rooms" as any),
-      renderIcon: ({ color, size, strokeWidth }) => (
-        <BedDouble color={color} size={size} strokeWidth={strokeWidth} />
-      ),
+      onPress: () => {
+        if (active !== "rooms") router.replace("/(student)/(tabs)/rooms" as any);
+      },
+      renderIcon: ({ color, size, strokeWidth }) => <BedDouble color={color} size={size} strokeWidth={strokeWidth} />,
     },
     {
       key: "saved",
       label: "Saved",
-      onPress: () => router.replace("/(student)/(tabs)/saved" as any),
-      renderIcon: ({ color, size, strokeWidth }) => (
-        <Heart color={color} size={size} strokeWidth={strokeWidth} />
-      ),
+      onPress: () => {
+        if (active !== "saved") router.replace("/(student)/(tabs)/saved" as any);
+      },
+      renderIcon: ({ color, size, strokeWidth }) => <Heart color={color} size={size} strokeWidth={strokeWidth} />,
     },
     {
       key: "chats",
       label: "Chats",
-      onPress: () => router.replace("/(student)/(tabs)/room-messages" as any),
-      renderIcon: ({ color, size, strokeWidth }) => (
-        <MessageCircle color={color} size={size} strokeWidth={strokeWidth} />
-      ),
+      onPress: () => {
+        if (active !== "chats") router.replace("/(student)/(tabs)/room-messages" as any);
+      },
+      renderIcon: ({ color, size, strokeWidth }) => <MessageCircle color={color} size={size} strokeWidth={strokeWidth} />,
     },
   ];
 
