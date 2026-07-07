@@ -24,6 +24,17 @@ export function isInvalidRefreshTokenError(error: unknown) {
   return message.includes("invalid refresh token") || message.includes("refresh token not found");
 }
 
+export function isNetworkUnavailableError(error: unknown) {
+  const message = String((error as { message?: unknown } | null)?.message ?? error ?? "").toLowerCase();
+  return (
+    message.includes("network request failed") ||
+    message.includes("network unavailable") ||
+    message.includes("failed to fetch") ||
+    message.includes("service unavailable") ||
+    message.includes("network_unavailable")
+  );
+}
+
 export async function clearSupabaseAuthStorage() {
   await Promise.all([
     AsyncStorage.removeItem(SUPABASE_AUTH_STORAGE_KEY),

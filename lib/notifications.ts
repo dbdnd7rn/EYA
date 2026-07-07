@@ -1,24 +1,57 @@
 import Constants from "expo-constants";
 import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { ENV } from "@/lib/env";
 import { captureRuntimeError, captureRuntimeEvent } from "@/lib/monitoring";
 import { supabase } from "@/lib/supabase";
 
-Notifications.setNotificationHandler({
-  handleNotification: async (notification) => {
-    const data = (notification.request.content.data ?? {}) as { playSound?: boolean; pushPriority?: string };
-    const shouldPlaySound = data.playSound === true || String(data.pushPriority ?? "").toLowerCase() === "important";
+type ExpoNotificationsModule = typeof import("expo-notifications");
+type NotificationCleanup = { remove: () => void };
 
-    return {
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound,
-      shouldSetBadge: false,
-    };
-  },
-});
+let notificationsModulePromise: Promise<ExpoNotificationsModule | null> | null = null;
+let notificationHandlerConfigured = false;
+
+function isExpoGo() {
+  return Constants.appOwnership === "expo";
+}
+
+function canUseExpoNotifications() {
+  return Platform.OS !== "web" && !isExpoGo();
+}
+
+async function getNotificationsModule() {
+  if (!canUseExpoNotifications()) return null;
+
+  if (!notificationsModulePromise) {
+    notificationsModulePromise = import("expo-notifications")
+      .then((mod) => {
+        if (!notificationHandlerConfigured) {
+          mod.setNotificationHandler({
+            handleNotification: async (notification) => {
+              const data = (notification.request.content.data ?? {}) as { playSound?: boolean; pushPriority?: string };
+              const shouldPlaySound = data.playSound === true || String(data.pushPriority ?? "").toLowerCase() === "important";
+
+              return {
+                shouldShowBanner: true,
+                shouldShowList: true,
+                shouldPlaySound,
+                shouldSetBadge: false,
+              };
+            },
+          });
+          notificationHandlerConfigured = true;
+        }
+
+        return mod;
+      })
+      .catch(async (error) => {
+        await captureRuntimeError(error, { scope: "load_expo_notifications" });
+        return null;
+      });
+  }
+
+  return notificationsModulePromise;
+}
 
 function getProjectId() {
   return Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId ?? undefined;
@@ -26,7 +59,8 @@ function getProjectId() {
 
 export async function registerForPushNotificationsAsync() {
   if (!ENV.ENABLE_PUSH_NOTIFICATIONS) return null;
-  if (Platform.OS === "web") return null;
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) return null;
   if (!Device.isDevice) return null;
 
   try {
@@ -94,6 +128,9 @@ export async function syncPushToken(userId: string, pushToken: string) {
 
 export async function scheduleLocalNotification(input: { title: string; body: string; data?: Record<string, unknown>; playSound?: boolean }) {
   try {
+    const Notifications = await getNotificationsModule();
+    if (!Notifications) return null;
+
     const permission = await Notifications.getPermissionsAsync();
     if (permission.status !== "granted") {
       const requested = await Notifications.requestPermissionsAsync();
@@ -118,4 +155,22 @@ export async function scheduleLocalNotification(input: { title: string; body: st
     await captureRuntimeError(error, { scope: "schedule_local_notification" });
     return null;
   }
+}
+
+export async function subscribeToNotificationEvents(input: {
+  onReceived: (notification: unknown) => void;
+  onResponse: (response: unknown) => void;
+}): Promise<NotificationCleanup | null> {
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) return null;
+
+  const receivedSub = Notifications.addNotificationReceivedListener(input.onReceived);
+  const responseSub = Notifications.addNotificationResponseReceivedListener(input.onResponse);
+
+  return {
+    remove: () => {
+      receivedSub.remove();
+      responseSub.remove();
+    },
+  };
 }

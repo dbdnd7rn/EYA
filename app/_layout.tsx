@@ -1,4 +1,5 @@
 import "../global.css";
+import { installRuntimeDiagnostics } from "@/lib/runtimeDiagnostics";
 import React from "react";
 import { Stack } from "expo-router";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput } from "react-native";
@@ -11,6 +12,8 @@ import { NotificationInboxProvider } from "@/providers/NotificationInboxProvider
 import EyaLaunchAnimation from "@/components/EyaLaunchAnimation";
 import AppRuntimeProvider from "@/providers/AppRuntimeProvider";
 import { StudentThemeProvider, useStudentTheme } from "@/providers/StudentThemeProvider";
+
+installRuntimeDiagnostics();
 
 type ComponentWithDefaults = {
   defaultProps?: Record<string, unknown>;
@@ -36,6 +39,14 @@ export default function RootLayout() {
 
   const handleLaunchComplete = React.useCallback(() => {
     setShowLaunchAnimation(false);
+  }, []);
+
+  React.useEffect(() => {
+    const fallback = setTimeout(() => {
+      setShowLaunchAnimation(false);
+    }, 3600);
+
+    return () => clearTimeout(fallback);
   }, []);
 
   return (

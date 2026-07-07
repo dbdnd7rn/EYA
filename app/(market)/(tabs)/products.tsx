@@ -1,5 +1,15 @@
 import React, { useMemo, useState } from "react";
-import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { usePathname, useRouter } from "expo-router";
 import { CirclePlus, PencilLine, RefreshCw, Search, Trash2 } from "lucide-react-native";
 import { useSellerWorkspace } from "@/components/seller/useSellerWorkspace";

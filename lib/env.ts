@@ -2,7 +2,7 @@ export const ENV = {
   SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
   SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
   NEW_APP_SCHEMA: process.env.EXPO_PUBLIC_NEW_APP_SCHEMA ?? "",
-  WEB_BASE_URL: process.env.EXPO_PUBLIC_WEB_BASE_URL ?? "https://eya.vercel.app",
+  WEB_BASE_URL: (process.env.EXPO_PUBLIC_WEB_BASE_URL ?? "https://eya.vercel.app").trim(),
   PAYCHANGU_BACKEND:
     process.env.EXPO_PUBLIC_PAYCHANGU_BACKEND ?? process.env.NEXT_PUBLIC_PAYCHANGU_BACKEND ?? "",
   CLOUDINARY_CLOUD_NAME: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ?? "",

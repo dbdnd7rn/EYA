@@ -290,16 +290,22 @@ export default function StudentHomeScreen() {
         return;
       }
 
-      const { data } = await supabase
-        .from("profiles")
-        .select("full_name,first_name,last_name,surname")
-        .eq("id", user.id)
-        .maybeSingle();
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("full_name,first_name,last_name,surname")
+          .eq("id", user.id)
+          .maybeSingle();
 
-      if (!active) return;
-      const profile = (data ?? null) as ProfileMini | null;
-      setDisplayName(resolveDisplayName(profile, user.email));
-      setAvatarInitials(resolveInitials(profile, user.email));
+        if (!active) return;
+        const profile = (data ?? null) as ProfileMini | null;
+        setDisplayName(resolveDisplayName(profile, user.email));
+        setAvatarInitials(resolveInitials(profile, user.email));
+      } catch {
+        if (!active) return;
+        setDisplayName(resolveDisplayName(null, user.email));
+        setAvatarInitials(resolveInitials(null, user.email));
+      }
     };
 
     void loadProfileMini();

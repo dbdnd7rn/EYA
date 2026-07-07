@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { clearSupabaseAuthStorage, isInvalidRefreshTokenError, supabase } from "../lib/supabase";
+import {
+  clearSupabaseAuthStorage,
+  isInvalidRefreshTokenError,
+  isNetworkUnavailableError,
+  supabase,
+} from "../lib/supabase";
 import { normalizeAppRole } from "@/lib/roleRouting";
 import { ENV, isConfiguredAdminEmail } from "@/lib/env";
 import { clearDevAuthRecord, getDevAuthRecord, recordToUser, setDevAuthRecord } from "@/lib/devAuth";
@@ -24,6 +29,21 @@ type AuthCtx = {
 };
 
 const Ctx = createContext<AuthCtx | null>(null);
+const AUTH_STARTUP_TIMEOUT_MS = 8000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 function sanitizeRole(role: Role, email?: string | null): Role {
   if (ENV.DEV_AUTH_MODE) return role;
@@ -147,10 +167,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const { data, error } = await supabase.auth.getSession();
+        const { data, error } = await withTimeout(
+          supabase.auth.getSession(),
+          AUTH_STARTUP_TIMEOUT_MS,
+          "Auth session lookup timed out.",
+        );
         if (!alive) return;
         if (error) {
-          if (isInvalidRefreshTokenError(error)) {
+          if (isInvalidRefreshTokenError(error) || isNetworkUnavailableError(error)) {
             await clearAuthState();
             return;
           }
@@ -158,14 +182,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         setSession(data.session ?? null);
         setUser(data.session?.user ?? null);
-        await refreshRole(data.session?.user ?? null);
+        await withTimeout(
+          refreshRole(data.session?.user ?? null),
+          AUTH_STARTUP_TIMEOUT_MS,
+          "Auth role lookup timed out.",
+        );
       } finally {
         if (alive) setLoading(false);
       }
     };
 
-    void init().catch(() => {
+    void init().catch(async (error) => {
       if (alive) {
+        if (isNetworkUnavailableError(error)) {
+          await clearSupabaseAuthStorage();
+        }
         setSession(null);
         setUser(null);
         setRole(null);

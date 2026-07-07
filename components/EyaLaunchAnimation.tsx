@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Easing, Image, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Animated, Easing, Image, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 type Props = {
   onComplete: () => void;
@@ -9,6 +9,7 @@ const LOGO = require("../assets/eya-logo-transparent.png");
 
 export default function EyaLaunchAnimation({ onComplete }: Props) {
   const { width } = useWindowDimensions();
+  const completedRef = useRef(false);
   const containerFade = useRef(new Animated.Value(1)).current;
   const logoProgress = useRef(new Animated.Value(0)).current;
   const glowProgress = useRef(new Animated.Value(0)).current;
@@ -16,8 +17,15 @@ export default function EyaLaunchAnimation({ onComplete }: Props) {
 
   const logoWidth = Math.min(width - 56, 360);
 
+  const complete = React.useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    onComplete();
+  }, [onComplete]);
+
   useEffect(() => {
-    Animated.sequence([
+    const fallback = setTimeout(complete, 3200);
+    const animation = Animated.sequence([
       Animated.parallel([
         Animated.timing(logoProgress, {
           toValue: 1,
@@ -45,10 +53,17 @@ export default function EyaLaunchAnimation({ onComplete }: Props) {
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
-    ]).start(({ finished }) => {
-      if (finished) onComplete();
+    ]);
+
+    animation.start(({ finished }) => {
+      if (finished) complete();
     });
-  }, [containerFade, glowProgress, logoProgress, onComplete, underlineProgress]);
+
+    return () => {
+      clearTimeout(fallback);
+      animation.stop();
+    };
+  }, [complete, containerFade, glowProgress, logoProgress, underlineProgress]);
 
   const logoTranslateX = logoProgress.interpolate({
     inputRange: [0, 1],
@@ -103,6 +118,7 @@ export default function EyaLaunchAnimation({ onComplete }: Props) {
           ]}
         >
           <Image source={LOGO} style={[styles.logo, { width: logoWidth }]} resizeMode="contain" />
+          <Text style={styles.logoFallback}>EYA</Text>
         </Animated.View>
 
         <Animated.View
@@ -149,6 +165,13 @@ const styles = StyleSheet.create({
   },
   logo: {
     height: 170,
+  },
+  logoFallback: {
+    position: "absolute",
+    color: "#102a54",
+    fontSize: 42,
+    fontWeight: "900",
+    letterSpacing: 1.5,
   },
   underline: {
     marginTop: 6,

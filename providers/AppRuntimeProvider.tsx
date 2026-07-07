@@ -1,10 +1,9 @@
 import React from "react";
-import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 import { notificationTargetForRole } from "@/lib/appNotifications";
 import { ENV } from "@/lib/env";
 import { captureRuntimeError, captureRuntimeEvent, reportStartupWarnings, setMonitoringUserContext } from "@/lib/monitoring";
-import { registerForPushNotificationsAsync, scheduleLocalNotification, syncPushToken } from "@/lib/notifications";
+import { registerForPushNotificationsAsync, scheduleLocalNotification, subscribeToNotificationEvents, syncPushToken } from "@/lib/notifications";
 import { normalizeAppRole, type AppRole } from "@/lib/roleRouting";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
@@ -47,6 +46,7 @@ export default function AppRuntimeProvider({ children }: { children: React.React
 
     let active = true;
     const seenLocalNotificationIds = new Set<string>();
+    let notificationCleanup: { remove: () => void } | null = null;
 
     const init = async () => {
       try {
@@ -65,32 +65,39 @@ export default function AppRuntimeProvider({ children }: { children: React.React
 
     void init();
 
-    const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
-      void captureRuntimeEvent({
-        type: "push_received",
-        message: "Push notification received while app was open.",
-        userId: user.id,
-        context: {
-          identifier: notification.request.identifier,
-        },
-      });
-    });
+    void subscribeToNotificationEvents({
+      onReceived: (notification: any) => {
+        void captureRuntimeEvent({
+          type: "push_received",
+          message: "Push notification received while app was open.",
+          userId: user.id,
+          context: {
+            identifier: notification.request.identifier,
+          },
+        });
+      },
+      onResponse: (response: any) => {
+        const data = (response.notification.request.content.data ?? {}) as Record<string, unknown>;
+        void captureRuntimeEvent({
+          type: "push_opened",
+          message: "User opened a push notification.",
+          userId: user.id,
+          context: {
+            identifier: response.notification.request.identifier,
+          },
+        });
 
-    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = (response.notification.request.content.data ?? {}) as Record<string, unknown>;
-      void captureRuntimeEvent({
-        type: "push_opened",
-        message: "User opened a push notification.",
-        userId: user.id,
-        context: {
-          identifier: response.notification.request.identifier,
-        },
-      });
-
-      const target = routeFromNotificationPayload(data, activeRole ?? role);
-      if (target) {
-        router.push(target as any);
+        const target = routeFromNotificationPayload(data, activeRole ?? role);
+        if (target) {
+          router.push(target as any);
+        }
+      },
+    }).then((cleanup) => {
+      if (!active) {
+        cleanup?.remove();
+        return;
       }
+      notificationCleanup = cleanup;
     });
 
     const notificationRowSub = supabase
@@ -119,8 +126,7 @@ export default function AppRuntimeProvider({ children }: { children: React.React
 
     return () => {
       active = false;
-      receivedSub.remove();
-      responseSub.remove();
+      notificationCleanup?.remove();
       supabase.removeChannel(notificationRowSub);
     };
   }, [activeRole, role, router, user?.id]);

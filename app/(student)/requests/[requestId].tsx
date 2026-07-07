@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CalendarClock, CheckCircle2, ChevronLeft, MapPin, MessageCircle, XCircle } from "lucide-react-native";
 import { getMarketRequestById, setMarketRequestStatus, type MarketInterestRequest } from "@/lib/marketInterest";

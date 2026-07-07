@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CheckCircle2, ChevronLeft, Star } from "lucide-react-native";
 import { getMarketRequestById, submitStudentPickupFeedback, type MarketInterestRequest } from "@/lib/marketInterest";

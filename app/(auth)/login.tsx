@@ -22,6 +22,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { supabase } from "@/lib/supabase";
 import { ENV } from "@/lib/env";
 import { consumeAuthFeedback } from "@/lib/authFeedback";
+import { authErrorMessage } from "@/lib/authErrorMessage";
 import { matchDevAccount } from "@/lib/devAuth";
 import { signInWithGoogle } from "@/lib/googleAuth";
 import { useAuth } from "@/providers/AuthProvider";
@@ -57,6 +58,12 @@ export default function LoginScreen() {
 
   const handleSubmit = async () => {
     setError(null);
+
+    if (!email.trim() || !password) {
+      setError("Enter your email and password.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -78,14 +85,14 @@ export default function LoginScreen() {
       });
 
       if (signInError) {
-        setError(signInError.message);
+        setError(authErrorMessage(signInError, "Could not sign in. Please try again."));
         return;
       }
 
       await new Promise((resolve) => setTimeout(resolve, 300));
       router.replace((redirectTo ?? "/redirect") as any);
-    } catch {
-      setError("Failed to sign in. Please try again.");
+    } catch (err) {
+      setError(authErrorMessage(err, "Could not sign in. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -97,11 +104,15 @@ export default function LoginScreen() {
 
     try {
       const result = await signInWithGoogle(null, "login");
+      if (result.cancelled) {
+        setError("Google sign-in was cancelled.");
+        return;
+      }
       if (!result.redirected && !result.cancelled) {
         router.replace((redirectTo ?? "/redirect") as any);
       }
-    } catch (err: any) {
-      setError(err?.message ?? "Google sign-in failed. Please try again.");
+    } catch (err) {
+      setError(authErrorMessage(err, "Google sign-in could not be completed. Check Supabase redirect URLs."));
     } finally {
       setGoogleLoading(false);
     }
@@ -170,7 +181,11 @@ export default function LoginScreen() {
                 </View>
               ) : null}
 
-              <Pressable style={[styles.primaryButton, loading && styles.primaryButtonDisabled]} onPress={handleSubmit} disabled={loading}>
+              <Pressable
+                style={[styles.primaryButton, (loading || googleLoading) && styles.primaryButtonDisabled]}
+                onPress={handleSubmit}
+                disabled={loading || googleLoading}
+              >
                 <View style={styles.primaryButtonGradient}>
                   <Svg width="100%" height="100%" style={StyleSheet.absoluteFillObject}>
                     <Defs>

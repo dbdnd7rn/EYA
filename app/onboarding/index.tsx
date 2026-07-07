@@ -1,5 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, Easing, Image, type ImageSourcePropType, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Easing,
+  Image,
+  type ImageSourcePropType,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, BellRing, BriefcaseBusiness, Building2, Camera, Check, CheckCircle2, ChevronRight, ClipboardCheck, Clock3, CreditCard, FileUp, House, MapPin, Send, ShieldCheck, Smartphone, Store, UserRound, UtensilsCrossed, WalletCards } from "lucide-react-native";

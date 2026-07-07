@@ -1,5 +1,15 @@
 import React from "react";
-import { Alert, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, CalendarClock, ChevronLeft, ChevronRight, Heart, MapPin, MessageCircle, ShieldCheck, Star, Truck, X } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";

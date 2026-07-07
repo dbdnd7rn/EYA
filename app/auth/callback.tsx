@@ -1,9 +1,9 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import { consumePendingGoogleAuthContext, persistAuthFeedback } from "@/lib/authFeedback";
-import { completeGoogleAuthFromUrl } from "@/lib/googleAuth";
+import { clearPendingGoogleAuthState, completeGoogleAuthFromUrl, getAuthRedirectParams } from "@/lib/googleAuth";
 
 /**
  * Handles auth redirects such as:
@@ -13,58 +13,69 @@ import { completeGoogleAuthFromUrl } from "@/lib/googleAuth";
 export default function AuthCallbackScreen() {
   const params = useLocalSearchParams<{ code?: string; type?: string; error?: string; error_description?: string }>();
   const currentUrl = Linking.useURL();
-  const handledRef = useRef(false);
+  const handledUrlRef = useRef<string | null>(null);
+  const paramKey = useMemo(
+    () =>
+      JSON.stringify(
+        Object.entries(params)
+          .flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : []))
+          .sort(([left], [right]) => left.localeCompare(right)),
+      ),
+    [params],
+  );
 
   useEffect(() => {
+    const fallbackUrl =
+      currentUrl ||
+      Linking.createURL("auth/callback", {
+        queryParams: Object.fromEntries(
+          Object.entries(params).flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : [])),
+        ),
+      });
+    const redirectParams = getAuthRedirectParams(fallbackUrl);
     const hasAuthPayload = Boolean(
-      params.code ||
-        params.error ||
-        params.error_description ||
-        currentUrl?.includes("code=") ||
-        currentUrl?.includes("error="),
+      redirectParams.get("code") ||
+        redirectParams.get("access_token") ||
+        redirectParams.get("refresh_token") ||
+        redirectParams.get("error") ||
+        redirectParams.get("error_description"),
     );
 
-    if (!hasAuthPayload || handledRef.current) return;
-    handledRef.current = true;
+    if (!hasAuthPayload || handledUrlRef.current === fallbackUrl) return;
+    handledUrlRef.current = fallbackUrl;
 
     const run = async () => {
-      const type = typeof params.type === "string" ? params.type : null;
-      const authError =
-        typeof params.error_description === "string"
-          ? params.error_description
-          : typeof params.error === "string"
-            ? params.error
-            : null;
+      const type = redirectParams.get("type");
+      const authError = redirectParams.get("error_description") || redirectParams.get("error");
       const context = await consumePendingGoogleAuthContext();
       const fallbackRoute = context?.screen === "signup" ? "/(auth)/signup" : "/(auth)/login";
       const fallbackParams = { role: context?.role ?? "student" };
 
       if (authError) {
+        await clearPendingGoogleAuthState();
         await persistAuthFeedback({
           screen: context?.screen ?? "login",
           role: context?.role ?? "student",
-          error: authError,
+          error: authError.toLowerCase().includes("access_denied")
+            ? "Google sign-in was cancelled."
+            : "Google sign-in could not be completed. Check Supabase redirect URLs.",
         });
         router.replace({ pathname: fallbackRoute, params: fallbackParams });
         return;
       }
 
-      const fallbackUrl =
-        currentUrl ||
-        Linking.createURL("auth/callback", {
-          queryParams: Object.fromEntries(
-            Object.entries(params).flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : [])),
-          ),
-        });
-
       try {
-        await completeGoogleAuthFromUrl(fallbackUrl);
         if (type === "recovery") {
+          await completeGoogleAuthFromUrl(fallbackUrl, { finalizeRole: false });
+          await clearPendingGoogleAuthState();
           router.replace("/(auth)/reset-password");
           return;
         }
+
+        await completeGoogleAuthFromUrl(fallbackUrl);
         router.replace("/redirect");
       } catch (err: any) {
+        await clearPendingGoogleAuthState();
         await persistAuthFeedback({
           screen: context?.screen ?? "login",
           role: context?.role ?? "student",
@@ -75,7 +86,7 @@ export default function AuthCallbackScreen() {
     };
 
     void run();
-  }, [currentUrl, params.code, params.error, params.error_description, params.type]);
+  }, [currentUrl, paramKey, params]);
 
   return (
     <View className="flex-1 items-center justify-center bg-white">

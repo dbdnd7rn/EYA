@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View, Image } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, Image } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Bell, ChevronLeft, MessageCircle, Package2 } from "lucide-react-native";
 import { useAuth } from "@/providers/AuthProvider";

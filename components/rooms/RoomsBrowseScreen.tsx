@@ -1,5 +1,17 @@
 import React from "react";
-import { Alert, FlatList, Image, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  FlatList,
+  Image,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ArrowLeft, Bell, Heart, PiggyBank, Scale, Search, User2 } from "lucide-react-native";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";

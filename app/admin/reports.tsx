@@ -1,5 +1,6 @@
 import React from "react";
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { listTrustSafetyReportsForAdmin, updateTrustSafetyReportStatus, type TrustSafetyReportStatus } from "@/lib/trustSafety";

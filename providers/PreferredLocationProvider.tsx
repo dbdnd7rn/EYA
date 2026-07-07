@@ -84,42 +84,46 @@ export function PreferredLocationProvider({ children }: { children: React.ReactN
 
       setLoading(true);
 
-      const raw = await AsyncStorage.getItem(storageKey(user.id));
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as PreferredLocation;
-          if (active) {
-            setLocation(parsed);
-            setLoading(false);
+      try {
+        const raw = await AsyncStorage.getItem(storageKey(user.id));
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as PreferredLocation;
+            if (active) {
+              setLocation(parsed);
+              setLoading(false);
+            }
+            return;
+          } catch {
+            await AsyncStorage.removeItem(storageKey(user.id));
           }
-          return;
-        } catch {
-          await AsyncStorage.removeItem(storageKey(user.id));
         }
+
+        const { data } = await supabase.from("profiles").select("campus,area").eq("id", user.id).maybeSingle();
+        if (!active) return;
+
+        const profile = (data ?? null) as ProfileLocationRow | null;
+        const campus = normalizeText(profile?.campus);
+        const area = normalizeText(profile?.area);
+
+        if (campus || area) {
+          setLocation({
+            label: [area, campus].filter(Boolean).join(", ") || "Saved location",
+            campus,
+            area,
+            city: "Blantyre",
+            latitude: null,
+            longitude: null,
+            updatedAt: new Date().toISOString(),
+          });
+        } else {
+          setLocation(null);
+        }
+      } catch {
+        if (active) setLocation(null);
+      } finally {
+        if (active) setLoading(false);
       }
-
-      const { data } = await supabase.from("profiles").select("campus,area").eq("id", user.id).maybeSingle();
-      if (!active) return;
-
-      const profile = (data ?? null) as ProfileLocationRow | null;
-      const campus = normalizeText(profile?.campus);
-      const area = normalizeText(profile?.area);
-
-      if (campus || area) {
-        setLocation({
-          label: [area, campus].filter(Boolean).join(", ") || "Saved location",
-          campus,
-          area,
-          city: "Blantyre",
-          latitude: null,
-          longitude: null,
-          updatedAt: new Date().toISOString(),
-        });
-      } else {
-        setLocation(null);
-      }
-
-      setLoading(false);
     };
 
     void load();

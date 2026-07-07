@@ -23,6 +23,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { supabase } from "@/lib/supabase";
 import { ENV } from "@/lib/env";
 import { consumeAuthFeedback } from "@/lib/authFeedback";
+import { authErrorMessage } from "@/lib/authErrorMessage";
 import { signInWithGoogle } from "@/lib/googleAuth";
 import { useAuth } from "@/providers/AuthProvider";
 import EyaWordmark from "@/components/brand/EyaWordmark";
@@ -90,7 +91,7 @@ export default function SignupScreen() {
       });
 
       if (error) {
-        setErrorMsg(error.message);
+        setErrorMsg(authErrorMessage(error, "Could not create your account. Try again."));
         return;
       }
 
@@ -125,8 +126,8 @@ export default function SignupScreen() {
       }
 
       setInfoMsg("Account created successfully. Please check your email to confirm your account, then log in.");
-    } catch {
-      setErrorMsg("Could not create your account. Try again.");
+    } catch (err) {
+      setErrorMsg(authErrorMessage(err, "Could not create your account. Try again."));
     } finally {
       setLoading(false);
     }
@@ -139,11 +140,15 @@ export default function SignupScreen() {
 
     try {
       const result = await signInWithGoogle("student", "signup");
+      if (result.cancelled) {
+        setErrorMsg("Google sign-up was cancelled.");
+        return;
+      }
       if (!result.redirected && !result.cancelled) {
         router.replace("/redirect");
       }
-    } catch (err: any) {
-      setErrorMsg(err?.message ?? "Google sign-up failed. Please try again.");
+    } catch (err) {
+      setErrorMsg(authErrorMessage(err, "Google sign-up could not be completed. Check Supabase redirect URLs."));
     } finally {
       setGoogleLoading(false);
     }
@@ -246,7 +251,11 @@ export default function SignupScreen() {
                 </View>
               ) : null}
 
-              <Pressable style={[styles.primaryButton, loading && styles.primaryButtonDisabled]} onPress={submit} disabled={loading}>
+              <Pressable
+                style={[styles.primaryButton, (loading || googleLoading) && styles.primaryButtonDisabled]}
+                onPress={submit}
+                disabled={loading || googleLoading}
+              >
                 <View style={styles.primaryButtonGradient}>
                   <Svg width="100%" height="100%" style={StyleSheet.absoluteFillObject}>
                     <Defs>

@@ -1,7 +1,17 @@
 import React from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowLeft, ChevronRight, CircleAlert } from "lucide-react-native";
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  useLocalSearchParams,
+  useRouter } from "expo-router";
+import { ArrowLeft,
+  ChevronRight,
+  CircleAlert } from "lucide-react-native";
+import { Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 function pickString(value: string | string[] | undefined) {
   return typeof value === "string" && value.trim() ? value : undefined;

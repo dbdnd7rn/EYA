@@ -1,5 +1,6 @@
 import React from "react";
-import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import TopNav from "@/components/TopNav";
 import { captureRuntimeError, captureRuntimeEvent } from "@/lib/monitoring";

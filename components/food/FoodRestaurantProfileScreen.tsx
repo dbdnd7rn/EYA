@@ -1,5 +1,6 @@
 import React from "react";
-import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, Bike, ChevronRight, Clock3, Mail, MapPin, MessageCircle, Phone, Plus, ShieldCheck, Star, UtensilsCrossed } from "lucide-react-native";
 import { buildFoodSelectionSummary, getDefaultFoodSelections, type FoodMenuSelectionMap } from "@/lib/foodMenu";

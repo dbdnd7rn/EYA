@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Check, House, ShoppingBag, UtensilsCrossed } from "lucide-react-native";
@@ -39,6 +39,7 @@ const trustPoints = ["Verified providers", "Built for confidence", "Built for ev
 export default function IndexPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const [startupTimedOut, setStartupTimedOut] = React.useState(false);
 
   React.useEffect(() => {
     if (!loading && user) {
@@ -46,8 +47,26 @@ export default function IndexPage() {
     }
   }, [loading, user, router]);
 
-  if (loading) {
-    return <SafeAreaView style={styles.loadingRoot} />;
+  React.useEffect(() => {
+    if (!loading) {
+      setStartupTimedOut(false);
+      return;
+    }
+
+    const timer = setTimeout(() => setStartupTimedOut(true), 9000);
+    return () => clearTimeout(timer);
+  }, [loading]);
+
+  if (loading && !startupTimedOut) {
+    return (
+      <SafeAreaView style={styles.loadingRoot}>
+        <View style={styles.loadingBox}>
+          <EyaWordmark width={148} height={52} withTagline={false} />
+          <ActivityIndicator color="#2b6ed8" />
+          <Text style={styles.loadingText}>Starting EYA...</Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -114,6 +133,8 @@ export default function IndexPage() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f5f4fb" },
   loadingRoot: { flex: 1, backgroundColor: "#f5f4fb" },
+  loadingBox: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 },
+  loadingText: { color: "#667294", fontSize: 14, fontWeight: "800" },
   content: { paddingBottom: 36 },
   shell: {
     width: "100%",

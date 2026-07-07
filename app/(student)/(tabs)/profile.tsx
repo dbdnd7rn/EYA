@@ -7,13 +7,13 @@ import {
   Easing,
   Image,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { BadgeCheck, Camera, CheckCircle2, Mail, Phone, Sparkles, User2 } from "lucide-react-native";
