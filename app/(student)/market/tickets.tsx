@@ -1,5 +1,5 @@
-import TicketsHomeScreen from "@/components/market/TicketsHomeScreen";
+import TicketsHomeScreenSafe from "@/components/market/TicketsHomeScreenSafe";
 
 export default function StudentTicketsPage() {
-  return <TicketsHomeScreen />;
+  return <TicketsHomeScreenSafe />;
 }
