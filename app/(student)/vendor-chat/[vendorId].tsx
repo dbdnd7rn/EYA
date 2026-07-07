@@ -33,6 +33,13 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function cleanRouteParam(value?: string | string[] | null) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const text = String(raw ?? "").trim();
+  if (!text || text.toLowerCase() === "null" || text.toLowerCase() === "undefined") return "";
+  return text;
+}
+
 function getUploadFileMeta(asset: { uri: string; fileName?: string | null; mimeType?: string | null }) {
   const fromName = (asset.fileName ?? "").split(".").pop()?.toLowerCase() ?? "";
   const fromUri = asset.uri.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
@@ -66,18 +73,18 @@ export default function StudentVendorChatPage() {
   const { user } = useAuth();
   const { isOnline } = useNetwork();
   const params = useLocalSearchParams<{ vendorId?: string; channel?: string; message?: string; itemId?: string; subject?: string; requestId?: string; itemName?: string; image?: string; price?: string; category?: string; vendorName?: string }>();
-  const vendorId = typeof params.vendorId === "string" ? params.vendorId : "";
+  const vendorId = cleanRouteParam(params.vendorId);
   const userId = user?.id ?? "";
-  const channel = (params.channel === "food" ? "food" : "market") as SalesChannel;
-  const initialMessage = typeof params.message === "string" ? params.message : "";
-  const itemId = typeof params.itemId === "string" ? params.itemId : "";
-  const initialSubject = typeof params.subject === "string" ? params.subject : "";
-  const requestId = typeof params.requestId === "string" ? params.requestId : "";
-  const itemName = typeof params.itemName === "string" ? params.itemName : "";
-  const itemImage = typeof params.image === "string" ? params.image : "";
-  const itemPrice = Number(typeof params.price === "string" ? params.price : 0);
-  const itemCategory = typeof params.category === "string" ? params.category : "Essentials";
-  const vendorName = typeof params.vendorName === "string" ? params.vendorName : "";
+  const channel = (cleanRouteParam(params.channel) === "food" ? "food" : "market") as SalesChannel;
+  const initialMessage = cleanRouteParam(params.message);
+  const itemId = cleanRouteParam(params.itemId);
+  const initialSubject = cleanRouteParam(params.subject);
+  const requestId = cleanRouteParam(params.requestId);
+  const itemName = cleanRouteParam(params.itemName);
+  const itemImage = cleanRouteParam(params.image);
+  const itemPrice = Number(cleanRouteParam(params.price) || 0);
+  const itemCategory = cleanRouteParam(params.category) || "Essentials";
+  const vendorName = cleanRouteParam(params.vendorName);
   const [vendor, setVendor] = useState<VendorRow | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationSubject, setConversationSubject] = useState("");
