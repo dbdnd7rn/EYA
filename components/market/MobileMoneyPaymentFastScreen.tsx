@@ -22,6 +22,38 @@ function formatPhone(value: string) {
   return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
 }
 
+function getFriendlyPaymentError(error: unknown) {
+  const message = error instanceof Error ? error.message : String((error as any)?.message || error || "");
+  const lower = message.toLowerCase();
+
+  if (lower.includes("invalid secret key") || lower.includes("secret key")) {
+    return {
+      title: "Payment setup needed",
+      message:
+        "The app is working, but PayChangu is rejecting the backend key. Add a valid PayChangu secret key on the backend, redeploy/restart it, then try again.",
+    };
+  }
+
+  if (lower.includes("backend url") || lower.includes("not configured")) {
+    return {
+      title: "Payment setup needed",
+      message: "The payment backend is not configured yet. Set EXPO_PUBLIC_PAYCHANGU_BACKEND and restart the app.",
+    };
+  }
+
+  if (lower.includes("network") || lower.includes("failed to fetch") || lower.includes("timeout")) {
+    return {
+      title: "Payment network issue",
+      message: "Could not reach the payment server. Check your internet or try again in a moment.",
+    };
+  }
+
+  return {
+    title: "Payment failed",
+    message: message || "Could not start this ticket payment.",
+  };
+}
+
 export default function MobileMoneyPaymentFastScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -62,8 +94,9 @@ export default function MobileMoneyPaymentFastScreen() {
       setStartingPayment(true);
       const payment = await createTicketOrderPayment(session.access_token, { eventId: event.id, tierId: tier.id, quantity, paymentMethod, phone: `+265${phoneDigits}` });
       router.push({ pathname: "/(student)/market/payment-processing", params: { orderId: payment.order.id, txRef: payment.txRef, eventId: event.id, tierId: tier.id, quantity: String(quantity) } } as any);
-    } catch (error: any) {
-      Alert.alert("Payment failed", error?.message || "Could not start this ticket payment.");
+    } catch (error) {
+      const friendly = getFriendlyPaymentError(error);
+      Alert.alert(friendly.title, friendly.message);
     } finally {
       setStartingPayment(false);
     }
@@ -79,7 +112,7 @@ function EventCard({ event }: { event: TicketEvent }) {
   return <View style={styles.eventCard}><Image source={{ uri: eventImageUrl(event, true) }} style={styles.eventImage} /><View style={styles.eventCopy}><Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text><View style={styles.eventBadge}><Text style={styles.eventBadgeText}>{String(event.category || "Event").toUpperCase()}</Text></View><MetaRow Icon={Calendar} text={eventDateLabel(event)} /><MetaRow Icon={Clock} text={eventTimeLabel(event)} /><MetaRow Icon={MapPin} text={eventLocation(event)} /></View></View>;
 }
 function TicketCard({ quantity, tier }: { quantity: number; tier: TicketTier }) { return <View style={styles.ticketCard}><View style={styles.ticketIcon}><Ticket size={32} color={ACCENT} /></View><View style={styles.ticketCopy}><Text style={styles.ticketTitle}>{tier.name}</Text><Text style={styles.ticketSub}>{tier.description || "Official EYA event ticket"}</Text><Text style={styles.ticketPrice}>{money(tier.priceMwk)}</Text></View><View style={styles.qtyPill}><Text style={styles.qtyText}>Qty: {quantity}</Text></View></View>; }
-function ProviderCard({ active, onPress, provider }: { active: boolean; onPress: () => void; provider: { id: MobileProvider; title: string; subtitle: string } }) { return <Pressable style={[styles.methodCard, active && styles.methodCardActive]} onPress={onPress}><View style={styles.methodLogo}><PaymentBrandLogo brand={provider.id} size={38} active={active} /></View><View style={styles.methodCopy}><Text style={styles.methodTitle}>{provider.title}</Text><Text style={styles.methodSub}>{provider.subtitle}</Text></View><View style={[styles.radioOuter, active && styles.radioOuterActive]}>{active ? <View style={styles.radioInner} /> : null}</View></Pressable>; }
+function ProviderCard({ active, onPress, provider }: { active: boolean; onPress: () => void; provider: { id: MobileProvider; title: string; subtitle: string } }) { return <Pressable style={[styles.methodCard, active && styles.methodCardActive]} onPress={onPress}><View style={styles.methodLogo}><PaymentBrandLogo brand={provider.id} size={48} active={active} /></View><View style={styles.methodCopy}><Text style={styles.methodTitle}>{provider.title}</Text><Text style={styles.methodSub}>{provider.subtitle}</Text></View><View style={[styles.radioOuter, active && styles.radioOuterActive]}>{active ? <View style={styles.radioInner} /> : null}</View></Pressable>; }
 function MetaRow({ Icon, text }: { Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>; text: string }) { return <View style={styles.metaRow}><Icon size={15} color={MUTED} /><Text style={styles.metaText} numberOfLines={1}>{text}</Text></View>; }
 function PayBar({ enabled, loading, onPay, total }: { enabled: boolean; loading: boolean; onPay: () => void; total: number }) { const insets = useSafeAreaInsets(); return <View style={[styles.payBarOuter, { bottom: Math.max(14, insets.bottom + 8) }]}><View style={styles.payBar}><View><Text style={styles.payLabel}>TOTAL PAYABLE</Text><Text style={styles.payAmount}>{money(total)}</Text></View><Pressable disabled={!enabled} style={[styles.payButton, !enabled && styles.payButtonDisabled]} onPress={onPay}>{loading ? <ActivityIndicator color="#ffffff" /> : <><Text style={styles.payButtonText}>Pay Now</Text><Lock size={18} color="#ffffff" /></>}</Pressable></View></View>; }
 
@@ -87,6 +120,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG }, safe: { flex: 1 }, center: { flex: 1, backgroundColor: BG, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }, title: { color: TEXT, fontSize: 20, fontWeight: "900" }, muted: { color: MUTED, fontSize: 14, fontWeight: "700", textAlign: "center" }, header: { minHeight: 76, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 16 }, roundBtn: { width: 48, height: 48, borderRadius: 17, backgroundColor: "rgba(255,255,255,0.78)", borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" }, headerTitle: { color: TEXT, fontSize: 22, fontWeight: "900" }, content: { paddingHorizontal: 18, gap: 18 }, kicker: { color: TEXT, fontSize: 12, fontWeight: "900", letterSpacing: 1.2 },
   eventCard: { borderRadius: 26, backgroundColor: "rgba(255,255,255,0.88)", borderWidth: 1, borderColor: BORDER, padding: 14, flexDirection: "row", gap: 14 }, eventImage: { width: 104, height: 146, borderRadius: 18, backgroundColor: BORDER }, eventCopy: { flex: 1, minWidth: 0, justifyContent: "center", gap: 8 }, eventTitle: { color: TEXT, fontSize: 20, lineHeight: 25, fontWeight: "900" }, eventBadge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: "#eef1ff", paddingHorizontal: 10, paddingVertical: 7 }, eventBadgeText: { color: ACCENT, fontSize: 11, fontWeight: "900" }, metaRow: { flexDirection: "row", alignItems: "center", gap: 8 }, metaText: { flex: 1, color: TEXT, fontSize: 12, fontWeight: "700" },
   ticketCard: { borderRadius: 24, backgroundColor: "rgba(255,255,255,0.88)", borderWidth: 1, borderColor: BORDER, padding: 16, flexDirection: "row", alignItems: "center", gap: 14 }, ticketIcon: { width: 66, height: 66, borderRadius: 18, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" }, ticketCopy: { flex: 1, minWidth: 0, gap: 6 }, ticketTitle: { color: TEXT, fontSize: 18, fontWeight: "900" }, ticketSub: { color: MUTED, fontSize: 13, lineHeight: 19, fontWeight: "700" }, ticketPrice: { color: ACCENT, fontSize: 20, fontWeight: "900", marginTop: 4 }, qtyPill: { borderRadius: 999, backgroundColor: "#f7f8fe", paddingHorizontal: 12, paddingVertical: 8 }, qtyText: { color: TEXT, fontSize: 12, fontWeight: "900" },
-  paymentMethods: { gap: 12 }, methodCard: { minHeight: 82, borderRadius: 18, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.86)", flexDirection: "row", alignItems: "center", gap: 13, paddingHorizontal: 14 }, methodCardActive: { borderColor: ACCENT, backgroundColor: "#ffffff" }, methodLogo: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" }, methodCopy: { flex: 1 }, methodTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, methodSub: { color: MUTED, fontSize: 12, fontWeight: "700", marginTop: 4 }, radioOuter: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: MUTED, alignItems: "center", justifyContent: "center" }, radioOuterActive: { borderColor: ACCENT }, radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: ACCENT }, phoneCard: { minHeight: 66, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fff", flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 }, countryCode: { color: TEXT, fontSize: 15, fontWeight: "900" }, phoneInput: { flex: 1, minWidth: 0, color: TEXT, fontSize: 17, fontWeight: "800" }, qrInfoCard: { borderRadius: 22, backgroundColor: "#e8ddff", padding: 16, flexDirection: "row", alignItems: "center", gap: 14 }, qrIconBox: { width: 54, height: 54, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.58)", alignItems: "center", justifyContent: "center" }, qrCopy: { flex: 1 }, qrTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, qrText: { color: TEXT, opacity: 0.74, fontSize: 13, lineHeight: 19, fontWeight: "700", marginTop: 5 },
+  paymentMethods: { gap: 12 }, methodCard: { minHeight: 86, borderRadius: 18, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.86)", flexDirection: "row", alignItems: "center", gap: 13, paddingHorizontal: 14 }, methodCardActive: { borderColor: ACCENT, backgroundColor: "#ffffff" }, methodLogo: { width: 58, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center" }, methodCopy: { flex: 1 }, methodTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, methodSub: { color: MUTED, fontSize: 12, fontWeight: "700", marginTop: 4 }, radioOuter: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: MUTED, alignItems: "center", justifyContent: "center" }, radioOuterActive: { borderColor: ACCENT }, radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: ACCENT }, phoneCard: { minHeight: 66, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fff", flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 }, countryCode: { color: TEXT, fontSize: 15, fontWeight: "900" }, phoneInput: { flex: 1, minWidth: 0, color: TEXT, fontSize: 17, fontWeight: "800" }, qrInfoCard: { borderRadius: 22, backgroundColor: "#e8ddff", padding: 16, flexDirection: "row", alignItems: "center", gap: 14 }, qrIconBox: { width: 54, height: 54, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.58)", alignItems: "center", justifyContent: "center" }, qrCopy: { flex: 1 }, qrTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, qrText: { color: TEXT, opacity: 0.74, fontSize: 13, lineHeight: 19, fontWeight: "700", marginTop: 5 },
   payBarOuter: { position: "absolute", left: 14, right: 14 }, payBar: { borderRadius: 26, backgroundColor: "#fff", borderWidth: 1, borderColor: BORDER, padding: 14, gap: 14, shadowColor: "#13285f", shadowOpacity: 0.14, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 10 }, payLabel: { color: MUTED, fontSize: 11, fontWeight: "900", letterSpacing: 1.3 }, payAmount: { color: TEXT, fontSize: 23, fontWeight: "900" }, payButton: { minHeight: 58, borderRadius: 17, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 }, payButtonDisabled: { backgroundColor: "#cfd4df" }, payButtonText: { color: "#fff", fontSize: 16, fontWeight: "900" },
 });
