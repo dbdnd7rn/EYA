@@ -1,5 +1,5 @@
-import MobileMoneyPaymentScreenV2 from "@/components/market/MobileMoneyPaymentScreenV2";
+import MobileMoneyPaymentFastScreen from "@/components/market/MobileMoneyPaymentFastScreen";
 
 export default function StudentMobileMoneyPaymentPage() {
-  return <MobileMoneyPaymentScreenV2 />;
+  return <MobileMoneyPaymentFastScreen />;
 }
