@@ -83,7 +83,6 @@ async function shareEventPurchaseLink(event: TicketEvent) {
 }
 
 export default function EventDetailsScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
   const [events, setEvents] = React.useState<TicketEvent[]>([]);
@@ -134,7 +133,7 @@ export default function EventDetailsScreen() {
   return (
     <View style={styles.root}>
       <StatusBar style="dark" />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(142, insets.bottom + 118) }]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(170, insets.bottom + 144) }]}>
         <Hero event={event} />
 
         <View style={styles.contentWrap}>
@@ -234,7 +233,7 @@ function StickyBookingBar({ event }: { event: TicketEvent }) {
   const insets = useSafeAreaInsets();
   const tier = firstAvailableTier(event);
   const disabled = !tier?.available;
-  const bottom = Math.max(16, insets.bottom + 10);
+  const bottom = Math.max(18, insets.bottom + 12);
 
   return (
     <View style={[styles.bookingBarOuter, { bottom }]}> 
@@ -243,7 +242,7 @@ function StickyBookingBar({ event }: { event: TicketEvent }) {
         style={({ pressed }) => [styles.bookCta, disabled && styles.bookCtaDisabled, pressed && !disabled && styles.pressed]}
         onPress={() => router.push({ pathname: "/(student)/market/select-tickets", params: { eventId: event.id } } as any)}
       >
-        <View>
+        <View style={styles.bookPriceBlock}>
           <Text style={styles.bookFrom}>FROM</Text>
           <Text style={styles.bookPrice}>{tier?.available ? money(tier.priceMwk) : eventPriceLabel(event)}</Text>
         </View>
@@ -288,12 +287,39 @@ const styles = StyleSheet.create({
   highlightIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center", marginBottom: 10 },
   highlightTitle: { color: TEXT, fontSize: 15, fontWeight: "900", textAlign: "center" },
   highlightSub: { color: MUTED, fontSize: 12, fontWeight: "700", textAlign: "center", marginTop: 5 },
-  bookingBarOuter: { position: "absolute", left: 22, right: 22 },
-  bookCta: { minHeight: 82, borderRadius: 20, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, shadowColor: ACCENT, shadowOpacity: 0.22, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
-  bookCtaDisabled: { opacity: 0.58 },
-  bookFrom: { color: "rgba(255,255,255,0.78)", fontSize: 11, fontWeight: "900", letterSpacing: 1.2 },
-  bookPrice: { color: "#ffffff", fontSize: 23, fontWeight: "900", marginTop: 3 },
-  bookButtonPill: { flexDirection: "row", alignItems: "center", gap: 8 },
+  bookingBarOuter: { position: "absolute", left: 18, right: 18, zIndex: 60, elevation: 24 },
+  bookCta: {
+    minHeight: 92,
+    borderRadius: 24,
+    backgroundColor: ACCENT,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.42)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.36,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 16,
+  },
+  bookCtaDisabled: { opacity: 0.7, backgroundColor: "#9aa3bd", shadowOpacity: 0.12 },
+  bookPriceBlock: { flex: 1, minWidth: 0 },
+  bookFrom: { color: "rgba(255,255,255,0.82)", fontSize: 11, fontWeight: "900", letterSpacing: 1.2 },
+  bookPrice: { color: "#ffffff", fontSize: 24, lineHeight: 30, fontWeight: "900", marginTop: 3 },
+  bookButtonPill: {
+    minHeight: 52,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
   bookButtonText: { color: "#ffffff", fontSize: 16, fontWeight: "900" },
   pressed: { opacity: 0.72 },
 });
