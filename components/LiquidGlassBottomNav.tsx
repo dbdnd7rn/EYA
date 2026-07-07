@@ -20,6 +20,7 @@ const INACTIVE_COLOR = "#6F7890";
 const ACTIVE_BACKGROUND = "rgba(16, 43, 92, 0.10)";
 const BAR_BACKGROUND = "rgba(255, 255, 255, 0.78)";
 const BORDER_COLOR = "rgba(255, 255, 255, 0.65)";
+const PRESS_LOCK_MS = 450;
 
 export const LIQUID_GLASS_NAV_CONTENT_PADDING = 164;
 
@@ -46,6 +47,7 @@ type LiquidGlassBottomNavProps = {
 
 export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavProps) {
   const insets = useSafeAreaInsets();
+  const lastPressAtRef = React.useRef(0);
   const activeIndex = Math.max(
     0,
     items.findIndex((item) => item.key === activeKey),
@@ -69,8 +71,18 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
     transform: [{ translateX: bubbleX.value + 5 }],
   }));
 
+  const handleItemPress = React.useCallback((item: LiquidGlassNavItem, focused: boolean) => {
+    if (focused) return;
+
+    const now = Date.now();
+    if (now - lastPressAtRef.current < PRESS_LOCK_MS) return;
+    lastPressAtRef.current = now;
+
+    requestAnimationFrame(() => item.onPress());
+  }, []);
+
   return (
-    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: insets.bottom + 20 }]}>
+    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: insets.bottom + 20 }]}> 
       <View style={styles.shadowWrap}>
         <BlurView
           experimentalBlurMethod="dimezisBlurView"
@@ -128,7 +140,7 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
                     strokeWidth: focused ? 2.7 : 2.25,
                   })}
                   label={item.label}
-                  onPress={item.onPress}
+                  onPress={() => handleItemPress(item, focused)}
                   onLongPress={item.onLongPress}
                 />
               );
