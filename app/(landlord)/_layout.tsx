@@ -4,7 +4,7 @@ import LandlordGuard from "@/components/LandlordGuard";
 export default function LandlordLayout() {
   return (
     <LandlordGuard>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false, animation: "none", freezeOnBlur: false }} />
     </LandlordGuard>
   );
 }
