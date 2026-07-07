@@ -72,7 +72,7 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
   }));
 
   return (
-    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: Math.max(10, insets.bottom + 8) }]}>
+    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: Math.max(10, insets.bottom + 8) }]}> 
       <View
         onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
         style={[
@@ -271,7 +271,10 @@ function TabBarItem({
 export function createTabScreenOptions(theme: AnimatedTabTheme) {
   return {
     headerShown: false,
-    animation: "fade" as const,
+    animation: "none" as const,
+    freezeOnBlur: false,
+    lazy: false,
+    unmountOnBlur: false,
     sceneStyle: {
       backgroundColor: theme.sceneBackgroundColor,
     },
