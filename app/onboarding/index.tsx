@@ -294,6 +294,10 @@ function getFlowTone(flowKey: FlowKey | null) {
   return { background: "#fff1f2", border: "#ffd7dd" };
 }
 
+function getApprovedFlowTitle(flow: RoleFlow) {
+  return `Change role to ${getWorkspaceLabel(flow.role)}`;
+}
+
 function csvToList(value: string) {
   return value
     .split(",")
@@ -339,9 +343,9 @@ export default function OnboardingPage() {
   const { user, role, activeRole, loading: authLoading, setActiveRole } = useAuth();
   const theme = EYA_THEME;
   const { height: windowHeight } = useWindowDimensions();
-  const contentMinHeight = Math.max(620, windowHeight);
-  const pageBodyMinHeight = Math.max(510, windowHeight - 126);
-  const previewCardMinHeight = Math.max(430, pageBodyMinHeight - 108);
+  const contentMinHeight = windowHeight;
+  const pageBodyMinHeight = Math.max(0, windowHeight - 126);
+  const previewCardMinHeight = Math.max(430, windowHeight - 190);
   const focusFromParam = getFlowFocusFromParam(params.role);
   const [statuses, setStatuses] = useState<WorkspaceStatus[]>([]);
   const [roleApplications, setRoleApplications] = useState<RoleApplication[]>([]);
@@ -488,7 +492,16 @@ export default function OnboardingPage() {
     },
     [roleApplications],
   );
-  const activeApplicationStatus = getFlowApplicationStatus(previewFlow);
+  const getFlowStatus = useCallback(
+    (flow: RoleFlow | null): RoleApplicationStatus | "none" => {
+      if (!flow) return "none";
+      const directStatus = getFlowApplicationStatus(flow.key);
+      if (directStatus !== "none") return directStatus;
+      return flow.status?.applicationStatus ?? "none";
+    },
+    [getFlowApplicationStatus],
+  );
+  const activeApplicationStatus = activePreviewFlow ? getFlowStatus(activePreviewFlow) : getFlowApplicationStatus(previewFlow);
 
   const draftKey = (field: string, stepId = activePreviewCard?.id ?? 0) => `${previewFlow ?? "flow"}:${stepId}:${field}`;
   const fieldValue = (field: string, stepId = activePreviewCard?.id ?? 0) => applicationDraft[draftKey(field, stepId)] ?? "";
@@ -827,6 +840,7 @@ export default function OnboardingPage() {
 
   const pickerHeroScale = roleGlow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.015] });
   const pickerHeroLift = roleGlow.interpolate({ inputRange: [0, 1], outputRange: [0, -3] });
+  const useLargeHeader = !previewFlow;
 
   if (authLoading || loading) {
     return (
@@ -853,24 +867,26 @@ export default function OnboardingPage() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.topBar}>
-            <Pressable style={[styles.backBtn, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} onPress={handleBack}>
-              <ArrowLeft size={20} color={theme.text} />
+          <View style={[styles.topBar, useLargeHeader && styles.rolePickerTopBar]}>
+            <Pressable style={[styles.backBtn, useLargeHeader && styles.rolePickerBackBtn, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} onPress={handleBack}>
+              <ArrowLeft size={useLargeHeader ? 28 : 20} color={theme.text} />
             </Pressable>
-            <Text style={[styles.topBarTitle, { color: theme.heading }]}>
+            <Text style={[styles.topBarTitle, useLargeHeader && styles.rolePickerTopBarTitle, { color: theme.heading }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
               {previewFlow ? activePreviewFlow?.title ?? "Workspace Setup" : showRolePicker ? "Roles & Workspaces" : "Current Workspace"}
             </Text>
-            <View style={{ width: 44 }} />
+            <View style={useLargeHeader ? styles.rolePickerTopSpacer : styles.topBarSpacer} />
           </View>
 
           <View style={[styles.pageBody, { minHeight: pageBodyMinHeight }]}>
         {!showRolePicker ? (
-          <View style={[styles.myRoleWrap, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}>
-            <View style={[styles.myRoleCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+          <View style={styles.myRoleWrap}>
+            <View style={[styles.myRoleCard, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}>
               <View style={[styles.myRoleIcon, { backgroundColor: theme.accent }]}>
-                <CurrentRoleIcon size={22} color="#ffffff" />
+                <CurrentRoleIcon size={46} color="#ffffff" />
               </View>
-              <Text style={[styles.myRoleName, { color: theme.text }]}>{currentRoleLabel}</Text>
+              <Text style={[styles.myRoleName, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
+                {currentRoleLabel}
+              </Text>
               <View style={styles.activeBadge}>
                 <Text style={styles.activeBadgeText}>Active</Text>
               </View>
@@ -886,7 +902,7 @@ export default function OnboardingPage() {
               <View style={styles.actionList}>
                 {currentRoleActions.map((item) => (
                   <View key={item} style={styles.actionRow}>
-                    <Check size={14} color="#18a16b" />
+                    <Check size={22} color="#2ead66" />
                     <Text style={[styles.actionText, { color: theme.textMuted }]}>{item}</Text>
                   </View>
                 ))}
@@ -1085,13 +1101,13 @@ export default function OnboardingPage() {
                 </View>
                 <View style={styles.pickerHeroDecor}>
                   <View style={[styles.pickerDecorBubble, { borderColor: "#ffd7dd", backgroundColor: "#fff1f2" }]}>
-                    <House size={15} color="#de4c5d" />
+                    <House size={24} color="#de4c5d" />
                   </View>
                   <View style={[styles.pickerDecorBubble, { borderColor: "#ffdcbf", backgroundColor: "#fff5ec" }]}>
-                    <UtensilsCrossed size={15} color="#ef7b2d" />
+                    <UtensilsCrossed size={24} color="#ef7b2d" />
                   </View>
                   <View style={[styles.pickerDecorBubble, { borderColor: "#d1f0da", backgroundColor: "#effaf2" }]}>
-                    <BriefcaseBusiness size={15} color="#2e9b62" />
+                    <BriefcaseBusiness size={24} color="#2e9b62" />
                   </View>
                 </View>
               </Animated.View>
@@ -1101,6 +1117,8 @@ export default function OnboardingPage() {
                   const Icon = flow.icon;
                   const busy = busyFlow === flow.key;
                   const tone = getFlowTone(flow.key);
+                  const flowApplicationStatus = getFlowStatus(flow);
+                  const flowTitle = flowApplicationStatus === "approved" ? getApprovedFlowTitle(flow) : flow.title;
                   return (
                     <Pressable
                       key={flow.key}
@@ -1114,7 +1132,7 @@ export default function OnboardingPage() {
                       ]}
                       onPress={() => {
                         setFocusedFlow(flow.key);
-                        if (getFlowApplicationStatus(flow.key) === "approved") {
+                        if (flowApplicationStatus === "approved") {
                           void openFlow(flow);
                           return;
                         }
@@ -1125,19 +1143,19 @@ export default function OnboardingPage() {
                     >
                       <View style={styles.pickerRowLeft}>
                         <View style={[styles.pickerIconWrap, { backgroundColor: theme.surface, borderColor: tone.border }]}>
-                          <Icon size={19} color={flow.accent} />
+                          <Icon size={31} color={flow.accent} />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.pickerRowTitle, { color: theme.text }]}>{flow.title}</Text>
+                          <Text style={[styles.pickerRowTitle, { color: theme.text }]}>{flowTitle}</Text>
                           <Text style={[styles.pickerRowSub, { color: theme.textMuted }]}>{flow.subtitle}</Text>
-                          {getFlowApplicationStatus(flow.key) !== "none" ? (
-                            <Text style={[styles.pickerStatusText, { color: getFlowApplicationStatus(flow.key) === "approved" ? "#168653" : getFlowApplicationStatus(flow.key) === "pending" ? "#9a6a00" : "#b03c66" }]}>
-                              {getFlowApplicationStatus(flow.key) === "approved" ? "Approved - tap to switch role" : getFlowApplicationStatus(flow.key) === "pending" ? "Pending admin review" : "Declined - you can reapply"}
+                          {flowApplicationStatus !== "none" ? (
+                            <Text style={[styles.pickerStatusText, { color: flowApplicationStatus === "approved" ? "#168653" : flowApplicationStatus === "pending" ? "#9a6a00" : "#b03c66" }]}>
+                              {flowApplicationStatus === "approved" ? "Approved - tap to switch role" : flowApplicationStatus === "pending" ? "Pending admin review" : "Declined - you can reapply"}
                             </Text>
                           ) : null}
                         </View>
                       </View>
-                      <ChevronRight size={18} color={theme.textSoft} />
+                      <ChevronRight size={26} color={theme.textSoft} />
                     </Pressable>
                   );
                 })}
@@ -1159,14 +1177,14 @@ export default function OnboardingPage() {
                 >
                   <View style={styles.pickerRowLeft}>
                     <View style={[styles.pickerIconWrap, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                      <UserRound size={19} color={theme.accent} />
+                      <UserRound size={31} color={theme.accent} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.pickerRowTitle, { color: theme.text }]}>User Section</Text>
                       <Text style={[styles.pickerRowSub, { color: theme.textMuted }]}>Go back to your main account workspace.</Text>
                     </View>
                   </View>
-                  <ChevronRight size={18} color={theme.textSoft} />
+                  <ChevronRight size={26} color={theme.textSoft} />
                 </Pressable>
               ) : null}
 
@@ -1432,14 +1450,15 @@ const styles = StyleSheet.create({
     maxWidth: 760,
     alignSelf: "center",
     paddingHorizontal: 18,
-    paddingTop: 10,
-    paddingBottom: 16,
-    gap: 12,
+    paddingTop: 6,
+    paddingBottom: 10,
+    gap: 10,
   },
-  pageBody: { flex: 1 },
+  pageBody: { flexGrow: 1 },
   loaderWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
   loaderText: { color: "#6f7ea3", fontSize: 12, fontWeight: "700" },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  rolePickerTopBar: { minHeight: 76, paddingTop: 4 },
   backBtn: {
     width: 44,
     height: 44,
@@ -1449,63 +1468,74 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#eef1fb",
   },
-  topBarTitle: { flex: 1, color: "#13285f", fontSize: 23, fontWeight: "900", textAlign: "center", marginHorizontal: 8 },
-
-  myRoleWrap: {
-    flex: 1,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: "#eef1fb",
-    backgroundColor: "#ffffff",
-    padding: 16,
-    gap: 14,
-    justifyContent: "flex-start",
-    shadowColor: "#8492c2",
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-  },
-  myRoleCard: {
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "#e8edf7",
-    backgroundColor: "#f7f8fe",
-    paddingHorizontal: 14,
-    paddingVertical: 18,
-    alignItems: "center",
-    gap: 9,
-  },
-  myRoleIcon: {
+  rolePickerBackBtn: {
     width: 58,
     height: 58,
     borderRadius: 29,
+  },
+  topBarTitle: { flex: 1, color: "#13285f", fontSize: 23, fontWeight: "900", textAlign: "center", marginHorizontal: 8 },
+  rolePickerTopBarTitle: { fontSize: 30, lineHeight: 36 },
+  topBarSpacer: { width: 44 },
+  rolePickerTopSpacer: { width: 58 },
+
+  myRoleWrap: {
+    flexGrow: 1,
+    gap: 24,
+    justifyContent: "flex-start",
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
+  myRoleCard: {
+    minHeight: 292,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "#e8edf7",
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    shadowColor: "#8492c2",
+    shadowOpacity: 0.08,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  myRoleIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: "#5e73dd",
     alignItems: "center",
     justifyContent: "center",
   },
-  myRoleName: { color: "#0e2756", fontSize: 28, fontWeight: "900" },
+  myRoleName: { color: "#0e2756", fontSize: 42, fontWeight: "900", lineHeight: 48 },
   activeBadge: {
     borderRadius: 999,
     backgroundColor: "#dff5ea",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 5,
   },
-  activeBadgeText: { color: "#0f7b3f", fontSize: 12, fontWeight: "900" },
-  myRoleCopy: { color: "#6e7892", fontSize: 14, fontWeight: "700", lineHeight: 20, textAlign: "center" },
-  whatWrap: { gap: 11 },
-  whatTitle: { color: "#0e2756", fontSize: 19, fontWeight: "900" },
-  actionList: { gap: 9 },
-  actionRow: { flexDirection: "row", alignItems: "center", gap: 9 },
-  actionText: { color: "#6e7892", fontSize: 15, fontWeight: "700", flex: 1, lineHeight: 20 },
+  activeBadgeText: { color: "#0f7b3f", fontSize: 18, fontWeight: "900" },
+  myRoleCopy: { color: "#6e7892", fontSize: 20, fontWeight: "600", lineHeight: 31, textAlign: "center", maxWidth: 620 },
+  whatWrap: { gap: 20, paddingHorizontal: 16 },
+  whatTitle: { color: "#0e2756", fontSize: 27, fontWeight: "900", lineHeight: 34 },
+  actionList: { gap: 21 },
+  actionRow: { flexDirection: "row", alignItems: "center", gap: 20 },
+  actionText: { color: "#6e7892", fontSize: 21, fontWeight: "500", flex: 1, lineHeight: 29 },
   addRolePrimaryBtn: {
-    minHeight: 54,
-    borderRadius: 16,
+    minHeight: 78,
+    borderRadius: 18,
     backgroundColor: "#5e73dd",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
+    shadowColor: "#5e73dd",
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
   },
-  addRolePrimaryText: { color: "#ffffff", fontSize: 17, fontWeight: "900" },
+  addRolePrimaryText: { color: "#ffffff", fontSize: 22, fontWeight: "900", textAlign: "center" },
   secondaryWorkspaceBtn: {
     minHeight: 50,
     borderRadius: 13,
@@ -1515,16 +1545,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   secondaryWorkspaceText: { color: "#0e2756", fontSize: 16, fontWeight: "800" },
-  workspaceFoot: { gap: 12 },
+  workspaceFoot: { gap: 22, paddingTop: 6 },
   workspaceInsight: {
-    borderRadius: 20,
+    minHeight: 132,
+    borderRadius: 22,
     borderWidth: 1,
-    paddingHorizontal: 15,
-    paddingVertical: 16,
-    gap: 6,
+    paddingHorizontal: 24,
+    paddingVertical: 23,
+    gap: 12,
+    shadowColor: "#8492c2",
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
   },
-  workspaceInsightKicker: { fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
-  workspaceInsightTitle: { fontSize: 18, fontWeight: "900", lineHeight: 24 },
+  workspaceInsightKicker: { fontSize: 17, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.1 },
+  workspaceInsightTitle: { fontSize: 23, fontWeight: "900", lineHeight: 32 },
   previewSection: { flex: 1, gap: 12 },
   previewHeader: {
     borderRadius: 21,
@@ -1819,78 +1854,78 @@ const styles = StyleSheet.create({
   },
   previewCtaText: { color: "#ffffff", fontSize: 13, fontWeight: "900" },
   previewStepLabel: { color: "#6e7892", fontSize: 11, fontWeight: "800", textAlign: "center" },
-  pickerSection: { flex: 1, gap: 14, justifyContent: "center" },
+  pickerSection: { flexGrow: 1, gap: 14, justifyContent: "flex-start", paddingTop: 18 },
   pickerCard: {
-    flex: 1,
-    borderRadius: 28,
+    borderRadius: 30,
     borderWidth: 1,
     borderColor: "#eef1fb",
     backgroundColor: "#ffffff",
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingVertical: 20,
-    gap: 13,
-    justifyContent: "center",
+    gap: 16,
+    justifyContent: "flex-start",
     shadowColor: "#8492c2",
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
   },
   pickerHero: {
-    borderRadius: 20,
+    minHeight: 192,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: "#e7ecfa",
-    backgroundColor: "#f9fbff",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    gap: 12,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 22,
+    paddingVertical: 20,
+    gap: 16,
     flexDirection: "row",
     alignItems: "center",
     overflow: "hidden",
   },
-  pickerHeroCopy: { flex: 1, gap: 6 },
-  pickerHeroDecor: { width: 76, alignItems: "center", gap: 6 },
+  pickerHeroCopy: { flex: 1, gap: 12 },
+  pickerHeroDecor: { width: 82, alignItems: "center", gap: 12 },
   pickerDecorBubble: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  pickerEyebrow: { fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
-  pickerPrompt: { color: "#0e2756", fontSize: 20, fontWeight: "900", lineHeight: 26 },
-  pickerNote: { color: "#6e7892", fontSize: 13, fontWeight: "700", lineHeight: 19 },
-  pickerRows: { gap: 8 },
+  pickerEyebrow: { fontSize: 13, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.3 },
+  pickerPrompt: { color: "#0e2756", fontSize: 28, fontWeight: "900", lineHeight: 36 },
+  pickerNote: { color: "#6e7892", fontSize: 17, fontWeight: "700", lineHeight: 26 },
+  pickerRows: { gap: 14 },
   pickerRow: {
-    minHeight: 76,
-    borderRadius: 16,
+    minHeight: 112,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: "#e8edf7",
     backgroundColor: "#f7f8fe",
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 12,
   },
-  pickerRowLeft: { flexDirection: "row", alignItems: "center", gap: 9, flex: 1 },
+  pickerRowLeft: { flexDirection: "row", alignItems: "center", gap: 14, flex: 1 },
   pickerIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 60,
+    height: 60,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: "#e8edf7",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fff",
   },
-  pickerRowTitle: { color: "#0e2756", fontSize: 18, fontWeight: "900" },
-  pickerRowSub: { color: "#6e7892", fontSize: 13, fontWeight: "700", lineHeight: 18 },
-  pickerStatusText: { fontSize: 11, fontWeight: "900", marginTop: 4 },
+  pickerRowTitle: { color: "#0e2756", fontSize: 22, lineHeight: 27, fontWeight: "900" },
+  pickerRowSub: { color: "#6e7892", fontSize: 16, fontWeight: "700", lineHeight: 24 },
+  pickerStatusText: { fontSize: 14, fontWeight: "900", marginTop: 8 },
   cancelBtn: {
-    minHeight: 52,
-    borderRadius: 16,
+    minHeight: 70,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: "#e8edf7",
     backgroundColor: "#f7f8fe",
@@ -1898,7 +1933,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  cancelBtnText: { color: "#0e2756", fontSize: 16, fontWeight: "900" },
+  cancelBtnText: { color: "#0e2756", fontSize: 22, fontWeight: "900" },
   previewPhoneCard: {
     flex: 1,
     borderRadius: 28,

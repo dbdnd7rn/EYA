@@ -4,7 +4,19 @@ import { URL, URLSearchParams } from "node:url";
 import { config, getCancelUrl, getSuccessUrl, isConfiguredAdminEmail, requireCoreConfig } from "./config.js";
 import QRCode from "qrcode";
 import { createCampusMarketCashCheckout, createCampusMarketWalletCheckout, finalizePaymentByReference, findPaymentByAnyReference, findPaymentByReference, getOrderHandoffByOrderId, getPaymentByRelatedOrderId, markHandoffVerified, recordPaymentInitiation } from "./fulfillment.js";
-import { createDirectCharge, verifyDirectCharge, verifyTransaction, verifyWebhookSignature } from "./paychangu.js";
+import {
+  buildCheckoutPayload,
+  createDirectCharge,
+  createHostedCheckout,
+  getPayChanguClientErrorMessage,
+  getPayChanguClientStatus,
+  isDirectChargeMethod,
+  logPayChanguError,
+  normalizePayChanguPaymentMethod,
+  verifyDirectCharge,
+  verifyTransaction,
+  verifyWebhookSignature,
+} from "./paychangu.js";
 import { notifyDeliveryStatusChanged, notifyDriverAssigned, notifySupportTicketUpdated, sendPushNotificationsToUsers } from "./push.js";
 import { supabase, supabaseNewApp } from "./supabase.js";
 import {
@@ -45,6 +57,7 @@ app.get("/", (_req, res) => {
 function sendError(res, status, message, extra = {}) {
   res.status(status).json({
     status: "error",
+    error: message,
     message,
     ...extra,
   });
@@ -495,6 +508,8 @@ function canVerifyHandoff(detail, userId, role) {
 }
 
 function normalizeInitiateBody(body) {
+  const meta = asObject(body?.meta);
+  const paymentMethod = normalizePayChanguPaymentMethod(meta.payment_method || body?.payment_method);
   return {
     amount: body?.amount,
     currency: body?.currency,
@@ -505,7 +520,11 @@ function normalizeInitiateBody(body) {
     title: body?.title || body?.customization?.title,
     description: body?.description || body?.customization?.description,
     project: body?.project,
-    meta: body?.meta,
+    meta: {
+      ...meta,
+      payment_method: paymentMethod || "hosted_checkout",
+      msisdn: meta.msisdn || body?.msisdn || body?.phone,
+    },
   };
 }
 
@@ -1167,35 +1186,67 @@ app.post("/api/checkout/cash", async (req, res) => {
 app.post("/api/paychangu/initiate", async (req, res) => {
   const input = normalizeInitiateBody(req.body);
   const amount = Number(input.amount);
+  const method = normalizePayChanguPaymentMethod(input.meta?.payment_method);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return sendError(res, 400, "A valid positive amount is required.");
   }
 
   try {
-    const session = await createDirectCharge(input);
+    if (method === "airtel_money" || method === "mpamba") {
+      const msisdn = typeof input.meta?.msisdn === "string" ? input.meta.msisdn.trim() : "";
+      if (!msisdn) {
+        return sendError(res, 400, "A valid mobile money number is required.");
+      }
+    }
+
+    if (isDirectChargeMethod(method)) {
+      const session = await createDirectCharge(input);
+      const payment = await recordPaymentInitiation({
+        input,
+        checkoutUrl: null,
+        providerPayload: session.raw,
+        txRef: session.chargeId,
+      });
+
+      return res.json({
+        status: "success",
+        message: "Direct charge initialized successfully.",
+        tx_ref: session.chargeId,
+        payment_id: payment.id,
+        direct_charge: {
+          status: session.status,
+          provider_reference: session.providerReference,
+          payment_account_details: session.paymentAccountDetails,
+          authorization: session.authorization,
+        },
+        data: session.raw,
+      });
+    }
+
+    const checkout = await createHostedCheckout(buildCheckoutPayload(input));
     const payment = await recordPaymentInitiation({
       input,
-      checkoutUrl: null,
-      providerPayload: session.raw,
-      txRef: session.chargeId,
+      checkoutUrl: checkout.checkoutUrl,
+      providerPayload: checkout.raw,
+      txRef: checkout.txRef,
     });
 
     return res.json({
       status: "success",
-      message: "Direct charge initialized successfully.",
-      tx_ref: session.chargeId,
+      message: "Hosted checkout initialized successfully.",
+      checkout_url: checkout.checkoutUrl,
+      tx_ref: checkout.txRef,
       payment_id: payment.id,
-      direct_charge: {
-        status: session.status,
-        provider_reference: session.providerReference,
-        payment_account_details: session.paymentAccountDetails,
-        authorization: session.authorization,
-      },
-      data: session.raw,
+      data: checkout.raw,
     });
   } catch (error) {
-    return sendError(res, 502, error instanceof Error ? error.message : "Could not initialize PayChangu payment.");
+    logPayChanguError("paychangu-initiate-error", error, { method, tx_ref: input.tx_ref });
+    return sendError(
+      res,
+      getPayChanguClientStatus(error, 502),
+      getPayChanguClientErrorMessage(error, "Could not initialize PayChangu payment."),
+    );
   }
 });
 
@@ -1221,7 +1272,12 @@ app.get("/api/paychangu/verify/:txRef", async (req, res) => {
       fulfilled: finalized.finalized,
     });
   } catch (error) {
-    return sendError(res, 502, error instanceof Error ? error.message : "Could not verify transaction.");
+    logPayChanguError("paychangu-verify-error", error, { tx_ref: txRef });
+    return sendError(
+      res,
+      getPayChanguClientStatus(error, 502),
+      getPayChanguClientErrorMessage(error, "Could not verify transaction."),
+    );
   }
 });
 
@@ -1302,7 +1358,12 @@ app.post("/api/paychangu/reconcile", async (req, res) => {
       verify: verifyData,
     });
   } catch (error) {
-    return sendError(res, 502, error instanceof Error ? error.message : "Could not reconcile payment.");
+    logPayChanguError("paychangu-reconcile-error", error, { reference, method: methodHint, purpose: purposeHint });
+    return sendError(
+      res,
+      getPayChanguClientStatus(error, 502),
+      getPayChanguClientErrorMessage(error, "Could not reconcile payment."),
+    );
   }
 });
 

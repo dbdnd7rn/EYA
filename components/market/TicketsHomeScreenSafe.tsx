@@ -3,7 +3,7 @@ import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, 
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { CalendarDays, ChevronRight, Home, MapPin, Search, SlidersHorizontal, Ticket } from "lucide-react-native";
+import { CalendarDays, ChevronRight, Home, MapPin, Search, Ticket } from "lucide-react-native";
 import EyaTicketsWordmark from "@/components/brand/EyaTicketsWordmark";
 import { listTicketEventsSafe } from "@/lib/ticketEventsSafe";
 import type { TicketEvent } from "@/lib/tickets";
@@ -24,6 +24,7 @@ export default function TicketsHomeScreenSafe() {
   const [loading, setLoading] = React.useState(true);
   const [query, setQuery] = React.useState("");
   const [activeCategory, setActiveCategory] = React.useState<Category>("All");
+  const [showAllEvents, setShowAllEvents] = React.useState(false);
 
   React.useEffect(() => {
     let active = true;
@@ -51,6 +52,7 @@ export default function TicketsHomeScreenSafe() {
 
   const featured = filteredEvents[0] ?? null;
   const rest = featured ? filteredEvents.slice(1) : filteredEvents;
+  const visibleEvents = showAllEvents ? filteredEvents : rest;
 
   return (
     <View style={styles.root}>
@@ -64,42 +66,58 @@ export default function TicketsHomeScreenSafe() {
             </Pressable>
           </View>
 
-          <View style={styles.heroCopy}>
-            <Text style={styles.heroTitle}>Find your next event</Text>
-            <Text style={styles.heroSub}>Concerts, festivals, sports and campus moments — book in a few taps.</Text>
-          </View>
-
           <View style={styles.searchRow}>
             <View style={styles.searchBox}>
               <Search size={20} color={MUTED} />
               <TextInput value={query} onChangeText={setQuery} placeholder="Search events..." placeholderTextColor={MUTED} selectionColor={ACCENT} style={styles.searchInput} />
             </View>
-            <Pressable style={styles.filterBtn}><SlidersHorizontal size={22} color={TEXT} /></Pressable>
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
             {categories.map((category) => {
               const active = category === activeCategory;
-              return <Pressable key={category} onPress={() => setActiveCategory(category)} style={[styles.categoryChip, active && styles.categoryChipActive]}><Text style={[styles.categoryText, active && styles.categoryTextActive]}>{category}</Text></Pressable>;
+              return (
+                <Pressable
+                  key={category}
+                  onPress={() => {
+                    setActiveCategory(category);
+                    setShowAllEvents(false);
+                  }}
+                  style={[styles.categoryChip, active && styles.categoryChipActive]}
+                >
+                  <Text style={[styles.categoryText, active && styles.categoryTextActive]}>{category}</Text>
+                </Pressable>
+              );
             })}
           </ScrollView>
 
           {loading ? <StateCard title="Loading tickets..." /> : !filteredEvents.length ? <StateCard title="No events found" icon /> : null}
 
-          {!loading && featured ? <FeaturedEventCard event={featured} /> : null}
+          {!loading && featured && !showAllEvents ? <FeaturedEventCard event={featured} /> : null}
 
-          {!loading && rest.length ? (
+          {!loading && visibleEvents.length ? (
             <>
               <View style={styles.sectionHead}>
                 <View>
-                  <Text style={styles.sectionTitle}>More events</Text>
+                  <Text style={styles.sectionTitle}>{showAllEvents ? "All events" : "More events"}</Text>
                   <Text style={styles.sectionSub}>{filteredEvents.length} event{filteredEvents.length === 1 ? "" : "s"} available</Text>
                 </View>
-                <Pressable style={styles.seeAllBtn} onPress={() => setActiveCategory("All")}>
-                  <Text style={styles.seeAllText}>See all</Text><ChevronRight size={16} color={ACCENT} />
+                <Pressable
+                  style={styles.seeAllBtn}
+                  onPress={() => {
+                    if (showAllEvents) {
+                      setShowAllEvents(false);
+                      return;
+                    }
+                    setActiveCategory("All");
+                    setShowAllEvents(true);
+                  }}
+                >
+                  <Text style={styles.seeAllText}>{showAllEvents ? "Back" : "See all"}</Text>
+                  <ChevronRight size={16} color={ACCENT} />
                 </Pressable>
               </View>
-              <View style={styles.eventList}>{rest.map((event) => <EventRow key={event.id} event={event} />)}</View>
+              <View style={styles.eventList}>{visibleEvents.map((event) => <EventRow key={event.id} event={event} />)}</View>
             </>
           ) : null}
         </ScrollView>
@@ -152,8 +170,8 @@ function TicketsBottomNav({ active }: { active: "home" | "tickets" }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG }, safeArea: { flex: 1, backgroundColor: BG }, content: { paddingHorizontal: 20, paddingTop: 12, gap: 18 }, header: { minHeight: 54, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  myTicketsBtn: { minHeight: 42, borderRadius: 999, backgroundColor: ACCENT, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 7 }, myTicketsText: { color: "#ffffff", fontSize: 13, fontWeight: "900" }, heroCopy: { gap: 5, paddingTop: 4 }, heroTitle: { color: TEXT, fontSize: 31, lineHeight: 36, fontWeight: "900" }, heroSub: { color: MUTED, fontSize: 14, lineHeight: 20, fontWeight: "700", maxWidth: 340 },
-  searchRow: { flexDirection: "row", alignItems: "center", gap: 12 }, searchBox: { flex: 1, minHeight: 58, borderRadius: 22, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16 }, searchInput: { flex: 1, minWidth: 0, color: TEXT, fontSize: 15, fontWeight: "800", paddingVertical: 0 }, filterBtn: { width: 56, height: 56, borderRadius: 20, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" },
+  myTicketsBtn: { minHeight: 42, borderRadius: 999, backgroundColor: ACCENT, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 7 }, myTicketsText: { color: "#ffffff", fontSize: 13, fontWeight: "900" },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: 12 }, searchBox: { flex: 1, minHeight: 58, borderRadius: 22, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16 }, searchInput: { flex: 1, minWidth: 0, color: TEXT, fontSize: 15, fontWeight: "800", paddingVertical: 0 },
   categoryRow: { gap: 10, paddingRight: 20 }, categoryChip: { minHeight: 38, borderRadius: 999, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD, justifyContent: "center", paddingHorizontal: 15 }, categoryChipActive: { backgroundColor: ACCENT, borderColor: ACCENT }, categoryText: { color: MUTED, fontSize: 13, fontWeight: "900" }, categoryTextActive: { color: "#ffffff" },
   stateCard: { minHeight: 190, borderRadius: 28, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD, alignItems: "center", justifyContent: "center", gap: 10, padding: 24 }, stateTitle: { color: TEXT, fontSize: 20, fontWeight: "900", textAlign: "center" },
   featuredCard: { borderRadius: 30, overflow: "hidden", shadowColor: "#13285f", shadowOpacity: 0.14, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 6 }, featuredImage: { minHeight: 390, justifyContent: "space-between", padding: 16, backgroundColor: "#111827" }, featuredImageRadius: { borderRadius: 30 }, categoryBadge: { alignSelf: "flex-start", minHeight: 36, borderRadius: 18, backgroundColor: ACCENT, justifyContent: "center", paddingHorizontal: 14 }, categoryBadgeText: { color: "#ffffff", fontSize: 12, fontWeight: "900", letterSpacing: 1.2 }, featuredBottom: { gap: 10 }, featuredTitle: { color: "#ffffff", fontSize: 30, lineHeight: 35, fontWeight: "900" }, infoLine: { flexDirection: "row", alignItems: "center", gap: 8 }, infoText: { flex: 1, color: MUTED, fontSize: 13, fontWeight: "800" }, infoTextLight: { color: "#ffffff" }, featuredActionRow: { marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, featuredPrice: { color: "#ffffff", fontSize: 25, fontWeight: "900" }, viewEventBtn: { minHeight: 46, borderRadius: 23, backgroundColor: ACCENT, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 4 }, viewEventText: { color: "#ffffff", fontSize: 13, fontWeight: "900" },

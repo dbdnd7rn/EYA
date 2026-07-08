@@ -3,13 +3,60 @@ import crypto from "node:crypto";
 import { config, getCancelUrl, getSuccessUrl } from "./config.js";
 
 const PAYCHANGU_API_BASE = "https://api.paychangu.com";
+const PAYCHANGU_SECRET_MISSING_MESSAGE = "PAYCHANGU_SECRET_KEY is not configured on the backend.";
+const PAYCHANGU_SECRET_PUBLIC_KEY_MESSAGE = "PAYCHANGU_SECRET_KEY must be a PayChangu secret key, not a public/mobile key.";
 // Keep provider parsing centralized here so payment routes stay thin.
+
+export class PayChanguConfigurationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "PayChanguConfigurationError";
+    this.publicMessage = message;
+    this.statusCode = 500;
+  }
+}
+
+export class PayChanguRequestError extends Error {
+  constructor(message, { endpoint, statusCode, payload }) {
+    super(message);
+    this.name = "PayChanguRequestError";
+    this.endpoint = endpoint;
+    this.statusCode = statusCode;
+    this.payload = payload;
+    this.publicMessage = getPublicPayChanguMessage(message, statusCode);
+  }
+}
+
+function getPayChanguSecretKey() {
+  const secretKey = config.paychanguSecretKey;
+  if (!secretKey) {
+    throw new PayChanguConfigurationError(PAYCHANGU_SECRET_MISSING_MESSAGE);
+  }
+
+  const publicKey = config.paychanguPublicKey;
+  if (
+    (publicKey && secretKey === publicKey) ||
+    /^(pk|pub|public|test-public|live-public)[_-]/i.test(secretKey) ||
+    /^EXPO_PUBLIC_/i.test(secretKey)
+  ) {
+    throw new PayChanguConfigurationError(PAYCHANGU_SECRET_PUBLIC_KEY_MESSAGE);
+  }
+
+  return secretKey;
+}
 
 function getJsonHeaders() {
   return {
     Accept: "application/json",
     "Content-Type": "application/json",
-    Authorization: `Bearer ${config.paychanguSecretKey}`,
+    Authorization: `Bearer ${getPayChanguSecretKey()}`,
+  };
+}
+
+function getAuthHeaders() {
+  return {
+    Accept: "application/json",
+    Authorization: `Bearer ${getPayChanguSecretKey()}`,
   };
 }
 
@@ -41,6 +88,102 @@ function parsePayChanguError(payload, fallbackStatus) {
   }
 
   return `PayChangu request failed (${fallbackStatus}).`;
+}
+
+function getPublicPayChanguMessage(message, statusCode) {
+  const lower = String(message || "").toLowerCase();
+  if (
+    statusCode === 401 ||
+    statusCode === 403 ||
+    lower.includes("secret key") ||
+    lower.includes("api key") ||
+    lower.includes("unauthorized") ||
+    lower.includes("unauthenticated")
+  ) {
+    return "PayChangu credentials are not configured correctly on the backend.";
+  }
+
+  return "PayChangu could not process the payment request. Please try again.";
+}
+
+function createPayChanguRequestError(endpoint, response, payload) {
+  return new PayChanguRequestError(parsePayChanguError(payload, response.status), {
+    endpoint,
+    statusCode: response.status,
+    payload,
+  });
+}
+
+function redactText(value) {
+  const text = String(value);
+  if (!text) return text;
+  if (text.includes("@")) {
+    const [name, domain] = text.split("@");
+    return `${name.slice(0, 2)}***@${domain || "***"}`;
+  }
+  if (/^\+?\d[\d\s().-]{5,}$/.test(text)) {
+    const digits = text.replace(/[^\d]/g, "");
+    return digits.length <= 4 ? "***" : `${"*".repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+  }
+  return text;
+}
+
+function redactPayload(value, seen = new Set()) {
+  if (!value || typeof value !== "object") {
+    return typeof value === "string" ? redactText(value) : value;
+  }
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+
+  if (Array.isArray(value)) return value.map((item) => redactPayload(item, seen));
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => {
+      if (/secret|token|authorization|password|key/i.test(key)) return [key, "[REDACTED]"];
+      if (/email|mobile|phone|msisdn|account_number|account_no/i.test(key)) return [key, redactPayload(entry, seen)];
+      return [key, redactPayload(entry, seen)];
+    }),
+  );
+}
+
+export function normalizePayChanguPaymentMethod(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "";
+
+  const compact = text.replace(/[\s-]+/g, "_");
+  if (compact === "airtel_money" || compact.includes("airtel")) return "airtel_money";
+  if (compact === "mpamba" || compact.includes("mpamba") || compact.includes("tnm")) return "mpamba";
+  if (compact === "bank_transfer" || compact.includes("bank")) return "bank_transfer";
+  return compact;
+}
+
+export function isDirectChargeMethod(method) {
+  return method === "airtel_money" || method === "mpamba" || method === "bank_transfer";
+}
+
+export function getPayChanguClientErrorMessage(error, fallbackMessage) {
+  if (error instanceof PayChanguConfigurationError || error instanceof PayChanguRequestError) {
+    return error.publicMessage || fallbackMessage;
+  }
+  return error instanceof Error && error.message ? error.message : fallbackMessage;
+}
+
+export function getPayChanguClientStatus(error, fallbackStatus = 502) {
+  if (error instanceof PayChanguConfigurationError) return error.statusCode;
+  return fallbackStatus;
+}
+
+export function logPayChanguError(context, error, extra = {}) {
+  const details = {
+    context,
+    name: error instanceof Error ? error.name : typeof error,
+    message: error instanceof Error ? error.message : String(error),
+    statusCode: error?.statusCode || null,
+    endpoint: error?.endpoint || null,
+    providerPayload: error?.payload ? redactPayload(error.payload) : null,
+    ...redactPayload(extra),
+  };
+  console.error(`[${context}]`, JSON.stringify(details));
 }
 
 export function buildCheckoutPayload(input) {
@@ -168,17 +311,15 @@ function redactBankDetailsPreview(details) {
 }
 
 async function fetchMobileMoneyOperators() {
-  const response = await fetch(`${PAYCHANGU_API_BASE}/mobile-money`, {
+  const endpoint = `${PAYCHANGU_API_BASE}/mobile-money`;
+  const response = await fetch(endpoint, {
     method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${config.paychanguSecretKey}`,
-    },
+    headers: getAuthHeaders(),
   });
 
   const data = await readJson(response);
   if (!response.ok) {
-    throw new Error(parsePayChanguError(data, response.status));
+    throw createPayChanguRequestError(endpoint, response, data);
   }
 
   return extractOperatorRows(data);
@@ -251,7 +392,8 @@ function parseDirectChargeResponse(data, fallbackChargeId) {
 }
 
 export async function createHostedCheckout(payload) {
-  const response = await fetch(`${PAYCHANGU_API_BASE}/payment`, {
+  const endpoint = `${PAYCHANGU_API_BASE}/payment`;
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: getJsonHeaders(),
     body: JSON.stringify(payload),
@@ -260,7 +402,7 @@ export async function createHostedCheckout(payload) {
   const data = await readJson(response);
 
   if (!response.ok) {
-    throw new Error(parsePayChanguError(data, response.status));
+    throw createPayChanguRequestError(endpoint, response, data);
   }
 
   const checkoutUrl = data?.data?.checkout_url;
@@ -276,7 +418,7 @@ export async function createHostedCheckout(payload) {
 }
 
 export async function createDirectCharge(input) {
-  const method = input?.meta?.payment_method;
+  const method = normalizePayChanguPaymentMethod(input?.meta?.payment_method);
   if (method === "bank_transfer") {
     const payload = {
       payment_method: "mobile_bank_transfer",
@@ -286,14 +428,15 @@ export async function createDirectCharge(input) {
       create_permanent_account: false,
     };
 
-    const response = await fetch(`${PAYCHANGU_API_BASE}/direct-charge/payments/initialize`, {
+    const endpoint = `${PAYCHANGU_API_BASE}/direct-charge/payments/initialize`;
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: getJsonHeaders(),
       body: JSON.stringify(payload),
     });
     const data = await readJson(response);
     if (!response.ok) {
-      throw new Error(parsePayChanguError(data, response.status));
+      throw createPayChanguRequestError(endpoint, response, data);
     }
     const parsed = parseDirectChargeResponse(data, input.tx_ref);
     console.info("[paychangu] bank direct-charge response keys", {
@@ -329,14 +472,15 @@ export async function createDirectCharge(input) {
       throw new Error("A valid mobile money number is required.");
     }
 
-    const response = await fetch(`${PAYCHANGU_API_BASE}/mobile-money/payments/initialize`, {
+    const endpoint = `${PAYCHANGU_API_BASE}/mobile-money/payments/initialize`;
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: getJsonHeaders(),
       body: JSON.stringify(payload),
     });
     const data = await readJson(response);
     if (!response.ok) {
-      throw new Error(parsePayChanguError(data, response.status));
+      throw createPayChanguRequestError(endpoint, response, data);
     }
     return parseDirectChargeResponse(data, input.tx_ref);
   }
@@ -345,18 +489,16 @@ export async function createDirectCharge(input) {
 }
 
 export async function verifyTransaction(txRef) {
-  const response = await fetch(`${PAYCHANGU_API_BASE}/verify-payment/${encodeURIComponent(txRef)}`, {
+  const endpoint = `${PAYCHANGU_API_BASE}/verify-payment/${encodeURIComponent(txRef)}`;
+  const response = await fetch(endpoint, {
     method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${config.paychanguSecretKey}`,
-    },
+    headers: getAuthHeaders(),
   });
 
   const data = await readJson(response);
 
   if (!response.ok) {
-    throw new Error(parsePayChanguError(data, response.status));
+    throw createPayChanguRequestError(endpoint, response, data);
   }
 
   return data;
@@ -370,16 +512,13 @@ export async function verifyDirectCharge(txRef, method) {
 
   const response = await fetch(endpoint, {
     method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${config.paychanguSecretKey}`,
-    },
+    headers: getAuthHeaders(),
   });
 
   const data = await readJson(response);
 
   if (!response.ok) {
-    throw new Error(parsePayChanguError(data, response.status));
+    throw createPayChanguRequestError(endpoint, response, data);
   }
 
   return data;
