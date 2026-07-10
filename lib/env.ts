@@ -1,3 +1,23 @@
+import { Platform } from "react-native";
+
+const configuredAuthRedirectUrl = (process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL ?? "").trim();
+
+function resolveAuthRedirectUrl() {
+  if (!configuredAuthRedirectUrl) return "";
+
+  // Web builds may intentionally use an HTTPS or localhost callback.
+  if (Platform.OS === "web") return configuredAuthRedirectUrl;
+
+  // Native OAuth must return to the app. Never let a web/localhost URL
+  // override Expo Go or the installed EYA custom scheme.
+  if (/^eya:\/\//i.test(configuredAuthRedirectUrl)) return configuredAuthRedirectUrl;
+  if (/^exp:\/\//i.test(configuredAuthRedirectUrl) && !/^exp:\/\/(localhost|127\.0\.0\.1)(?::\d+)?/i.test(configuredAuthRedirectUrl)) {
+    return configuredAuthRedirectUrl;
+  }
+
+  return "";
+}
+
 export const ENV = {
   SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
   SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
@@ -11,7 +31,7 @@ export const ENV = {
   APP_ENV: process.env.EXPO_PUBLIC_APP_ENV ?? "development",
   DEV_AUTH_MODE: (process.env.EXPO_PUBLIC_DEV_AUTH_MODE ?? "false").toLowerCase() === "true",
   ADMIN_EMAILS: (process.env.EXPO_PUBLIC_ADMIN_EMAILS ?? "").trim(),
-  AUTH_REDIRECT_URL: (process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL ?? "").trim(),
+  AUTH_REDIRECT_URL: resolveAuthRedirectUrl(),
 };
 
 function normalizeEmail(value: string | null | undefined) {
@@ -54,4 +74,3 @@ export function getOptionalServiceWarnings() {
   if (!/^https?:\/\//i.test(ENV.WEB_BASE_URL)) warnings.push("Web base URL is invalid. Payment redirects may fail.");
   return warnings;
 }
-
