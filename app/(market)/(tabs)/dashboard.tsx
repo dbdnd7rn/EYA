@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Bell, CalendarClock, ChefHat, Clock3, Search } from "lucide-react-native";
 import { useSellerWorkspace } from "@/components/seller/useSellerWorkspace";
 import { getRestaurantSessionStatus, getSuggestedRestaurantSession, listRestaurantSessionOrders, type RestaurantSession } from "@/lib/restaurantSessions";
+import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
 
 type SessionType = RestaurantSession;
 
@@ -19,6 +20,7 @@ function money(value: number) {
 export default function RestaurantSessionsPage() {
   const router = useRouter();
   const { workspace, metrics, updateVendorProfile } = useSellerWorkspace("food");
+  const { unreadCount } = useNotificationInbox();
   const [updatingOnline, setUpdatingOnline] = useState(false);
 
   const todayOrders = useMemo(
@@ -128,7 +130,7 @@ export default function RestaurantSessionsPage() {
             icon={<CalendarClock size={17} color="#27305a" />}
             onPress={() => router.push({ pathname: "/(market)/(tabs)/orders", params: { session: getSuggestedRestaurantSession() } })}
           />
-          <QuickAction label="Alerts" icon={<Bell size={17} color="#27305a" />} onPress={() => router.push("/(market)/notifications")} />
+          <QuickAction label="Alerts" badge={unreadCount} icon={<Bell size={17} color="#27305a" />} onPress={() => router.push("/(market)/notifications")} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -173,9 +175,14 @@ function SessionCard({
   );
 }
 
-function QuickAction({ icon, label, onPress }: { icon: React.ReactNode; label: string; onPress: () => void }) {
+function QuickAction({ badge = 0, icon, label, onPress }: { badge?: number; icon: React.ReactNode; label: string; onPress: () => void }) {
   return (
     <Pressable style={styles.quickCard} onPress={onPress}>
+      {badge > 0 ? (
+        <View style={styles.alertBadge}>
+          <Text style={styles.alertBadgeText}>{badge > 99 ? "99+" : badge}</Text>
+        </View>
+      ) : null}
       <View style={styles.quickIconWrap}>{icon}</View>
       <Text style={styles.quickLabel}>{label}</Text>
     </Pressable>
@@ -288,6 +295,7 @@ const styles = StyleSheet.create({
   quickRow: { flexDirection: "row", gap: 10 },
   quickCard: {
     flex: 1,
+    position: "relative",
     borderRadius: 20,
     backgroundColor: "rgba(255,255,255,0.95)",
     borderWidth: 1,
@@ -297,6 +305,20 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 8,
   },
+  alertBadge: {
+    position: "absolute",
+    top: 7,
+    right: 9,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 5,
+    backgroundColor: "#ff0f64",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+  alertBadgeText: { color: "#ffffff", fontSize: 10, fontWeight: "900" },
   quickIconWrap: {
     width: 32,
     height: 32,
