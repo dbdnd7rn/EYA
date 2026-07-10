@@ -1,5 +1,5 @@
-import FoodRestaurantProfileScreen from "@/components/food/FoodRestaurantProfileScreen";
+import FoodRestaurantExperienceScreen from "@/components/food/FoodRestaurantExperienceScreen";
 
 export default function FoodRestaurantProfilePage() {
-  return <FoodRestaurantProfileScreen fallbackRoute="/(food)/(tabs)/food" />;
+  return <FoodRestaurantExperienceScreen fallbackRoute="/(food)/(tabs)/food" />;
 }
