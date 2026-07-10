@@ -192,6 +192,13 @@ export function notificationTargetForRole(role: AppNotificationRole, type?: stri
   const enquiryId = readNotificationValue(data, "enquiryId");
   const listingId = readNotificationValue(data, "listingId");
 
+  if (role === "vendor" && orderId && normalized.includes("order")) {
+    return {
+      pathname: "/(market)/order/[id]",
+      params: { id: orderId },
+    };
+  }
+
   if (role === "agent" && orderId && (normalized.includes("delivery") || normalized.includes("order"))) {
     return {
       pathname: "/delivery/[orderId]",
