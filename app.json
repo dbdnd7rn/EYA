@@ -19,7 +19,8 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "EYA needs microphone access for in-app enquiry calls.",
-        "NSCameraUsageDescription": "EYA uses camera permission for in-app call compatibility."
+        "NSCameraUsageDescription": "EYA uses camera permission for in-app call compatibility.",
+        "NSLocationWhenInUseUsageDescription": "EYA uses your location to place your food provider, property, or delivery pin accurately."
       }
     },
     "android": {
@@ -28,7 +29,9 @@
         "POST_NOTIFICATIONS",
         "RECORD_AUDIO",
         "CAMERA",
-        "MODIFY_AUDIO_SETTINGS"
+        "MODIFY_AUDIO_SETTINGS",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -41,7 +44,13 @@
       "expo-router",
       "expo-notifications",
       "expo-camera",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "EYA uses your location to place your food provider, property, or delivery pin accurately."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
