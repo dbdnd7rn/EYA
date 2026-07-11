@@ -882,7 +882,7 @@ export default function OnboardingPage() {
           <View style={styles.myRoleWrap}>
             <View style={[styles.myRoleCard, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}>
               <View style={[styles.myRoleIcon, { backgroundColor: theme.accent }]}>
-                <CurrentRoleIcon size={46} color="#ffffff" />
+                <CurrentRoleIcon size={36} color="#ffffff" />
               </View>
               <Text style={[styles.myRoleName, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
                 {currentRoleLabel}
@@ -902,7 +902,7 @@ export default function OnboardingPage() {
               <View style={styles.actionList}>
                 {currentRoleActions.map((item) => (
                   <View key={item} style={styles.actionRow}>
-                    <Check size={22} color="#2ead66" />
+                    <Check size={18} color="#2ead66" />
                     <Text style={[styles.actionText, { color: theme.textMuted }]}>{item}</Text>
                   </View>
                 ))}
@@ -1473,58 +1473,58 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 29,
   },
-  topBarTitle: { flex: 1, color: "#13285f", fontSize: 23, fontWeight: "900", textAlign: "center", marginHorizontal: 8 },
-  rolePickerTopBarTitle: { fontSize: 30, lineHeight: 36 },
+  topBarTitle: { flex: 1, color: "#13285f", fontSize: 20, fontWeight: "900", textAlign: "center", marginHorizontal: 8 },
+  rolePickerTopBarTitle: { fontSize: 26, lineHeight: 32 },
   topBarSpacer: { width: 44 },
   rolePickerTopSpacer: { width: 58 },
 
   myRoleWrap: {
     flexGrow: 1,
-    gap: 24,
+    gap: 18,
     justifyContent: "flex-start",
-    paddingTop: 12,
-    paddingBottom: 24,
+    paddingTop: 8,
+    paddingBottom: 18,
   },
   myRoleCard: {
-    minHeight: 292,
+    minHeight: 238,
     borderRadius: 28,
     borderWidth: 1,
     borderColor: "#e8edf7",
     backgroundColor: "#ffffff",
-    paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingHorizontal: 22,
+    paddingVertical: 26,
     alignItems: "center",
     justifyContent: "center",
-    gap: 14,
+    gap: 10,
     shadowColor: "#8492c2",
     shadowOpacity: 0.08,
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 10 },
   },
   myRoleIcon: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     backgroundColor: "#5e73dd",
     alignItems: "center",
     justifyContent: "center",
   },
-  myRoleName: { color: "#0e2756", fontSize: 42, fontWeight: "900", lineHeight: 48 },
+  myRoleName: { color: "#0e2756", fontSize: 32, fontWeight: "900", lineHeight: 38 },
   activeBadge: {
     borderRadius: 999,
     backgroundColor: "#dff5ea",
-    paddingHorizontal: 16,
-    paddingVertical: 5,
+    paddingHorizontal: 13,
+    paddingVertical: 4,
   },
-  activeBadgeText: { color: "#0f7b3f", fontSize: 18, fontWeight: "900" },
-  myRoleCopy: { color: "#6e7892", fontSize: 20, fontWeight: "600", lineHeight: 31, textAlign: "center", maxWidth: 620 },
-  whatWrap: { gap: 20, paddingHorizontal: 16 },
-  whatTitle: { color: "#0e2756", fontSize: 27, fontWeight: "900", lineHeight: 34 },
-  actionList: { gap: 21 },
-  actionRow: { flexDirection: "row", alignItems: "center", gap: 20 },
-  actionText: { color: "#6e7892", fontSize: 21, fontWeight: "500", flex: 1, lineHeight: 29 },
+  activeBadgeText: { color: "#0f7b3f", fontSize: 14, fontWeight: "900" },
+  myRoleCopy: { color: "#6e7892", fontSize: 16, fontWeight: "600", lineHeight: 24, textAlign: "center", maxWidth: 560 },
+  whatWrap: { gap: 14, paddingHorizontal: 12 },
+  whatTitle: { color: "#0e2756", fontSize: 22, fontWeight: "900", lineHeight: 28 },
+  actionList: { gap: 14 },
+  actionRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  actionText: { color: "#6e7892", fontSize: 16, fontWeight: "500", flex: 1, lineHeight: 23 },
   addRolePrimaryBtn: {
-    minHeight: 78,
+    minHeight: 58,
     borderRadius: 18,
     backgroundColor: "#5e73dd",
     alignItems: "center",
@@ -1535,7 +1535,7 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
   },
-  addRolePrimaryText: { color: "#ffffff", fontSize: 22, fontWeight: "900", textAlign: "center" },
+  addRolePrimaryText: { color: "#ffffff", fontSize: 17, fontWeight: "900", textAlign: "center" },
   secondaryWorkspaceBtn: {
     minHeight: 50,
     borderRadius: 13,
@@ -1545,21 +1545,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   secondaryWorkspaceText: { color: "#0e2756", fontSize: 16, fontWeight: "800" },
-  workspaceFoot: { gap: 22, paddingTop: 6 },
+  workspaceFoot: { gap: 14, paddingTop: 2 },
   workspaceInsight: {
-    minHeight: 132,
+    minHeight: 104,
     borderRadius: 22,
     borderWidth: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 23,
-    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 17,
+    gap: 8,
     shadowColor: "#8492c2",
     shadowOpacity: 0.05,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
   },
-  workspaceInsightKicker: { fontSize: 17, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.1 },
-  workspaceInsightTitle: { fontSize: 23, fontWeight: "900", lineHeight: 32 },
+  workspaceInsightKicker: { fontSize: 13, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1 },
+  workspaceInsightTitle: { fontSize: 18, fontWeight: "900", lineHeight: 25 },
   previewSection: { flex: 1, gap: 12 },
   previewHeader: {
     borderRadius: 21,
