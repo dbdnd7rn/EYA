@@ -1,0 +1,80 @@
+name: Compact workspace typography
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/compact-workspace-typography.yml
+
+permissions:
+  contents: write
+
+jobs:
+  compact-workspace:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Reduce current workspace font sizes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/onboarding/index.tsx")
+          text = path.read_text(encoding="utf-8")
+
+          replacements = [
+              ('<CurrentRoleIcon size={46} color="#ffffff" />', '<CurrentRoleIcon size={36} color="#ffffff" />'),
+              ('<Check size={22} color="#2ead66" />', '<Check size={18} color="#2ead66" />'),
+              ('topBarTitle: { flex: 1, color: "#13285f", fontSize: 23, fontWeight: "900", textAlign: "center", marginHorizontal: 8 },', 'topBarTitle: { flex: 1, color: "#13285f", fontSize: 20, fontWeight: "900", textAlign: "center", marginHorizontal: 8 },'),
+              ('rolePickerTopBarTitle: { fontSize: 30, lineHeight: 36 },', 'rolePickerTopBarTitle: { fontSize: 26, lineHeight: 32 },'),
+              ('    gap: 24,\n    justifyContent: "flex-start",\n    paddingTop: 12,\n    paddingBottom: 24,', '    gap: 18,\n    justifyContent: "flex-start",\n    paddingTop: 8,\n    paddingBottom: 18,'),
+              ('    minHeight: 292,', '    minHeight: 238,'),
+              ('    paddingHorizontal: 24,\n    paddingVertical: 40,', '    paddingHorizontal: 22,\n    paddingVertical: 26,'),
+              ('    gap: 14,\n    shadowColor: "#8492c2",', '    gap: 10,\n    shadowColor: "#8492c2",'),
+              ('    width: 96,\n    height: 96,\n    borderRadius: 48,', '    width: 76,\n    height: 76,\n    borderRadius: 38,'),
+              ('myRoleName: { color: "#0e2756", fontSize: 42, fontWeight: "900", lineHeight: 48 },', 'myRoleName: { color: "#0e2756", fontSize: 32, fontWeight: "900", lineHeight: 38 },'),
+              ('    paddingHorizontal: 16,\n    paddingVertical: 5,', '    paddingHorizontal: 13,\n    paddingVertical: 4,'),
+              ('activeBadgeText: { color: "#0f7b3f", fontSize: 18, fontWeight: "900" },', 'activeBadgeText: { color: "#0f7b3f", fontSize: 14, fontWeight: "900" },'),
+              ('myRoleCopy: { color: "#6e7892", fontSize: 20, fontWeight: "600", lineHeight: 31, textAlign: "center", maxWidth: 620 },', 'myRoleCopy: { color: "#6e7892", fontSize: 16, fontWeight: "600", lineHeight: 24, textAlign: "center", maxWidth: 560 },'),
+              ('whatWrap: { gap: 20, paddingHorizontal: 16 },', 'whatWrap: { gap: 14, paddingHorizontal: 12 },'),
+              ('whatTitle: { color: "#0e2756", fontSize: 27, fontWeight: "900", lineHeight: 34 },', 'whatTitle: { color: "#0e2756", fontSize: 22, fontWeight: "900", lineHeight: 28 },'),
+              ('actionList: { gap: 21 },', 'actionList: { gap: 14 },'),
+              ('actionRow: { flexDirection: "row", alignItems: "center", gap: 20 },', 'actionRow: { flexDirection: "row", alignItems: "center", gap: 14 },'),
+              ('actionText: { color: "#6e7892", fontSize: 21, fontWeight: "500", flex: 1, lineHeight: 29 },', 'actionText: { color: "#6e7892", fontSize: 16, fontWeight: "500", flex: 1, lineHeight: 23 },'),
+              ('    minHeight: 78,', '    minHeight: 58,'),
+              ('addRolePrimaryText: { color: "#ffffff", fontSize: 22, fontWeight: "900", textAlign: "center" },', 'addRolePrimaryText: { color: "#ffffff", fontSize: 17, fontWeight: "900", textAlign: "center" },'),
+              ('workspaceFoot: { gap: 22, paddingTop: 6 },', 'workspaceFoot: { gap: 14, paddingTop: 2 },'),
+              ('    minHeight: 132,', '    minHeight: 104,'),
+              ('    paddingHorizontal: 24,\n    paddingVertical: 23,\n    gap: 12,', '    paddingHorizontal: 18,\n    paddingVertical: 17,\n    gap: 8,'),
+              ('workspaceInsightKicker: { fontSize: 17, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.1 },', 'workspaceInsightKicker: { fontSize: 13, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1 },'),
+              ('workspaceInsightTitle: { fontSize: 23, fontWeight: "900", lineHeight: 32 },', 'workspaceInsightTitle: { fontSize: 18, fontWeight: "900", lineHeight: 25 },'),
+          ]
+
+          changed = 0
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+                  changed += 1
+              else:
+                  print(f"Pattern already changed or not found: {old[:70]}")
+
+          path.write_text(text, encoding="utf-8")
+          print(f"Applied {changed} compact workspace typography changes.")
+          PY
+
+      - name: Commit compact workspace layout
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/onboarding/index.tsx
+          if git diff --cached --quiet; then
+            echo "No typography changes needed."
+            exit 0
+          fi
+          git commit -m "fix: reduce current workspace font sizes"
+          git push origin master
