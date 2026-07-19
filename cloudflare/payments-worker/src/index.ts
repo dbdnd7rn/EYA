@@ -12,19 +12,26 @@ import {
   extractPayChanguTxRef,
   verifyPayChanguWebhookSignature,
 } from "./paychangu-verification";
-import {
-  createOrLoadWebhookEvent,
-  updateWebhookEvent,
-} from "./verification-ledger";
+import { createOrLoadWebhookEvent, updateWebhookEvent } from "./verification-ledger";
 import {
   PaymentIntentNotFoundError,
   PaymentVerificationMismatchError,
   verifyAndRecordPayChanguPayment,
 } from "./processing";
 import { paymentResultPage as html } from "./payment-page";
+import { deliverDueOutboxEvents } from "./outbox-delivery";
 
 const PAYMENT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer"]);
 const TERMINAL_PAYMENT_STATUSES = new Set(["failed", "cancelled", "expired"]);
+
+type WorkerExecutionContextLike = {
+  waitUntil(promise: Promise<unknown>): void;
+};
+
+type ScheduledControllerLike = {
+  cron: string;
+  scheduledTime: number;
+};
 
 function json(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(payload), {
@@ -114,6 +121,7 @@ async function handleReadiness(env: PaymentsEnv): Promise<Response> {
         env.PAYCHANGU_RETURN_URL?.trim(),
     ),
     webhook_configured: Boolean(env.PAYCHANGU_WEBHOOK_SECRET?.trim()),
+    callbacks_configured: Boolean(env.APP_CALLBACKS_JSON?.trim()),
     environment: env.ENVIRONMENT || "unknown",
   });
 }
@@ -146,12 +154,7 @@ async function handleCreatePaymentIntent(request: Request, env: PaymentsEnv): Pr
       checkoutCreated = true;
     } catch (error) {
       if (error instanceof PaymentProviderError) {
-        await recordPaymentProviderFailure(
-          env,
-          intent.id,
-          error.message,
-          error.providerPayload,
-        );
+        await recordPaymentProviderFailure(env, intent.id, error.message, error.providerPayload);
       }
       throw error;
     }
@@ -319,8 +322,58 @@ async function handlePayChanguWebhook(request: Request, env: PaymentsEnv): Promi
   }
 }
 
+async function handleDeliverOutbox(request: Request, env: PaymentsEnv): Promise<Response> {
+  validateFoundationEnvironment(env);
+  const rawBody = await request.text();
+  const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON);
+  if (auth.appId !== "eya") throw new Error("Only EYA may trigger this outbox delivery endpoint.");
+
+  let limit = 10;
+  if (rawBody.trim()) {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      return json({ status: "error", message: "Request body must contain valid JSON." }, 400);
+    }
+
+    if (!isPlainObject(payload)) {
+      return json({ status: "error", message: "Request body must be a JSON object." }, 400);
+    }
+
+    if (payload.limit != null) {
+      const requestedLimit = Number(payload.limit);
+      if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 10) {
+        throw new Error("limit must be a whole number from 1 to 10.");
+      }
+      limit = requestedLimit;
+    }
+  }
+
+  const summary = await deliverDueOutboxEvents(env, limit);
+  return json({ status: "success", ...summary });
+}
+
+function scheduleOutboxDelivery(env: PaymentsEnv, context?: WorkerExecutionContextLike): void {
+  if (!context || !env.APP_CALLBACKS_JSON?.trim()) return;
+
+  context.waitUntil(
+    deliverDueOutboxEvents(env).then((summary) => {
+      if (summary.attempted > 0) console.log("[vac-payments] outbox delivery", summary);
+    }).catch((error) => {
+      console.error("[vac-payments] background outbox delivery failed", {
+        message: error instanceof Error ? error.message : "Unknown background delivery error.",
+      });
+    }),
+  );
+}
+
 export default {
-  async fetch(request: Request, env: PaymentsEnv): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: PaymentsEnv,
+    context?: WorkerExecutionContextLike,
+  ): Promise<Response> {
     const requestId = crypto.randomUUID();
     const url = new URL(request.url);
 
@@ -346,18 +399,26 @@ export default {
         (request.method === "GET" || request.method === "POST") &&
         (url.pathname === "/v1/paychangu/callback" || url.pathname === "/v1/paychangu/return")
       ) {
-        return await handlePublicPaymentResult(request, env);
+        const response = await handlePublicPaymentResult(request, env);
+        scheduleOutboxDelivery(env, context);
+        return response;
       }
 
       if (request.method === "POST" && url.pathname === "/v1/webhooks/paychangu") {
-        return await handlePayChanguWebhook(request, env);
+        const response = await handlePayChanguWebhook(request, env);
+        scheduleOutboxDelivery(env, context);
+        return response;
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/outbox/deliver") {
+        return await handleDeliverOutbox(request, env);
       }
 
       return json({ status: "error", message: "Route not found.", request_id: requestId }, 404);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected payment service error.";
-      const unauthorized = /signature|signed application|unknown or inactive application|expired/i.test(message);
-      const invalidRequest = /required|must be|too long|different payment request/i.test(message);
+      const unauthorized = /signature|signed application|unknown or inactive application|expired|only eya/i.test(message);
+      const invalidRequest = /required|must be|too long|different payment request|limit must be/i.test(message);
       const conflict = /payment attempt is closed|different provider checkout session|checkout session conflicts|cannot transition/i.test(
         message,
       );
@@ -399,5 +460,27 @@ export default {
         status,
       );
     }
+  },
+
+  async scheduled(
+    controller: ScheduledControllerLike,
+    env: PaymentsEnv,
+    context: WorkerExecutionContextLike,
+  ): Promise<void> {
+    context.waitUntil(
+      deliverDueOutboxEvents(env).then((summary) => {
+        console.log("[vac-payments] scheduled outbox delivery", {
+          cron: controller.cron,
+          scheduledTime: controller.scheduledTime,
+          ...summary,
+        });
+      }).catch((error) => {
+        console.error("[vac-payments] scheduled outbox delivery failed", {
+          cron: controller.cron,
+          scheduledTime: controller.scheduledTime,
+          message: error instanceof Error ? error.message : "Unknown scheduled delivery error.",
+        });
+      }),
+    );
   },
 };
