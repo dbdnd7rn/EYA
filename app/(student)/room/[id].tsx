@@ -596,6 +596,11 @@ export default function RoomDetailsScreen() {
     }
     if (!uid || !listing?.landlord_id) return;
 
+    if (listing.landlord_id === uid) {
+      Alert.alert("This is your own listing");
+      return;
+    }
+
     const trimmedMessage = enquiryText.trim();
     if (!trimmedMessage) return;
 
@@ -1015,10 +1020,16 @@ export default function RoomDetailsScreen() {
                 <Pressable
                   style={[styles.btnPink, styles.btnPrimary]}
                   onPress={() => {
-                    if (!uid || role !== "student") {
-                      Alert.alert("Login as a student to send enquiries");
+                    if (!uid) {
+                      Alert.alert("Please sign in to send an enquiry");
                       return;
                     }
+
+                    if (listing.landlord_id === uid) {
+                      Alert.alert("This is your own listing");
+                      return;
+                    }
+
                     setEnquiryText((current) => (current.trim() ? current : buildLandlordPrompt(listing)));
                     setShowEnquiry(true);
                   }}
