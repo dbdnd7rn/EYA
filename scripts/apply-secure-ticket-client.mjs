@@ -33,7 +33,8 @@ function replaceExactlyOnce(text, search, replacement, label) {
 }
 
 function replaceRegexExactlyOnce(text, pattern, replacement, label) {
-  const matches = [...text.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`))];
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  const matches = [...text.matchAll(new RegExp(pattern.source, flags))];
   if (matches.length !== 1) {
     throw new Error(`Expected one match for ${label}, found ${matches.length}.`);
   }
@@ -58,7 +59,7 @@ function patchTicketsLibrary() {
     "TicketPaymentSession checkout URL field",
   );
 
-  const secureCheckoutHelper = `async function createTicketOrderPaymentViaEdgeFunction(\n  accessToken: string,\n  input: TicketPaymentInput,\n): Promise<TicketPaymentSession> {\n  const endpoint = \`${ENV.SUPABASE_URL.replace(/\\/+$/, "")}/functions/v1/create-payment-checkout\`;\n  const res = await fetchWithTimeout(\n    endpoint,\n    {\n      method: "POST",\n      headers: {\n        apikey: ENV.SUPABASE_ANON_KEY,\n        Authorization: \`Bearer ${accessToken}\`,\n        "Content-Type": "application/json",\n      },\n      body: JSON.stringify({\n        event_id: input.eventId,\n        tier_id: input.tierId,\n        quantity: input.quantity,\n        payment_method: input.paymentMethod,\n        phone: input.phone ?? null,\n      }),\n    },\n    15_000,\n  );\n\n  const data = await parseJson(res);\n  if (!res.ok) {\n    throw new Error(parseError(data) || \`Could not create ticket checkout (${res.status}).\`);\n  }\n\n  const order = normalizeTicketOrder(data?.order);\n  const txRef = typeof data?.tx_ref === "string" ? data.tx_ref.trim() : "";\n  const checkoutUrl = typeof data?.checkout_url === "string" ? data.checkout_url.trim() : "";\n\n  if (!order.id) throw new Error("Ticket checkout did not return an order.");\n  if (!txRef) throw new Error("Ticket checkout did not return a payment reference.");\n  if (!/^https:\\/\\//i.test(checkoutUrl)) throw new Error("Ticket checkout did not return a secure checkout URL.");\n\n  return {\n    order,\n    event: data?.event && typeof data.event === "object" ? data.event : {},\n    tier: data?.tier && typeof data.tier === "object" ? data.tier : {},\n    txRef,\n    paymentId: typeof data?.payment_id === "string" ? data.payment_id : "",\n    checkoutUrl,\n    directCharge: {\n      status: String(data?.direct_charge?.status || "pending"),\n      providerReference:\n        typeof data?.direct_charge?.provider_reference === "string"\n          ? data.direct_charge.provider_reference\n          : null,\n      paymentAccountDetails: null,\n      authorization: null,\n    },\n  };\n}\n\nasync function getTicketOrderPaymentDetailViaSupabase`;
+  const secureCheckoutHelper = `async function createTicketOrderPaymentViaEdgeFunction(\n  accessToken: string,\n  input: TicketPaymentInput,\n): Promise<TicketPaymentSession> {\n  const endpoint = \`\${ENV.SUPABASE_URL.replace(/\\/+$/, "")}/functions/v1/create-payment-checkout\`;\n  const res = await fetchWithTimeout(\n    endpoint,\n    {\n      method: "POST",\n      headers: {\n        apikey: ENV.SUPABASE_ANON_KEY,\n        Authorization: \`Bearer \${accessToken}\`,\n        "Content-Type": "application/json",\n      },\n      body: JSON.stringify({\n        event_id: input.eventId,\n        tier_id: input.tierId,\n        quantity: input.quantity,\n        payment_method: input.paymentMethod,\n        phone: input.phone ?? null,\n      }),\n    },\n    15_000,\n  );\n\n  const data = await parseJson(res);\n  if (!res.ok) {\n    throw new Error(parseError(data) || \`Could not create ticket checkout (\${res.status}).\`);\n  }\n\n  const order = normalizeTicketOrder(data?.order);\n  const txRef = typeof data?.tx_ref === "string" ? data.tx_ref.trim() : "";\n  const checkoutUrl = typeof data?.checkout_url === "string" ? data.checkout_url.trim() : "";\n\n  if (!order.id) throw new Error("Ticket checkout did not return an order.");\n  if (!txRef) throw new Error("Ticket checkout did not return a payment reference.");\n  if (!/^https:\\/\\//i.test(checkoutUrl)) throw new Error("Ticket checkout did not return a secure checkout URL.");\n\n  return {\n    order,\n    event: data?.event && typeof data.event === "object" ? data.event : {},\n    tier: data?.tier && typeof data.tier === "object" ? data.tier : {},\n    txRef,\n    paymentId: typeof data?.payment_id === "string" ? data.payment_id : "",\n    checkoutUrl,\n    directCharge: {\n      status: String(data?.direct_charge?.status || "pending"),\n      providerReference:\n        typeof data?.direct_charge?.provider_reference === "string"\n          ? data.direct_charge.provider_reference\n          : null,\n      paymentAccountDetails: null,\n      authorization: null,\n    },\n  };\n}\n\nasync function getTicketOrderPaymentDetailViaSupabase`;
 
   text = replaceRegexExactlyOnce(
     text,
@@ -95,9 +96,9 @@ function patchActiveMobilePaymentScreen() {
   const file = readProjectFile("components/market/MobileMoneyPaymentFastScreen.tsx");
   let text = file.text;
 
-  const oldBlock = `      const payment = await createTicketOrderPayment(session.access_token, { eventId: event.id, tierId: tier.id, quantity, paymentMethod, phone: \`+265${phoneDigits}\` });\n      router.push({ pathname: "/(student)/market/payment-processing", params: { orderId: payment.order.id, txRef: payment.txRef, eventId: event.id, tierId: tier.id, quantity: String(quantity) } } as any);`;
+  const oldBlock = `      const payment = await createTicketOrderPayment(session.access_token, { eventId: event.id, tierId: tier.id, quantity, paymentMethod, phone: \`+265\${phoneDigits}\` });\n      router.push({ pathname: "/(student)/market/payment-processing", params: { orderId: payment.order.id, txRef: payment.txRef, eventId: event.id, tierId: tier.id, quantity: String(quantity) } } as any);`;
 
-  const newBlock = `      const payment = await createTicketOrderPayment(session.access_token, { eventId: event.id, tierId: tier.id, quantity, paymentMethod, phone: \`+265${phoneDigits}\` });\n      if (!payment.checkoutUrl) throw new Error("The secure payment page is unavailable.");\n      router.push({\n        pathname: "/pay/checkout",\n        params: {\n          url: encodeURIComponent(payment.checkoutUrl),\n          tx_ref: payment.txRef,\n          order_id: payment.order.id,\n        },\n      } as any);`;
+  const newBlock = `      const payment = await createTicketOrderPayment(session.access_token, { eventId: event.id, tierId: tier.id, quantity, paymentMethod, phone: \`+265\${phoneDigits}\` });\n      if (!payment.checkoutUrl) throw new Error("The secure payment page is unavailable.");\n      router.push({\n        pathname: "/pay/checkout",\n        params: {\n          url: encodeURIComponent(payment.checkoutUrl),\n          tx_ref: payment.txRef,\n          order_id: payment.order.id,\n        },\n      } as any);`;
 
   text = replaceExactlyOnce(text, oldBlock, newBlock, "active mobile ticket payment navigation");
   writeProjectFile(file, text);
@@ -123,7 +124,7 @@ function patchPaymentWebView() {
 
   text = replaceExactlyOnce(
     text,
-    `          if (url.includes("/pay/success") || url.includes("status=success")) {`,
+    '          if (url.includes("/pay/success") || url.includes("status=success")) {',
     `          const reachedVacResult =\n            url.includes("/v1/paychangu/callback") || url.includes("/v1/paychangu/return");\n\n          if (reachedVacResult && orderId) {\n            router.replace({\n              pathname: "/(student)/market/payment-processing",\n              params: { orderId, txRef },\n            } as any);\n            return;\n          }\n\n          if (url.includes("/pay/success") || url.includes("status=success")) {`,
     "VAC callback navigation",
   );
