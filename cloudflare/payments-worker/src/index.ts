@@ -7,6 +7,20 @@ import {
   type PaymentsEnv,
 } from "./ledger";
 import { initiatePayChanguCheckout, PaymentProviderError } from "./paychangu";
+import {
+  createWebhookEventKey,
+  extractPayChanguTxRef,
+  verifyPayChanguWebhookSignature,
+} from "./paychangu-verification";
+import {
+  createOrLoadWebhookEvent,
+  updateWebhookEvent,
+} from "./verification-ledger";
+import {
+  PaymentIntentNotFoundError,
+  PaymentVerificationMismatchError,
+  verifyAndRecordPayChanguPayment,
+} from "./processing";
 
 const PAYMENT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer"]);
 const TERMINAL_PAYMENT_STATUSES = new Set(["failed", "cancelled", "expired"]);
@@ -18,6 +32,34 @@ function json(payload: unknown, status = 200, extraHeaders: Record<string, strin
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       ...extraHeaders,
+    },
+  });
+}
+
+function html(title: string, message: string, status = 200): Response {
+  const document = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #f6f7f9; color: #17202a; }
+    main { width: min(92vw, 520px); padding: 32px; border-radius: 18px; background: white; box-shadow: 0 12px 38px rgba(0,0,0,.08); text-align: center; }
+    h1 { margin: 0 0 12px; font-size: 1.6rem; }
+    p { margin: 0; line-height: 1.55; color: #52606d; }
+  </style>
+</head>
+<body><main><h1>${title}</h1><p>${message}</p></main></body>
+</html>`;
+
+  return new Response(document, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
     },
   });
 }
@@ -98,6 +140,7 @@ async function handleReadiness(env: PaymentsEnv): Promise<Response> {
         env.PAYCHANGU_CALLBACK_URL?.trim() &&
         env.PAYCHANGU_RETURN_URL?.trim(),
     ),
+    webhook_configured: Boolean(env.PAYCHANGU_WEBHOOK_SECRET?.trim()),
     environment: env.ENVIRONMENT || "unknown",
   });
 }
@@ -164,6 +207,145 @@ async function handleCreatePaymentIntent(request: Request, env: PaymentsEnv): Pr
   );
 }
 
+async function readPublicTxRef(request: Request, url: URL): Promise<string | null> {
+  const fromQuery = url.searchParams.get("tx_ref")?.trim();
+  if (fromQuery) return fromQuery;
+  if (request.method === "GET" || request.method === "HEAD") return null;
+
+  const rawBody = await request.text();
+  if (!rawBody.trim()) return null;
+  const contentType = request.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      const parsed: unknown = JSON.parse(rawBody);
+      return isPlainObject(parsed) && typeof parsed.tx_ref === "string"
+        ? parsed.tx_ref.trim() || null
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const form = new URLSearchParams(rawBody);
+  return form.get("tx_ref")?.trim() || null;
+}
+
+function paymentStatusPage(status: string): Response {
+  if (status === "paid") {
+    return html("Payment confirmed", "Your payment was verified successfully. You may return to EYA.");
+  }
+  if (status === "failed" || status === "cancelled" || status === "expired") {
+    return html("Payment not completed", "No payment was confirmed. You may return to EYA and try again.");
+  }
+  return html(
+    "Payment verification pending",
+    "Your payment is still being verified. You may return to EYA; the order will update after confirmation.",
+  );
+}
+
+async function handlePublicPaymentResult(request: Request, env: PaymentsEnv): Promise<Response> {
+  validateFoundationEnvironment(env);
+  const url = new URL(request.url);
+  const txRef = await readPublicTxRef(request, url);
+  if (!txRef) return html("Invalid payment response", "The transaction reference is missing.", 400);
+
+  try {
+    const result = await verifyAndRecordPayChanguPayment(env, txRef);
+    return paymentStatusPage(result.intent.status);
+  } catch (error) {
+    if (error instanceof PaymentIntentNotFoundError) {
+      return html("Payment not found", "This payment reference is not recognized.", 404);
+    }
+    if (error instanceof PaymentVerificationMismatchError) {
+      console.error("[vac-payments] payment verification mismatch", { txRef, message: error.message });
+      return html(
+        "Payment requires review",
+        "The payment could not be confirmed automatically. No order has been fulfilled.",
+        409,
+      );
+    }
+    if (error instanceof PaymentProviderError) {
+      console.error("[vac-payments] provider verification unavailable", {
+        txRef,
+        providerStatusCode: error.providerStatusCode,
+      });
+      return html(
+        "Verification temporarily unavailable",
+        "Your payment has not been lost. Please return to EYA while verification continues.",
+        200,
+      );
+    }
+    throw error;
+  }
+}
+
+async function handlePayChanguWebhook(request: Request, env: PaymentsEnv): Promise<Response> {
+  validateFoundationEnvironment(env);
+  const rawBody = await request.text();
+  const signatureValid = await verifyPayChanguWebhookSignature(
+    rawBody,
+    request.headers.get("Signature"),
+    env.PAYCHANGU_WEBHOOK_SECRET,
+  );
+
+  if (!signatureValid) {
+    return json({ status: "error", message: "Invalid PayChangu webhook signature." }, 401);
+  }
+
+  let payload: unknown;
+  try {
+    payload = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    return json({ status: "error", message: "Webhook body must contain valid JSON." }, 400);
+  }
+  if (!isPlainObject(payload)) {
+    return json({ status: "error", message: "Webhook body must be a JSON object." }, 400);
+  }
+
+  const eventKey = await createWebhookEventKey(rawBody);
+  const stored = await createOrLoadWebhookEvent(env, eventKey, payload);
+  const event = stored.event;
+
+  if (event.status === "processed" || event.status === "ignored" || event.status === "processing") {
+    return json({ status: "success", duplicate: true }, 200);
+  }
+
+  const txRef = extractPayChanguTxRef(payload);
+  if (!txRef) {
+    await updateWebhookEvent(env, event.id, "ignored", null, "Webhook did not include tx_ref.");
+    return json({ status: "success", ignored: true }, 200);
+  }
+
+  await updateWebhookEvent(env, event.id, "processing", null, null);
+
+  try {
+    const result = await verifyAndRecordPayChanguPayment(env, txRef);
+    await updateWebhookEvent(env, event.id, "processed", result.intent.id, null);
+    return json({ status: "success", payment_status: result.intent.status }, 200);
+  } catch (error) {
+    if (error instanceof PaymentIntentNotFoundError) {
+      await updateWebhookEvent(env, event.id, "ignored", null, error.message);
+      return json({ status: "success", ignored: true }, 200);
+    }
+
+    if (error instanceof PaymentVerificationMismatchError) {
+      await updateWebhookEvent(env, event.id, "failed", null, error.message);
+      console.error("[vac-payments] webhook verification mismatch", { txRef, message: error.message });
+      return json({ status: "success", accepted: false }, 200);
+    }
+
+    await updateWebhookEvent(
+      env,
+      event.id,
+      "failed",
+      null,
+      error instanceof Error ? error.message : "Webhook processing failed.",
+    );
+    throw error;
+  }
+}
+
 export default {
   async fetch(request: Request, env: PaymentsEnv): Promise<Response> {
     const requestId = crypto.randomUUID();
@@ -187,16 +369,39 @@ export default {
         return await handleCreatePaymentIntent(request, env);
       }
 
+      if (
+        (request.method === "GET" || request.method === "POST") &&
+        (url.pathname === "/v1/paychangu/callback" || url.pathname === "/v1/paychangu/return")
+      ) {
+        return await handlePublicPaymentResult(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/webhooks/paychangu") {
+        return await handlePayChanguWebhook(request, env);
+      }
+
       return json({ status: "error", message: "Route not found.", request_id: requestId }, 404);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected payment service error.";
       const unauthorized = /signature|signed application|unknown or inactive application|expired/i.test(message);
       const invalidRequest = /required|must be|too long|different payment request/i.test(message);
-      const conflict = /payment attempt is closed|different provider checkout session|checkout session conflicts/i.test(
+      const conflict = /payment attempt is closed|different provider checkout session|checkout session conflicts|cannot transition/i.test(
         message,
       );
+      const notFound = error instanceof PaymentIntentNotFoundError;
+      const mismatch = error instanceof PaymentVerificationMismatchError;
       const providerFailure = error instanceof PaymentProviderError;
-      const status = unauthorized ? 401 : conflict ? 409 : invalidRequest ? 400 : providerFailure ? 502 : 500;
+      const status = unauthorized
+        ? 401
+        : notFound
+          ? 404
+          : conflict || mismatch
+            ? 409
+            : invalidRequest
+              ? 400
+              : providerFailure
+                ? 502
+                : 500;
 
       console.error("[vac-payments]", {
         requestId,
@@ -214,7 +419,7 @@ export default {
             status === 500
               ? "Payment service could not process the request."
               : status === 502
-                ? "Payment provider could not create the checkout session."
+                ? "Payment provider verification is temporarily unavailable."
                 : message,
           request_id: requestId,
         },
