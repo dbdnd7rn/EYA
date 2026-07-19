@@ -173,24 +173,26 @@ export default {
         p_payload: payload,
       };
 
-      const { data, error } = await ctx.supabaseAdmin.rpc("record_vac_payment_event", rpcPayload);
+      const { data, error } = await ctx.supabaseAdmin.rpc("process_vac_payment_event", rpcPayload);
       if (error) {
-        console.error("[payment-confirmed] failed to record VAC payment event", {
+        console.error("[payment-confirmed] failed to process VAC payment event", {
           code: error.code,
           message: error.message,
         });
-        return json({ status: "error", message: "EYA could not record the payment event." }, 500);
+        return json({ status: "error", message: "EYA could not process the payment event." }, 500);
       }
 
       const row = Array.isArray(data) ? data[0] : data;
       const inserted = Boolean(row?.inserted);
+      const fulfilled = row?.fulfilled === true;
 
       return json({
         status: "accepted",
         duplicate: !inserted,
         event_id: row?.event_id || null,
-        event_status: row?.current_status || "received",
-        fulfilled: false,
+        event_status: row?.current_status || "processed",
+        fulfilled,
+        fulfilment: isPlainObject(row?.fulfilment) ? row.fulfilment : {},
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected payment callback error.";
