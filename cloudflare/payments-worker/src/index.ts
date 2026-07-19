@@ -1,11 +1,15 @@
 import { authenticateAppRequest } from "./security";
 import {
   createPaymentIntent,
+  recordPaymentProviderFailure,
+  savePayChanguCheckout,
   type CreatePaymentIntentInput,
   type PaymentsEnv,
 } from "./ledger";
+import { initiatePayChanguCheckout, PaymentProviderError } from "./paychangu";
 
 const PAYMENT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer"]);
+const TERMINAL_PAYMENT_STATUSES = new Set(["failed", "cancelled", "expired"]);
 
 function json(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(payload), {
@@ -89,6 +93,11 @@ async function handleReadiness(env: PaymentsEnv): Promise<Response> {
     status: "ready",
     service: "vac-payments",
     ledger: "d1",
+    checkout_configured: Boolean(
+      env.PAYCHANGU_SECRET_KEY?.trim() &&
+        env.PAYCHANGU_CALLBACK_URL?.trim() &&
+        env.PAYCHANGU_RETURN_URL?.trim(),
+    ),
     environment: env.ENVIRONMENT || "unknown",
   });
 }
@@ -107,21 +116,48 @@ async function handleCreatePaymentIntent(request: Request, env: PaymentsEnv): Pr
 
   const input = parsePaymentIntentInput(auth.appId, parsed);
   const result = await createPaymentIntent(env, input);
+  let intent = result.intent;
+  let checkoutCreated = false;
+
+  if (TERMINAL_PAYMENT_STATUSES.has(intent.status)) {
+    throw new Error("This payment attempt is closed. Create a new appPaymentId to try again.");
+  }
+
+  if (!intent.checkout_url) {
+    try {
+      const checkout = await initiatePayChanguCheckout(env, intent);
+      intent = await savePayChanguCheckout(env, intent, checkout);
+      checkoutCreated = true;
+    } catch (error) {
+      if (error instanceof PaymentProviderError) {
+        await recordPaymentProviderFailure(
+          env,
+          intent.id,
+          error.message,
+          error.providerPayload,
+        );
+      }
+      throw error;
+    }
+  }
 
   return json(
     {
       status: "success",
       created: result.created,
+      checkout_created: checkoutCreated,
       payment_intent: {
-        id: result.intent.id,
-        app_id: result.intent.app_id,
-        app_payment_id: result.intent.app_payment_id,
-        merchant_reference: result.intent.merchant_reference,
-        expected_amount_mwk: result.intent.expected_amount_mwk,
-        currency: result.intent.currency,
-        method: result.intent.method,
-        status: result.intent.status,
-        created_at: result.intent.created_at,
+        id: intent.id,
+        app_id: intent.app_id,
+        app_payment_id: intent.app_payment_id,
+        merchant_reference: intent.merchant_reference,
+        provider_reference: intent.provider_reference,
+        expected_amount_mwk: intent.expected_amount_mwk,
+        currency: intent.currency,
+        method: intent.method,
+        status: intent.status,
+        checkout_url: intent.checkout_url,
+        created_at: intent.created_at,
       },
     },
     result.created ? 201 : 200,
@@ -156,19 +192,30 @@ export default {
       const message = error instanceof Error ? error.message : "Unexpected payment service error.";
       const unauthorized = /signature|signed application|unknown or inactive application|expired/i.test(message);
       const invalidRequest = /required|must be|too long|different payment request/i.test(message);
-      const status = unauthorized ? 401 : invalidRequest ? 400 : 500;
+      const conflict = /payment attempt is closed|different provider checkout session|checkout session conflicts/i.test(
+        message,
+      );
+      const providerFailure = error instanceof PaymentProviderError;
+      const status = unauthorized ? 401 : conflict ? 409 : invalidRequest ? 400 : providerFailure ? 502 : 500;
 
       console.error("[vac-payments]", {
         requestId,
         method: request.method,
         path: url.pathname,
         message,
+        providerStatusCode:
+          error instanceof PaymentProviderError ? error.providerStatusCode : undefined,
       });
 
       return json(
         {
           status: "error",
-          message: status === 500 ? "Payment service could not process the request." : message,
+          message:
+            status === 500
+              ? "Payment service could not process the request."
+              : status === 502
+                ? "Payment provider could not create the checkout session."
+                : message,
           request_id: requestId,
         },
         status,
