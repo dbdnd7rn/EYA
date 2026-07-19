@@ -106,31 +106,36 @@ function extractCheckoutResult(
   if (status !== "success") {
     throw new PaymentProviderError(
       asNonEmptyString(root?.message) || "PayChangu did not create a checkout session.",
-      502,
+      200,
       root || {},
     );
   }
 
   if (!checkoutUrlValue) {
-    throw new PaymentProviderError("PayChangu response did not include a checkout URL.", 502, root || {});
+    throw new PaymentProviderError("PayChangu response did not include a checkout URL.", 200, root || {});
   }
 
-  const checkoutUrl = validateHttpsUrl(checkoutUrlValue, "PayChangu checkout URL");
+  let checkoutUrl: string;
+  try {
+    checkoutUrl = validateHttpsUrl(checkoutUrlValue, "PayChangu checkout URL");
+  } catch {
+    throw new PaymentProviderError("PayChangu returned an invalid checkout URL.", 200, root || {});
+  }
 
   if (providerReference !== expectedReference) {
-    throw new PaymentProviderError("PayChangu returned an unexpected transaction reference.", 502, root || {});
+    throw new PaymentProviderError("PayChangu returned an unexpected transaction reference.", 200, root || {});
   }
 
   if (currency !== "MWK") {
-    throw new PaymentProviderError("PayChangu returned an unexpected currency.", 502, root || {});
+    throw new PaymentProviderError("PayChangu returned an unexpected currency.", 200, root || {});
   }
 
   if (!Number.isSafeInteger(amount) || amount !== expectedAmountMwk) {
-    throw new PaymentProviderError("PayChangu returned an unexpected checkout amount.", 502, root || {});
+    throw new PaymentProviderError("PayChangu returned an unexpected checkout amount.", 200, root || {});
   }
 
   if (transactionStatus !== "pending") {
-    throw new PaymentProviderError("PayChangu checkout was not created in a pending state.", 502, root || {});
+    throw new PaymentProviderError("PayChangu checkout was not created in a pending state.", 200, root || {});
   }
 
   return {
