@@ -7,7 +7,7 @@ import {
 
 const PAYMENT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer"]);
 
-function json(payload: unknown, status = 200, extraHeaders: HeadersInit = {}): Response {
+function json(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
