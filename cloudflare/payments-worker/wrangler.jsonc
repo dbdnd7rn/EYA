@@ -6,6 +6,9 @@
   "observability": {
     "enabled": true
   },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
   "vars": {
     "ENVIRONMENT": "staging",
     "PAYCHANGU_CALLBACK_URL": "https://vac-payments.mwalechimango265.workers.dev/v1/paychangu/callback",
