@@ -7,7 +7,9 @@
     "enabled": true
   },
   "vars": {
-    "ENVIRONMENT": "development"
+    "ENVIRONMENT": "staging",
+    "PAYCHANGU_CALLBACK_URL": "https://vac-payments.mwalechimango265.workers.dev/v1/paychangu/callback",
+    "PAYCHANGU_RETURN_URL": "https://vac-payments.mwalechimango265.workers.dev/v1/paychangu/return"
   },
   "d1_databases": [
     {
