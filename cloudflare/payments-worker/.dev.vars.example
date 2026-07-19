@@ -1,0 +1,9 @@
+# Never commit real values. Copy this file to .dev.vars for local development.
+PAYCHANGU_SECRET_KEY=
+PAYCHANGU_WEBHOOK_SECRET=
+PAYMENTS_SUPABASE_URL=
+PAYMENTS_SUPABASE_SERVICE_ROLE_KEY=
+
+# JSON object mapping each application id to its private HMAC secret.
+# Example: {"eya":"replace-with-a-long-random-secret"}
+APP_SECRETS_JSON={}
