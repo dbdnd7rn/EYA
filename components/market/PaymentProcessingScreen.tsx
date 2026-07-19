@@ -15,7 +15,7 @@ import {
   Smartphone,
   Ticket,
 } from "lucide-react-native";
-import { appendCachedMyTickets, getTicketOrderDetail, verifyTicketOrderPayment, type TicketOrderDetail } from "@/lib/tickets";
+import { appendCachedMyTickets, getTicketOrderDetail, type TicketOrderDetail } from "@/lib/tickets";
 import { useAuth } from "@/providers/AuthProvider";
 import {
   EYA_ACCENT as ACCENT,
@@ -44,7 +44,7 @@ type IconComponent = React.ComponentType<{
 
 export default function PaymentProcessingScreen() {
   const router = useRouter();
-  const { orderId, txRef } = useLocalSearchParams<{ orderId?: string; txRef?: string }>();
+  const { orderId } = useLocalSearchParams<{ orderId?: string }>();
   const { session, user } = useAuth();
   const [secondsLeft, setSecondsLeft] = React.useState(5 * 60);
   const [detail, setDetail] = React.useState<TicketOrderDetail | null>(null);
@@ -85,13 +85,12 @@ export default function PaymentProcessingScreen() {
     try {
       setChecking(true);
       setError(null);
-      const verified = await verifyTicketOrderPayment(session.access_token, orderId, txRef);
-      const nextDetail = await getTicketOrderDetail(session.access_token, orderId).catch(() => null);
-      if (nextDetail) setDetail(nextDetail);
-      if (verified.fulfilled && verified.tickets?.length) {
-        const issued = nextDetail?.tickets || [];
-        if (issued.length) await appendCachedMyTickets(user?.id, issued).catch(() => undefined);
-        const firstTicketId = issued[0]?.id || verified.tickets[0]?.id || "";
+      const nextDetail = await getTicketOrderDetail(session.access_token, orderId);
+      setDetail(nextDetail);
+      if (nextDetail.fulfilled && nextDetail.tickets?.length) {
+        const issued = nextDetail.tickets;
+        await appendCachedMyTickets(user?.id, issued).catch(() => undefined);
+        const firstTicketId = issued[0]?.id || "";
         router.replace({ pathname: "/(student)/market/payment-success", params: { orderId, ticketId: firstTicketId } } as any);
       }
     } catch (verifyError: any) {
@@ -99,7 +98,7 @@ export default function PaymentProcessingScreen() {
     } finally {
       setChecking(false);
     }
-  }, [checking, orderId, router, session?.access_token, txRef, user?.id]);
+  }, [checking, orderId, router, session?.access_token, user?.id]);
 
   React.useEffect(() => {
     if (!orderId || !session?.access_token) return undefined;

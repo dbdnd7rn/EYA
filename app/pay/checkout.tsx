@@ -6,9 +6,10 @@ import { WebView } from "react-native-webview";
 
 export default function PayCheckoutWebviewScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ url?: string; tx_ref?: string }>();
+  const params = useLocalSearchParams<{ url?: string; tx_ref?: string; order_id?: string }>();
   const paymentUrl = typeof params.url === "string" ? decodeURIComponent(params.url) : "";
   const txRef = typeof params.tx_ref === "string" ? params.tx_ref : undefined;
+  const orderId = typeof params.order_id === "string" ? params.order_id : undefined;
 
   const valid = useMemo(() => /^https?:\/\//i.test(paymentUrl), [paymentUrl]);
 
@@ -40,6 +41,17 @@ export default function PayCheckoutWebviewScreen() {
         onNavigationStateChange={(state) => {
           const url = state.url ?? "";
           if (!url) return;
+
+          const reachedVacResult =
+            url.includes("/v1/paychangu/callback") || url.includes("/v1/paychangu/return");
+
+          if (reachedVacResult && orderId) {
+            router.replace({
+              pathname: "/(student)/market/payment-processing",
+              params: { orderId, txRef },
+            } as any);
+            return;
+          }
 
           if (url.includes("/pay/success") || url.includes("status=success")) {
             router.replace({ pathname: "/pay/success", params: { tx_ref: txRef } });

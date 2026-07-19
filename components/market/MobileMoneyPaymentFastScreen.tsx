@@ -93,7 +93,15 @@ export default function MobileMoneyPaymentFastScreen() {
     try {
       setStartingPayment(true);
       const payment = await createTicketOrderPayment(session.access_token, { eventId: event.id, tierId: tier.id, quantity, paymentMethod, phone: `+265${phoneDigits}` });
-      router.push({ pathname: "/(student)/market/payment-processing", params: { orderId: payment.order.id, txRef: payment.txRef, eventId: event.id, tierId: tier.id, quantity: String(quantity) } } as any);
+      if (!payment.checkoutUrl) throw new Error("The secure payment page is unavailable.");
+      router.push({
+        pathname: "/pay/checkout",
+        params: {
+          url: encodeURIComponent(payment.checkoutUrl),
+          tx_ref: payment.txRef,
+          order_id: payment.order.id,
+        },
+      } as any);
     } catch (error) {
       const friendly = getFriendlyPaymentError(error);
       Alert.alert(friendly.title, friendly.message);
