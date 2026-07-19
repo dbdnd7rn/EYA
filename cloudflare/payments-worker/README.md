@@ -163,7 +163,7 @@ npx wrangler secret put APP_SECRETS_JSON
 npx wrangler secret put APP_CALLBACKS_JSON
 ```
 
-Do not commit `.dev.vars`, PayChangu secrets, application HMAC secrets, callback secrets, or any Supabase service-role key.
+Do not commit `.dev.vars`, PayChangu secrets, application HMAC secrets, callback URLs, or any Supabase service-role key.
 
 ## Before production deployment
 
