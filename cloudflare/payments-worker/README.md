@@ -13,13 +13,17 @@ Payment Architecture V1 currently provides:
 - server-generated merchant references
 - idempotent payment-intent creation
 - PayChangu Standard Checkout initiation
-- strict validation of the returned transaction reference, amount, currency, and pending status
-- idempotent storage and reuse of hosted checkout URLs
-- webhook inbox storage with provider event deduplication
-- application callback outbox storage with retry tracking
+- strict validation of the checkout reference, amount, currency, and pending status
+- public PayChangu callback and failed-return routes
+- HMAC-SHA256 verification of the raw PayChangu webhook body
+- webhook payload deduplication in D1
+- independent transaction verification through PayChangu
+- exact transaction reference, currency, and amount matching
+- idempotent verified transition to `paid`
+- atomic creation of the `payment.paid` application outbox event
 - shallow health and D1 readiness endpoints
 
-Provider verification, webhook processing, and signed application callbacks are the next implementation stage. Do not deploy this Worker as a production payment service yet.
+Signed delivery of the application outbox event and atomic fulfilment inside EYA are still required. Do not deploy this Worker as a production payment service yet.
 
 ## Architecture boundary
 
@@ -75,7 +79,10 @@ This is a shallow process check and does not query D1.
 GET /ready
 ```
 
-This verifies that the `PAYMENTS_DB` D1 binding is available and queryable. The response also reports `checkout_configured`, which is true only when the PayChangu secret, callback URL, and return URL are present.
+This verifies that the `PAYMENTS_DB` D1 binding is queryable. It also reports:
+
+- `checkout_configured`: the PayChangu secret, callback URL, and return URL are present
+- `webhook_configured`: the PayChangu webhook secret is present
 
 ### Create a payment intent and hosted checkout
 
@@ -106,85 +113,54 @@ x-vac-signature: <signature>
 
 The amount must already have been calculated and locked by the application's trusted backend. The Worker stores the expected amount, creates a PayChangu Standard Checkout session, validates the provider response, and returns the hosted checkout URL.
 
-```json
-{
-  "status": "success",
-  "created": true,
-  "checkout_created": true,
-  "payment_intent": {
-    "id": "payment-intent-uuid",
-    "app_id": "eya",
-    "app_payment_id": "eya-payment-intent-uuid",
-    "merchant_reference": "eya_...",
-    "provider_reference": "eya_...",
-    "expected_amount_mwk": 15000,
-    "currency": "MWK",
-    "method": "mpamba",
-    "status": "pending",
-    "checkout_url": "https://checkout.paychangu.com/..."
-  }
-}
-```
-
-Repeating the same signed request with the same amount, purpose, and method returns the existing D1 intent and checkout URL instead of creating another local intent. A closed failed, cancelled, or expired attempt requires a new `appPaymentId`.
+Repeating the same signed request with the same amount, purpose, and method returns the existing D1 intent and checkout URL instead of creating another local intent. A closed failed, cancelled, or expired attempt requires a new `appPaymentId` for checkout initiation.
 
 Standard Checkout does not guarantee that the customer uses the requested `method`; the actual provider channel must be obtained during independent verification.
 
-A pending checkout is not proof of payment. No order, ticket, wallet, or other value may be fulfilled until the later webhook handler independently verifies the transaction with PayChangu and matches the reference, final status, amount, and currency.
+A pending checkout is not proof of payment.
 
-## Create and bind D1
+### Successful payment callback
 
-From the Worker directory:
-
-```bash
-cd cloudflare/payments-worker
-npm install
-npm run db:create
+```http
+GET|POST /v1/paychangu/callback
 ```
 
-When Wrangler asks whether it should add the database to the configuration, choose **Yes**. When it asks for the binding name, enter:
+PayChangu supplies `tx_ref`. This route never trusts the redirect parameters alone. It re-queries PayChangu, validates the reference, final status, exact amount, and currency, then returns a small browser status page.
 
-```text
-PAYMENTS_DB
+### Failed or cancelled return
+
+```http
+GET|POST /v1/paychangu/return
 ```
 
-Wrangler will add the real D1 UUID to `wrangler.jsonc`. `wrangler.d1.example.jsonc` shows the expected final structure but contains no usable database ID.
+This route also re-queries PayChangu before recording any status. A query-string value such as `status=failed` is not trusted as payment evidence.
 
-## Apply migrations
+### PayChangu webhook
 
-Local development database:
-
-```bash
-npm run db:migrate:local
+```http
+POST /v1/webhooks/paychangu
+Signature: <paychangu-hmac-sha256>
 ```
 
-Remote Cloudflare D1 database:
+The Worker:
 
-```bash
-npm run db:migrations:list:remote
-npm run db:migrate:remote
-```
+1. computes HMAC-SHA256 over the exact raw request body using `PAYCHANGU_WEBHOOK_SECRET`;
+2. compares it with the `Signature` header;
+3. deduplicates the webhook by a SHA-256 payload key;
+4. extracts `tx_ref`;
+5. independently verifies the transaction with PayChangu;
+6. requires exact reference, amount, and currency matches;
+7. atomically marks the intent paid and inserts one `payment.paid` outbox event.
 
-The ledger schema lives in:
+Duplicate successful webhooks are acknowledged without creating duplicate outbox events.
 
-```text
-migrations/0001_create_payment_ledger.sql
-```
+## Local configuration
 
-## Local secrets
-
-Copy the template only when creating a new local environment:
-
-```bash
-cp .dev.vars.example .dev.vars
-```
-
-Configure development-only values in `.dev.vars`. Never commit that file.
-
-Required for checkout initiation:
+`.dev.vars` must never be committed. Required values are:
 
 ```text
 PAYCHANGU_SECRET_KEY=<test-secret-key>
+PAYCHANGU_WEBHOOK_SECRET=<test-webhook-secret>
 PAYCHANGU_CALLBACK_URL=https://<public-host>/v1/paychangu/callback
 PAYCHANGU_RETURN_URL=https://<public-host>/v1/paychangu/return
 APP_SECRETS_JSON={"eya":"<long-random-hmac-secret>"}
@@ -192,11 +168,36 @@ APP_SECRETS_JSON={"eya":"<long-random-hmac-secret>"}
 
 `PAYCHANGU_API_BASE_URL` is optional and defaults to `https://api.paychangu.com`.
 
-The callback and return routes are not implemented yet. Do not initiate a real payment until those routes and independent verification have been added and tested.
+The webhook URL configured in the PayChangu dashboard is:
+
+```text
+https://<public-host>/v1/webhooks/paychangu
+```
+
+## D1
+
+The ledger schema lives in:
+
+```text
+migrations/0001_create_payment_ledger.sql
+```
+
+Local migration:
+
+```bash
+npm run db:migrate:local
+```
+
+Remote migration, only after local verification:
+
+```bash
+npm run db:migrations:list:remote
+npm run db:migrate:remote
+```
 
 ## Production secrets
 
-These will be added only when the corresponding implementation stage is ready:
+Add production values only when deployment and fulfilment testing are ready:
 
 ```bash
 npx wrangler secret put PAYCHANGU_SECRET_KEY
@@ -207,15 +208,12 @@ npx wrangler secret put APP_CALLBACKS_JSON
 
 Do not commit `.dev.vars`, PayChangu secrets, application HMAC secrets, callback URLs, or any Supabase service-role key.
 
-## Before production deployment
+## Still required before production
 
-The following must be completed and tested first:
-
-1. PayChangu callback and return routes.
-2. PayChangu webhook signature verification.
-3. Independent provider transaction verification.
-4. Exact reference, status, amount, and currency matching.
-5. Idempotent transition from pending to paid.
-6. Signed callback delivery to EYA.
-7. Atomic EYA order or ticket fulfilment.
-8. Replay, duplicate webhook, timeout, and retry tests.
+1. Signed and retried delivery of D1 outbox events to EYA.
+2. Final EYA `payment-confirmed` Edge Function.
+3. Atomic EYA order, ticket, wallet, or other fulfilment RPCs.
+4. Reconciliation polling for pending transactions when a webhook is missed.
+5. End-to-end test-mode payment tests.
+6. Duplicate webhook, invalid signature, amount mismatch, currency mismatch, timeout, and retry tests.
+7. Remote D1 migration and controlled non-production Worker deployment.
