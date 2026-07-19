@@ -39,7 +39,13 @@ export default function LandlordTabs() {
     : LIGHT_LANDLORD_TAB_THEME;
 
   return (
-    <Tabs screenOptions={createTabScreenOptions(tabTheme)} tabBar={renderAnimatedTabBar(tabTheme)}>
+    <Tabs
+      screenOptions={{
+        ...createTabScreenOptions(tabTheme),
+        lazy: true,
+      }}
+      tabBar={renderAnimatedTabBar(tabTheme)}
+    >
       <Tabs.Screen name="dashboard" options={{ title: "Home", tabBarIcon: ({ color }) => <House color={color} /> }} />
       <Tabs.Screen name="listings" options={{ title: "Listings", tabBarIcon: ({ color }) => <List color={color} /> }} />
       <Tabs.Screen name="create" options={{ title: "Create", tabBarLabel: "", tabBarIcon: ({ color }) => <Plus color={color} strokeWidth={3.5} /> }} />
