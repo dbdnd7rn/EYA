@@ -9,4 +9,8 @@
   "vars": {
     "ENVIRONMENT": "development"
   }
+
+  // Before local D1 testing or deployment, run `npm run db:create`, allow Wrangler
+  // to update this file, and use PAYMENTS_DB as the binding name.
+  // See wrangler.d1.example.jsonc for the expected final structure.
 }
