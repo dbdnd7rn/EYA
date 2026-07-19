@@ -7,6 +7,9 @@ PAYCHANGU_WEBHOOK_SECRET=
 PAYCHANGU_CALLBACK_URL=https://payments.example.com/v1/paychangu/callback
 PAYCHANGU_RETURN_URL=https://payments.example.com/v1/paychangu/return
 
+# Configure this URL in the PayChangu dashboard under API Keys & Webhooks:
+# https://payments.example.com/v1/webhooks/paychangu
+
 # Optional. The Worker defaults to https://api.paychangu.com.
 # PAYCHANGU_API_BASE_URL=https://api.paychangu.com
 
@@ -15,6 +18,6 @@ PAYCHANGU_RETURN_URL=https://payments.example.com/v1/paychangu/return
 # Example: {"eya":"replace-with-a-long-random-secret"}
 APP_SECRETS_JSON={}
 
-# Reserved for the signed application callback stage.
+# Reserved for signed application outbox delivery.
 # Example: {"eya":"https://<project-ref>.supabase.co/functions/v1/payment-confirmed"}
 APP_CALLBACKS_JSON={}
