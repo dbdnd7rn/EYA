@@ -21,6 +21,7 @@ import {
   PaymentVerificationMismatchError,
   verifyAndRecordPayChanguPayment,
 } from "./processing";
+import { paymentResultPage as html } from "./payment-page";
 
 const PAYMENT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer"]);
 const TERMINAL_PAYMENT_STATUSES = new Set(["failed", "cancelled", "expired"]);
@@ -32,34 +33,6 @@ function json(payload: unknown, status = 200, extraHeaders: Record<string, strin
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       ...extraHeaders,
-    },
-  });
-}
-
-function html(title: string, message: string, status = 200): Response {
-  const document = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title}</title>
-  <style>
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #f6f7f9; color: #17202a; }
-    main { width: min(92vw, 520px); padding: 32px; border-radius: 18px; background: white; box-shadow: 0 12px 38px rgba(0,0,0,.08); text-align: center; }
-    h1 { margin: 0 0 12px; font-size: 1.6rem; }
-    p { margin: 0; line-height: 1.55; color: #52606d; }
-  </style>
-</head>
-<body><main><h1>${title}</h1><p>${message}</p></main></body>
-</html>`;
-
-  return new Response(document, {
-    status,
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
     },
   });
 }
