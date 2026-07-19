@@ -1,10 +1,26 @@
+export type D1RunResult = {
+  success: boolean;
+  meta?: {
+    changes?: number;
+  };
+};
+
+export type D1PreparedStatementLike = {
+  bind(...values: unknown[]): D1PreparedStatementLike;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  run(): Promise<D1RunResult>;
+};
+
+export type D1DatabaseLike = {
+  prepare(query: string): D1PreparedStatementLike;
+};
+
 export type PaymentsEnv = {
   ENVIRONMENT: string;
   PAYCHANGU_SECRET_KEY: string;
   PAYCHANGU_WEBHOOK_SECRET: string;
-  PAYMENTS_SUPABASE_URL: string;
-  PAYMENTS_SUPABASE_SERVICE_ROLE_KEY: string;
   APP_SECRETS_JSON: string;
+  PAYMENTS_DB: D1DatabaseLike;
 };
 
 export type CreatePaymentIntentInput = {
@@ -21,12 +37,13 @@ export type CreatePaymentIntentInput = {
   metadata?: Record<string, unknown>;
 };
 
-export type PaymentIntentRecord = {
+type PaymentIntentRow = {
   id: string;
   app_id: string;
   app_payment_id: string;
   app_user_id: string | null;
   purpose: string;
+  provider: string;
   method: string;
   merchant_reference: string;
   provider_reference: string | null;
@@ -36,42 +53,36 @@ export type PaymentIntentRecord = {
   status: string;
   customer_email: string | null;
   customer_phone: string | null;
-  metadata: Record<string, unknown>;
+  title: string | null;
+  description: string | null;
+  metadata_json: string;
   created_at: string;
   updated_at: string;
 };
 
-function normalizeBaseUrl(value: string): string {
-  return value.trim().replace(/\/+$/, "");
-}
+export type PaymentIntentRecord = Omit<PaymentIntentRow, "metadata_json"> & {
+  metadata: Record<string, unknown>;
+};
 
-function restHeaders(env: PaymentsEnv, prefer?: string): HeadersInit {
-  const headers: Record<string, string> = {
-    apikey: env.PAYMENTS_SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${env.PAYMENTS_SUPABASE_SERVICE_ROLE_KEY}`,
-    "Content-Type": "application/json",
-  };
-  if (prefer) headers.Prefer = prefer;
-  return headers;
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return null;
+function parseMetadata(value: string): Record<string, unknown> {
   try {
-    return JSON.parse(text);
+    const parsed: unknown = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
   } catch {
-    return { raw: text };
+    return {};
   }
 }
 
-function providerError(payload: unknown, status: number): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const value = payload as Record<string, unknown>;
-    const message = value.message || value.error || value.details || value.hint;
-    if (typeof message === "string" && message.trim()) return message.trim();
-  }
-  return `Payment ledger request failed (${status}).`;
+function mapPaymentIntent(row: PaymentIntentRow): PaymentIntentRecord {
+  const { metadata_json: metadataJson, ...rest } = row;
+  return {
+    ...rest,
+    expected_amount_mwk: Number(rest.expected_amount_mwk),
+    paid_amount_mwk: rest.paid_amount_mwk == null ? null : Number(rest.paid_amount_mwk),
+    metadata: parseMetadata(metadataJson),
+  };
 }
 
 export function createMerchantReference(appId: string): string {
@@ -85,19 +96,46 @@ export async function findPaymentIntent(
   appId: string,
   appPaymentId: string,
 ): Promise<PaymentIntentRecord | null> {
-  const baseUrl = normalizeBaseUrl(env.PAYMENTS_SUPABASE_URL);
-  const params = new URLSearchParams({
-    select: "*",
-    app_id: `eq.${appId}`,
-    app_payment_id: `eq.${appPaymentId}`,
-    limit: "1",
-  });
-  const response = await fetch(`${baseUrl}/rest/v1/payment_intents?${params}`, {
-    headers: restHeaders(env),
-  });
-  const payload = await readJson(response);
-  if (!response.ok) throw new Error(providerError(payload, response.status));
-  return Array.isArray(payload) && payload.length ? (payload[0] as PaymentIntentRecord) : null;
+  const row = await env.PAYMENTS_DB.prepare(
+    `select
+       id,
+       app_id,
+       app_payment_id,
+       app_user_id,
+       purpose,
+       provider,
+       method,
+       merchant_reference,
+       provider_reference,
+       expected_amount_mwk,
+       paid_amount_mwk,
+       currency,
+       status,
+       customer_email,
+       customer_phone,
+       title,
+       description,
+       metadata_json,
+       created_at,
+       updated_at
+     from payment_intents
+     where app_id = ?1 and app_payment_id = ?2
+     limit 1`,
+  )
+    .bind(appId, appPaymentId)
+    .first<PaymentIntentRow>();
+
+  return row ? mapPaymentIntent(row) : null;
+}
+
+function assertIdempotentMatch(existing: PaymentIntentRecord, input: CreatePaymentIntentInput): void {
+  if (
+    Number(existing.expected_amount_mwk) !== input.amountMwk ||
+    existing.method !== input.method ||
+    existing.purpose !== input.purpose
+  ) {
+    throw new Error("The supplied app payment id already belongs to a different payment request.");
+  }
 }
 
 export async function createPaymentIntent(
@@ -106,51 +144,70 @@ export async function createPaymentIntent(
 ): Promise<{ intent: PaymentIntentRecord; created: boolean }> {
   const existing = await findPaymentIntent(env, input.appId, input.appPaymentId);
   if (existing) {
-    if (
-      Number(existing.expected_amount_mwk) !== input.amountMwk ||
-      existing.method !== input.method ||
-      existing.purpose !== input.purpose
-    ) {
-      throw new Error("The supplied app payment id already belongs to a different payment request.");
-    }
+    assertIdempotentMatch(existing, input);
     return { intent: existing, created: false };
   }
 
-  const row = {
-    app_id: input.appId,
-    app_payment_id: input.appPaymentId,
-    app_user_id: input.appUserId || null,
-    purpose: input.purpose,
-    provider: "paychangu",
-    method: input.method,
-    merchant_reference: createMerchantReference(input.appId),
-    expected_amount_mwk: input.amountMwk,
-    currency: "MWK",
-    status: "created",
-    customer_email: input.customerEmail,
-    customer_phone: input.customerPhone || null,
-    title: input.title || null,
-    description: input.description || null,
-    metadata: input.metadata || {},
-  };
+  const id = crypto.randomUUID();
+  const merchantReference = createMerchantReference(input.appId);
+  const now = new Date().toISOString();
 
-  const baseUrl = normalizeBaseUrl(env.PAYMENTS_SUPABASE_URL);
-  const response = await fetch(`${baseUrl}/rest/v1/payment_intents`, {
-    method: "POST",
-    headers: restHeaders(env, "return=representation"),
-    body: JSON.stringify(row),
-  });
-  const payload = await readJson(response);
+  const result = await env.PAYMENTS_DB.prepare(
+    `insert or ignore into payment_intents (
+       id,
+       app_id,
+       app_payment_id,
+       app_user_id,
+       purpose,
+       provider,
+       method,
+       merchant_reference,
+       expected_amount_mwk,
+       currency,
+       status,
+       customer_email,
+       customer_phone,
+       title,
+       description,
+       metadata_json,
+       created_at,
+       updated_at
+     ) values (
+       ?1, ?2, ?3, ?4, ?5, 'paychangu', ?6, ?7, ?8, 'MWK', 'created',
+       ?9, ?10, ?11, ?12, ?13, ?14, ?14
+     )`,
+  )
+    .bind(
+      id,
+      input.appId,
+      input.appPaymentId,
+      input.appUserId || null,
+      input.purpose,
+      input.method,
+      merchantReference,
+      input.amountMwk,
+      input.customerEmail,
+      input.customerPhone || null,
+      input.title || null,
+      input.description || null,
+      JSON.stringify(input.metadata || {}),
+      now,
+    )
+    .run();
 
-  if (response.status === 409) {
-    const concurrent = await findPaymentIntent(env, input.appId, input.appPaymentId);
-    if (concurrent) return { intent: concurrent, created: false };
+  if (!result.success) {
+    throw new Error("D1 could not create the payment intent.");
   }
 
-  if (!response.ok) throw new Error(providerError(payload, response.status));
-  if (!Array.isArray(payload) || !payload[0]) {
-    throw new Error("Payment ledger did not return the created intent.");
+  const intent = await findPaymentIntent(env, input.appId, input.appPaymentId);
+  if (!intent) {
+    throw new Error("D1 did not return the payment intent after creation.");
   }
 
-  return { intent: payload[0] as PaymentIntentRecord, created: true };
+  if ((result.meta?.changes || 0) === 0) {
+    assertIdempotentMatch(intent, input);
+    return { intent, created: false };
+  }
+
+  return { intent, created: true };
 }
