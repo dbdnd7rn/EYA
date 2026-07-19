@@ -45,7 +45,9 @@ export default function PayCheckoutWebviewScreen() {
           const reachedVacResult =
             url.includes("/v1/paychangu/callback") || url.includes("/v1/paychangu/return");
 
-          if (reachedVacResult && orderId) {
+          // Wait for the callback/return response to finish loading so the
+          // browser verification request is not aborted when the WebView unmounts.
+          if (reachedVacResult && orderId && state.loading === false) {
             router.replace({
               pathname: "/(student)/market/payment-processing",
               params: { orderId, txRef },
