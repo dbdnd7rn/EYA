@@ -65,6 +65,9 @@ declare
   v_event public.vac_payment_events%rowtype;
   v_inserted boolean := false;
   v_order_id_text text;
+  v_metadata_order_id text;
+  v_metadata_related_order_id text;
+  v_metadata_user_id text;
   v_order_id uuid;
   v_order public.ticket_orders%rowtype;
   v_fulfilment jsonb := '{}'::jsonb;
@@ -85,6 +88,9 @@ begin
      or nullif(btrim(p_merchant_reference), '') is null then
     raise exception 'payment event identifiers are required';
   end if;
+  if p_idempotency_key <> p_event_type || ':' || p_payment_intent_id then
+    raise exception 'idempotency key does not match the payment event';
+  end if;
   if p_amount_mwk is null or p_amount_mwk <= 0 then
     raise exception 'invalid payment amount';
   end if;
@@ -93,6 +99,12 @@ begin
   end if;
   if p_verified_at is null then
     raise exception 'verified_at is required';
+  end if;
+  if p_payload is null or jsonb_typeof(p_payload) <> 'object' then
+    raise exception 'payment payload must be a JSON object';
+  end if;
+  if p_metadata is not null and jsonb_typeof(p_metadata) <> 'object' then
+    raise exception 'payment metadata must be a JSON object';
   end if;
 
   insert into public.vac_payment_events (
@@ -144,7 +156,10 @@ begin
        or v_event.purpose <> p_purpose
        or v_event.merchant_reference <> p_merchant_reference
        or v_event.amount_mwk <> p_amount_mwk
-       or v_event.currency <> p_currency then
+       or v_event.currency <> p_currency
+       or v_event.verified_at <> p_verified_at
+       or v_event.metadata <> coalesce(p_metadata, '{}'::jsonb)
+       or v_event.payload <> p_payload then
       raise exception 'idempotency key conflicts with a different payment event';
     end if;
   end if;
@@ -166,15 +181,29 @@ begin
    where id = v_event.id;
 
   if p_purpose = 'ticket_order' then
-    v_order_id_text := coalesce(
-      nullif(btrim(coalesce(p_metadata->>'ticket_order_id', '')), ''),
-      nullif(btrim(coalesce(p_metadata->>'related_order_id', '')), ''),
-      nullif(btrim(p_app_payment_id), '')
-    );
+    v_order_id_text := nullif(btrim(p_app_payment_id), '');
+    v_metadata_order_id := nullif(btrim(coalesce(p_metadata->>'ticket_order_id', '')), '');
+    v_metadata_related_order_id := nullif(btrim(coalesce(p_metadata->>'related_order_id', '')), '');
+    v_metadata_user_id := nullif(btrim(coalesce(p_metadata->>'user_id', '')), '');
 
     if v_order_id_text is null
        or v_order_id_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then
-      raise exception 'ticket payment metadata is missing a valid ticket_order_id';
+      raise exception 'ticket payment app_payment_id must be a valid ticket order id';
+    end if;
+
+    if v_metadata_order_id is not null and v_metadata_order_id <> v_order_id_text then
+      raise exception 'ticket_order_id metadata does not match app_payment_id';
+    end if;
+    if v_metadata_related_order_id is not null and v_metadata_related_order_id <> v_order_id_text then
+      raise exception 'related_order_id metadata does not match app_payment_id';
+    end if;
+
+    if nullif(btrim(p_app_user_id), '') is null
+       or btrim(p_app_user_id) !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then
+      raise exception 'ticket payment app_user_id must be a valid user id';
+    end if;
+    if v_metadata_user_id is not null and v_metadata_user_id <> btrim(p_app_user_id) then
+      raise exception 'ticket payment user metadata does not match app_user_id';
     end if;
 
     v_order_id := v_order_id_text::uuid;
@@ -189,8 +218,7 @@ begin
       raise exception 'ticket order not found';
     end if;
 
-    if nullif(btrim(p_app_user_id), '') is not null
-       and v_order.user_id::text <> btrim(p_app_user_id) then
+    if v_order.user_id::text <> btrim(p_app_user_id) then
       raise exception 'ticket payment user does not match the reserved order';
     end if;
 
@@ -199,8 +227,7 @@ begin
     end if;
 
     if v_order.payment_reference is not null
-       and v_order.payment_reference <> p_merchant_reference
-       and v_order.payment_status <> 'paid' then
+       and v_order.payment_reference <> p_merchant_reference then
       raise exception 'ticket order belongs to a different payment reference';
     end if;
 
