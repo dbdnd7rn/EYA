@@ -1,0 +1,1 @@
+Trigger the master push workflow through a merge commit.
