@@ -20,6 +20,7 @@ export type PaymentsEnv = {
   PAYCHANGU_SECRET_KEY: string;
   PAYCHANGU_WEBHOOK_SECRET: string;
   APP_SECRETS_JSON: string;
+  APP_CALLBACKS_JSON?: string;
   PAYMENTS_DB: D1DatabaseLike;
 };
 
