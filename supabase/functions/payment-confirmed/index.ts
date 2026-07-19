@@ -137,18 +137,32 @@ export default {
         return json({ status: "error", message: "Payment event must be a JSON object." }, 400);
       }
 
+      const eventType = requiredString(payload.event, "event", 80);
+      const paymentIntentId = requiredString(payload.payment_intent_id, "payment_intent_id", 200);
+      const appId = requiredString(payload.app_id, "app_id", 80);
+      const appPaymentId = requiredString(payload.app_payment_id, "app_payment_id", 200);
+      const appUserId = optionalString(payload.app_user_id, "app_user_id", 200);
+      const purpose = requiredString(payload.purpose, "purpose", 120);
+      const merchantReference = requiredString(payload.merchant_reference, "merchant_reference", 250);
+      const currency = requiredString(payload.currency, "currency", 10);
       const idempotencyKey = requiredString(
         request.headers.get("x-vac-idempotency-key"),
         "x-vac-idempotency-key",
         400,
       );
-      const eventType = requiredString(payload.event, "event", 80);
-      const appId = requiredString(payload.app_id, "app_id", 80);
-      const currency = requiredString(payload.currency, "currency", 10);
 
       if (eventType !== "payment.paid") throw new Error("Unsupported payment event type.");
       if (appId !== "eya") throw new Error("Invalid payment application id.");
       if (currency !== "MWK") throw new Error("Invalid payment currency.");
+
+      const expectedIdempotencyKey = `${eventType}:${paymentIntentId}`;
+      if (idempotencyKey !== expectedIdempotencyKey) {
+        throw new Error("Invalid VAC callback idempotency key.");
+      }
+
+      if (purpose === "ticket_order" && !appUserId) {
+        throw new Error("Ticket payment app_user_id is required.");
+      }
 
       const verifiedAt = requiredString(payload.verified_at, "verified_at", 80);
       const verifiedDate = new Date(verifiedAt);
@@ -160,12 +174,12 @@ export default {
       const rpcPayload = {
         p_idempotency_key: idempotencyKey,
         p_event_type: eventType,
-        p_payment_intent_id: requiredString(payload.payment_intent_id, "payment_intent_id", 200),
+        p_payment_intent_id: paymentIntentId,
         p_app_id: appId,
-        p_app_payment_id: requiredString(payload.app_payment_id, "app_payment_id", 200),
-        p_app_user_id: optionalString(payload.app_user_id, "app_user_id", 200),
-        p_purpose: requiredString(payload.purpose, "purpose", 120),
-        p_merchant_reference: requiredString(payload.merchant_reference, "merchant_reference", 250),
+        p_app_payment_id: appPaymentId,
+        p_app_user_id: appUserId,
+        p_purpose: purpose,
+        p_merchant_reference: merchantReference,
         p_amount_mwk: normalizeAmount(payload.amount_mwk),
         p_currency: currency,
         p_verified_at: verifiedDate.toISOString(),
@@ -196,7 +210,7 @@ export default {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected payment callback error.";
-      const unauthorized = /authentication|signature|expired|secret is not configured/i.test(message);
+      const unauthorized = /authentication|signature|expired|secret is not configured|idempotency key/i.test(message);
       const invalidRequest = /required|too long|must be|unsupported|invalid payment|verified_at/i.test(message);
       const status = unauthorized ? 401 : invalidRequest ? 400 : 500;
 
