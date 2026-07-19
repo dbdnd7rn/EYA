@@ -2,6 +2,14 @@
 PAYCHANGU_SECRET_KEY=
 PAYCHANGU_WEBHOOK_SECRET=
 
+# Standard Checkout configuration. Both URLs must be public HTTPS URLs before
+# a real PayChangu checkout can be initiated.
+PAYCHANGU_CALLBACK_URL=https://payments.example.com/v1/paychangu/callback
+PAYCHANGU_RETURN_URL=https://payments.example.com/v1/paychangu/return
+
+# Optional. The Worker defaults to https://api.paychangu.com.
+# PAYCHANGU_API_BASE_URL=https://api.paychangu.com
+
 # JSON object mapping each application id to its private HMAC secret.
 # Each secret must be at least 32 characters.
 # Example: {"eya":"replace-with-a-long-random-secret"}
