@@ -73,16 +73,28 @@ function parsePaymentIntentInput(appId: string, body: unknown): CreatePaymentInt
   };
 }
 
-function validateEnvironment(env: PaymentsEnv): void {
+function validateFoundationEnvironment(env: PaymentsEnv): void {
   const missing: string[] = [];
-  if (!env.PAYMENTS_SUPABASE_URL) missing.push("PAYMENTS_SUPABASE_URL");
-  if (!env.PAYMENTS_SUPABASE_SERVICE_ROLE_KEY) missing.push("PAYMENTS_SUPABASE_SERVICE_ROLE_KEY");
+  if (!env.PAYMENTS_DB) missing.push("PAYMENTS_DB D1 binding");
   if (!env.APP_SECRETS_JSON) missing.push("APP_SECRETS_JSON");
-  if (missing.length) throw new Error(`Missing Worker secrets: ${missing.join(", ")}.`);
+  if (missing.length) throw new Error(`Missing Worker configuration: ${missing.join(", ")}.`);
+}
+
+async function handleReadiness(env: PaymentsEnv): Promise<Response> {
+  validateFoundationEnvironment(env);
+  const row = await env.PAYMENTS_DB.prepare("select 1 as ok").first<{ ok: number }>();
+  if (Number(row?.ok) !== 1) throw new Error("D1 readiness check failed.");
+
+  return json({
+    status: "ready",
+    service: "vac-payments",
+    ledger: "d1",
+    environment: env.ENVIRONMENT || "unknown",
+  });
 }
 
 async function handleCreatePaymentIntent(request: Request, env: PaymentsEnv): Promise<Response> {
-  validateEnvironment(env);
+  validateFoundationEnvironment(env);
   const rawBody = await request.text();
   const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON);
 
@@ -129,6 +141,10 @@ export default {
           environment: env.ENVIRONMENT || "unknown",
           request_id: requestId,
         });
+      }
+
+      if (request.method === "GET" && url.pathname === "/ready") {
+        return await handleReadiness(env);
       }
 
       if (request.method === "POST" && url.pathname === "/v1/payment-intents") {
