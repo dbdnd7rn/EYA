@@ -15,6 +15,7 @@ create table if not exists public.vac_payment_events (
   verified_at timestamptz not null,
   metadata jsonb not null default '{}'::jsonb,
   payload jsonb not null,
+  fulfilment jsonb not null default '{}'::jsonb,
   status text not null default 'received' check (
     status in ('received', 'processing', 'processed', 'failed')
   ),
@@ -34,7 +35,7 @@ alter table public.vac_payment_events enable row level security;
 revoke all on table public.vac_payment_events from public, anon, authenticated;
 grant select, insert, update on table public.vac_payment_events to service_role;
 
-create or replace function public.record_vac_payment_event(
+create or replace function public.process_vac_payment_event(
   p_idempotency_key text,
   p_event_type text,
   p_payment_intent_id text,
@@ -52,7 +53,9 @@ create or replace function public.record_vac_payment_event(
 returns table (
   event_id uuid,
   inserted boolean,
-  current_status text
+  current_status text,
+  fulfilled boolean,
+  fulfilment jsonb
 )
 language plpgsql
 security definer
@@ -60,6 +63,12 @@ set search_path = public, pg_temp
 as $$
 declare
   v_event public.vac_payment_events%rowtype;
+  v_inserted boolean := false;
+  v_order_id_text text;
+  v_order_id uuid;
+  v_order public.ticket_orders%rowtype;
+  v_fulfilment jsonb := '{}'::jsonb;
+  v_fulfilled boolean := false;
 begin
   if nullif(btrim(p_idempotency_key), '') is null then
     raise exception 'idempotency key is required';
@@ -70,11 +79,20 @@ begin
   if p_app_id <> 'eya' then
     raise exception 'invalid application id';
   end if;
+  if nullif(btrim(p_payment_intent_id), '') is null
+     or nullif(btrim(p_app_payment_id), '') is null
+     or nullif(btrim(p_purpose), '') is null
+     or nullif(btrim(p_merchant_reference), '') is null then
+    raise exception 'payment event identifiers are required';
+  end if;
   if p_amount_mwk is null or p_amount_mwk <= 0 then
     raise exception 'invalid payment amount';
   end if;
   if p_currency <> 'MWK' then
     raise exception 'invalid payment currency';
+  end if;
+  if p_verified_at is null then
+    raise exception 'verified_at is required';
   end if;
 
   insert into public.vac_payment_events (
@@ -110,33 +128,116 @@ begin
   returning * into v_event;
 
   if found then
-    return query select v_event.id, true, v_event.status;
+    v_inserted := true;
+  else
+    select *
+      into strict v_event
+      from public.vac_payment_events
+     where idempotency_key = p_idempotency_key
+     for update;
+
+    if v_event.event_type <> p_event_type
+       or v_event.payment_intent_id <> p_payment_intent_id
+       or v_event.app_id <> p_app_id
+       or v_event.app_payment_id <> p_app_payment_id
+       or coalesce(v_event.app_user_id, '') <> coalesce(nullif(btrim(p_app_user_id), ''), '')
+       or v_event.purpose <> p_purpose
+       or v_event.merchant_reference <> p_merchant_reference
+       or v_event.amount_mwk <> p_amount_mwk
+       or v_event.currency <> p_currency then
+      raise exception 'idempotency key conflicts with a different payment event';
+    end if;
+  end if;
+
+  if v_event.status = 'processed' then
+    return query
+      select
+        v_event.id,
+        v_inserted,
+        v_event.status,
+        coalesce((v_event.fulfilment->>'finalized')::boolean, false),
+        v_event.fulfilment;
     return;
   end if;
 
-  select *
-    into strict v_event
-    from public.vac_payment_events
-   where idempotency_key = p_idempotency_key;
+  update public.vac_payment_events
+     set status = 'processing',
+         error_message = null
+   where id = v_event.id;
 
-  if v_event.event_type <> p_event_type
-     or v_event.payment_intent_id <> p_payment_intent_id
-     or v_event.app_payment_id <> p_app_payment_id
-     or v_event.merchant_reference <> p_merchant_reference
-     or v_event.amount_mwk <> p_amount_mwk
-     or v_event.currency <> p_currency then
-    raise exception 'idempotency key conflicts with a different payment event';
+  if p_purpose = 'ticket_order' then
+    v_order_id_text := coalesce(
+      nullif(btrim(coalesce(p_metadata->>'ticket_order_id', '')), ''),
+      nullif(btrim(coalesce(p_metadata->>'related_order_id', '')), ''),
+      nullif(btrim(p_app_payment_id), '')
+    );
+
+    if v_order_id_text is null
+       or v_order_id_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then
+      raise exception 'ticket payment metadata is missing a valid ticket_order_id';
+    end if;
+
+    v_order_id := v_order_id_text::uuid;
+
+    select *
+      into v_order
+      from public.ticket_orders
+     where id = v_order_id
+     for update;
+
+    if not found then
+      raise exception 'ticket order not found';
+    end if;
+
+    if nullif(btrim(p_app_user_id), '') is not null
+       and v_order.user_id::text <> btrim(p_app_user_id) then
+      raise exception 'ticket payment user does not match the reserved order';
+    end if;
+
+    if v_order.total_mwk <> p_amount_mwk::numeric then
+      raise exception 'ticket payment amount does not match the reserved order';
+    end if;
+
+    if v_order.payment_reference is not null
+       and v_order.payment_reference <> p_merchant_reference
+       and v_order.payment_status <> 'paid' then
+      raise exception 'ticket order belongs to a different payment reference';
+    end if;
+
+    select public.issue_ticket_order(
+      v_order_id,
+      null::uuid,
+      p_merchant_reference,
+      p_verified_at
+    ) into v_fulfilment;
+
+    v_fulfilled := coalesce((v_fulfilment->>'finalized')::boolean, false);
+  else
+    v_fulfilment := jsonb_build_object(
+      'finalized', false,
+      'handled', false,
+      'message', 'Payment purpose is recorded but has no fulfilment handler yet.'
+    );
   end if;
 
-  return query select v_event.id, false, v_event.status;
+  update public.vac_payment_events
+     set status = 'processed',
+         fulfilment = v_fulfilment,
+         error_message = null,
+         processed_at = now()
+   where id = v_event.id
+   returning * into v_event;
+
+  return query
+    select v_event.id, v_inserted, v_event.status, v_fulfilled, v_event.fulfilment;
 end;
 $$;
 
-revoke execute on function public.record_vac_payment_event(
+revoke execute on function public.process_vac_payment_event(
   text, text, text, text, text, text, text, text, bigint, text, timestamptz, jsonb, jsonb
 ) from public, anon, authenticated;
 
-grant execute on function public.record_vac_payment_event(
+grant execute on function public.process_vac_payment_event(
   text, text, text, text, text, text, text, text, bigint, text, timestamptz, jsonb, jsonb
 ) to service_role;
 
