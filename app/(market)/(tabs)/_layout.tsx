@@ -40,7 +40,10 @@ export default function MarketTabs() {
 
   return (
     <Tabs
-      screenOptions={createTabScreenOptions(tabTheme)}
+      screenOptions={{
+        ...createTabScreenOptions(tabTheme),
+        lazy: true,
+      }}
       tabBar={renderAnimatedTabBar(tabTheme, ["dashboard", "products", "orders", "earnings", "account"])}
     >
       <Tabs.Screen name="dashboard" options={{ title: "Sessions", tabBarIcon: ({ color }) => <CalendarDays color={color} /> }} />
