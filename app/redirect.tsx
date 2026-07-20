@@ -7,6 +7,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { normalizeAppRole } from "@/lib/roleRouting";
 import { ENV, isConfiguredAdminEmail } from "@/lib/env";
 import { ensureProfileRoleFromAuthUser } from "@/lib/authProfile";
+import { storeActiveWorkspace } from "@/lib/activeWorkspace";
 import { getFallbackWorkspaceRole, getWorkspaceHomeRoute, getWorkspaceStatuses } from "@/lib/workspaceAccess";
 import EyaWordmark from "@/components/brand/EyaWordmark";
 
@@ -38,6 +39,7 @@ export default function RedirectPage() {
       // When the provider had to recover the session, use the stable User
       // workspace first instead of sending the person into a stale saved role.
       if (recoveredSession) {
+        await storeActiveWorkspace(resolvedUser.id, "student");
         await setActiveRole("student");
         if (active) router.replace(getWorkspaceHomeRoute("student") as any);
         return;
