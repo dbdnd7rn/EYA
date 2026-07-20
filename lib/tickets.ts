@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { kwacha } from "@/lib/currency";
 import { ENV } from "@/lib/env";
-import { initializePayChanguCheckout, verifyPayChanguTxRef } from "@/lib/payments";
 import { supabase } from "@/lib/supabase";
 
 export type TicketTier = {
@@ -59,6 +58,7 @@ export type TicketPaymentSession = {
   tier: Partial<TicketTier> & Record<string, unknown>;
   txRef: string;
   paymentId: string;
+  checkoutUrl: string | null;
   directCharge: {
     status: string;
     providerReference: string | null;
@@ -424,84 +424,61 @@ async function listTicketEventsFromBackend(query = "") {
   return rows.map(normalizeLiveEvent);
 }
 
-async function releaseReservedTicketOrder(accessToken: string, orderId: string) {
-  if (!orderId) return;
-  const res = await fetch(`${ENV.SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/rpc/release_ticket_order`, {
-    method: "POST",
-    headers: supabaseRestHeaders(accessToken),
-    body: JSON.stringify({ p_order_id: orderId, p_status: "failed" }),
-  });
-  if (!res.ok) await res.text().catch(() => "");
-}
-
-async function reserveTicketOrderViaSupabase(accessToken: string, input: TicketPaymentInput) {
-  const user = await getCurrentTicketUser(accessToken);
-  if (!user.email) throw new Error("Your account needs an email before buying tickets.");
-
-  const res = await fetch(`${ENV.SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/rpc/reserve_ticket_order`, {
-    method: "POST",
-    headers: supabaseRestHeaders(accessToken),
-    body: JSON.stringify({
-      p_user_id: user.id,
-      p_event_id: input.eventId,
-      p_tier_id: input.tierId,
-      p_quantity: input.quantity,
-      p_customer_email: user.email,
-      p_customer_phone: input.phone ?? null,
-    }),
-  });
-  const reservation = await readSupabaseRest<any>(res, "Could not reserve ticket order.");
-  const order = normalizeTicketOrder(reservation?.order);
-  if (!order.id) throw new Error("Ticket reservation did not return an order.");
-
-  const event = reservation?.event && typeof reservation.event === "object" ? reservation.event : {};
-  const tier = reservation?.tier && typeof reservation.tier === "object" ? reservation.tier : {};
-  return { user, order, event, tier };
-}
-
-async function createTicketOrderPaymentViaSupabase(accessToken: string, input: TicketPaymentInput): Promise<TicketPaymentSession> {
-  const { user, order, event, tier } = await reserveTicketOrderViaSupabase(accessToken, input);
-  const eventTitle = String(event?.title || "Event");
-  const tierName = String(tier?.name || "Ticket");
-  const txRef = `tix_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
-
-  try {
-    const session = await initializePayChanguCheckout({
-      amountMwk: Number(order.total_mwk || 0),
-      email: user.email,
-      phone: input.paymentMethod === "bank_transfer" ? undefined : input.phone ?? undefined,
-      txRef,
-      title: `EYA ticket - ${eventTitle}`,
-      description: `${input.quantity} x ${tierName} for ${eventTitle}`,
-      method: input.paymentMethod,
-      metadata: {
-        purpose: "ticket_order",
-        user_id: user.id,
-        related_order_id: order.id,
-        ticket_order_id: order.id,
+async function createTicketOrderPaymentViaEdgeFunction(
+  accessToken: string,
+  input: TicketPaymentInput,
+): Promise<TicketPaymentSession> {
+  const endpoint = `${ENV.SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/create-payment-checkout`;
+  const res = await fetchWithTimeout(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        apikey: ENV.SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
         event_id: input.eventId,
         tier_id: input.tierId,
+        quantity: input.quantity,
         payment_method: input.paymentMethod,
-      },
-    });
+        phone: input.phone ?? null,
+      }),
+    },
+    15_000,
+  );
 
-    return {
-      order,
-      event,
-      tier,
-      txRef: session.txRef,
-      paymentId: "",
-      directCharge: {
-        status: session.status,
-        providerReference: session.providerReference,
-        paymentAccountDetails: session.paymentAccountDetails,
-        authorization: session.authorization,
-      },
-    };
-  } catch (error) {
-    await releaseReservedTicketOrder(accessToken, order.id).catch(() => undefined);
-    throw error;
+  const data = await parseJson(res);
+  if (!res.ok) {
+    throw new Error(parseError(data) || `Could not create ticket checkout (${res.status}).`);
   }
+
+  const order = normalizeTicketOrder(data?.order);
+  const txRef = typeof data?.tx_ref === "string" ? data.tx_ref.trim() : "";
+  const checkoutUrl = typeof data?.checkout_url === "string" ? data.checkout_url.trim() : "";
+
+  if (!order.id) throw new Error("Ticket checkout did not return an order.");
+  if (!txRef) throw new Error("Ticket checkout did not return a payment reference.");
+  if (!/^https:\/\//i.test(checkoutUrl)) throw new Error("Ticket checkout did not return a secure checkout URL.");
+
+  return {
+    order,
+    event: data?.event && typeof data.event === "object" ? data.event : {},
+    tier: data?.tier && typeof data.tier === "object" ? data.tier : {},
+    txRef,
+    paymentId: typeof data?.payment_id === "string" ? data.payment_id : "",
+    checkoutUrl,
+    directCharge: {
+      status: String(data?.direct_charge?.status || "pending"),
+      providerReference:
+        typeof data?.direct_charge?.provider_reference === "string"
+          ? data.direct_charge.provider_reference
+          : null,
+      paymentAccountDetails: null,
+      authorization: null,
+    },
+  };
 }
 
 async function getTicketOrderPaymentDetailViaSupabase(accessToken: string, orderId: string) {
@@ -563,20 +540,6 @@ async function getTicketOrderPaymentDetailViaSupabase(accessToken: string, order
       issued_at: String(ticket.issued_at || order.paid_at || new Date().toISOString()),
     })),
   };
-}
-
-async function issueTicketOrderViaSupabase(accessToken: string, orderId: string, paymentId: string, paymentReference: string) {
-  const res = await fetch(`${ENV.SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/rpc/issue_ticket_order`, {
-    method: "POST",
-    headers: supabaseRestHeaders(accessToken),
-    body: JSON.stringify({
-      p_order_id: orderId,
-      p_payment_id: paymentId,
-      p_payment_reference: paymentReference,
-      p_paid_at: new Date().toISOString(),
-    }),
-  });
-  await readSupabaseRest<any>(res, "Could not issue ticket order.");
 }
 
 function inFilter(values: string[]) {
@@ -755,42 +718,7 @@ export async function createTicketOrderPayment(
   accessToken: string,
   input: TicketPaymentInput,
 ): Promise<TicketPaymentSession> {
-  try {
-    const res = await fetch(`${getBackendBaseUrl()}/api/tickets/orders`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        event_id: input.eventId,
-        tier_id: input.tierId,
-        quantity: input.quantity,
-        payment_method: input.paymentMethod,
-        phone: input.phone ?? undefined,
-      }),
-    });
-    const data = await parseJson(res);
-    if (!res.ok) {
-      throw new Error(parseError(data) || `Could not reserve ticket (${res.status}).`);
-    }
-    return {
-      order: data.order as TicketOrder,
-      event: data.event ?? {},
-      tier: data.tier ?? {},
-      txRef: String(data.tx_ref || ""),
-      paymentId: String(data.payment_id || ""),
-      directCharge: {
-        status: String(data.direct_charge?.status || "pending"),
-        providerReference: typeof data.direct_charge?.provider_reference === "string" ? data.direct_charge.provider_reference : null,
-        paymentAccountDetails: data.direct_charge?.payment_account_details && typeof data.direct_charge.payment_account_details === "object" ? data.direct_charge.payment_account_details : null,
-        authorization: data.direct_charge?.authorization && typeof data.direct_charge.authorization === "object" ? data.direct_charge.authorization : null,
-      },
-    };
-  } catch (error) {
-    if (!isTicketBackendUnavailable(error)) throw error;
-    return createTicketOrderPaymentViaSupabase(accessToken, input);
-  }
+  return createTicketOrderPaymentViaEdgeFunction(accessToken, input);
 }
 
 export async function getTicketOrderDetail(accessToken: string, orderId: string): Promise<TicketOrderDetail> {
@@ -812,37 +740,14 @@ export async function getTicketOrderDetail(accessToken: string, orderId: string)
   }
 }
 
-export async function verifyTicketOrderPayment(accessToken: string, orderId: string, txRef?: string | null) {
-  try {
-    const res = await fetch(`${getBackendBaseUrl()}/api/tickets/orders/${encodeURIComponent(orderId)}/verify`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-    const data = await parseJson(res);
-    if (!res.ok) {
-      throw new Error(parseError(data) || `Could not verify ticket payment (${res.status}).`);
-    }
-    return data as {
-      status: string;
-      payment_status: string;
-      fulfilled: boolean;
-      order: TicketOrder;
-      event: Record<string, unknown>;
-      tier: Record<string, unknown>;
-      tickets: { id: string; ticket_code: string; qr_data_url?: string | null; status: string; issued_at: string }[];
-    };
-  } catch (error) {
-    if (!txRef || !isTicketBackendUnavailable(error)) throw error;
-    const verification = await verifyPayChanguTxRef(txRef);
-    if (verification.paid) {
-      if (!verification.paymentId) throw new Error("Payment is paid, but the backend did not return a payment id.");
-      await issueTicketOrderViaSupabase(accessToken, orderId, verification.paymentId, txRef);
-    }
-    return getTicketOrderPaymentDetailViaSupabase(accessToken, orderId);
-  }
+export async function verifyTicketOrderPayment(
+  accessToken: string,
+  orderId: string,
+  _txRef?: string | null,
+) {
+  // Payment truth now comes only from the signed VAC callback. The client may
+  // read its own EYA order state, but it cannot verify PayChangu or issue tickets.
+  return getTicketOrderPaymentDetailViaSupabase(accessToken, orderId);
 }
 
 export async function listMyTickets(accessToken: string): Promise<IssuedTicket[]> {

@@ -78,16 +78,18 @@ export function getFallbackWorkspaceRole(role: AppRole, email?: string | null): 
 }
 
 export async function getWorkspaceStatuses(userId: string, _email?: string | null): Promise<WorkspaceStatus[]> {
-  const [vendors, listingsRes, riderProfile, applications] = await Promise.all([
+  const [vendors, listingsRes, riderProfile, applications, profileRes] = await Promise.all([
     listMyVendors(userId).catch(() => []),
     supabase.from("listings").select("id", { count: "exact", head: true }).eq("landlord_id", userId),
     getAgentRiderProfile(userId).catch(() => null),
     listMyRoleApplications(userId).catch(() => []),
+    supabase.from("profiles").select("role").eq("id", userId).maybeSingle(),
   ]);
 
-  const hasVendor = vendors.length > 0;
+  const hasFoodVendor = vendors.some((row) => row.supports_food);
   const hasListings = Number(listingsRes.count ?? 0) > 0;
   const hasAgentProfile = Boolean(riderProfile);
+  const legacyRole = normalizeAppRole((profileRes.data as { role?: string | null } | null)?.role);
   const appStatusFor = (role: WorkspaceRole): RoleApplicationStatus | "none" => {
     const approved = applications.find((entry) => entry.target_role === role && entry.status === "approved");
     if (approved) return "approved";
@@ -99,9 +101,9 @@ export async function getWorkspaceStatuses(userId: string, _email?: string | nul
   const vendorApplicationStatus = appStatusFor("vendor");
   const landlordApplicationStatus = appStatusFor("landlord");
   const agentApplicationStatus = appStatusFor("agent");
-  const vendorApproved = vendorApplicationStatus === "approved";
-  const landlordApproved = landlordApplicationStatus === "approved";
-  const agentApproved = agentApplicationStatus === "approved";
+  const vendorReady = vendorApplicationStatus === "approved" || hasFoodVendor || legacyRole === "vendor";
+  const landlordReady = landlordApplicationStatus === "approved" || hasListings || legacyRole === "landlord";
+  const agentReady = agentApplicationStatus === "approved" || hasAgentProfile || legacyRole === "agent";
   const statuses: WorkspaceStatus[] = [
     {
       role: "student",
@@ -117,10 +119,10 @@ export async function getWorkspaceStatuses(userId: string, _email?: string | nul
     {
       role: "vendor",
       label: "Food Provider",
-      ready: vendorApproved,
-      description: vendorApproved
-        ? hasVendor
-          ? "Food provider workspace is approved and ready to use."
+      ready: vendorReady,
+      description: vendorReady
+        ? hasFoodVendor
+          ? "Your existing food provider workspace is ready to use."
           : "Food provider workspace is approved. Complete your setup."
         : vendorApplicationStatus === "pending"
           ? "Food provider workspace application is pending admin review."
@@ -129,15 +131,15 @@ export async function getWorkspaceStatuses(userId: string, _email?: string | nul
       setupRoute: getWorkspaceSetupRoute("vendor"),
       ctaReady: "Open food provider",
       ctaSetup: "Set up food provider",
-      applicationStatus: vendorApplicationStatus,
+      applicationStatus: vendorReady ? "approved" : vendorApplicationStatus,
     },
     {
       role: "landlord",
       label: "Landlord",
-      ready: landlordApproved,
-      description: landlordApproved
+      ready: landlordReady,
+      description: landlordReady
         ? hasListings
-          ? "Landlord workspace is approved and already has listings."
+          ? "Your landlord workspace and listings are ready to use."
           : "Landlord workspace is approved. Create your first listing."
         : landlordApplicationStatus === "pending"
           ? "Landlord application is pending admin review."
@@ -146,15 +148,15 @@ export async function getWorkspaceStatuses(userId: string, _email?: string | nul
       setupRoute: getWorkspaceSetupRoute("landlord"),
       ctaReady: "Open landlord",
       ctaSetup: "Create first listing",
-      applicationStatus: landlordApplicationStatus,
+      applicationStatus: landlordReady ? "approved" : landlordApplicationStatus,
     },
     {
       role: "agent",
       label: "Delivery Agent",
-      ready: agentApproved,
-      description: agentApproved
+      ready: agentReady,
+      description: agentReady
         ? hasAgentProfile
-          ? "Rider workspace is approved and ready to go."
+          ? "Your rider workspace is ready to use."
           : "Rider workspace is approved. Complete your profile."
         : agentApplicationStatus === "pending"
           ? "Delivery application is pending admin review."
@@ -163,7 +165,7 @@ export async function getWorkspaceStatuses(userId: string, _email?: string | nul
       setupRoute: getWorkspaceSetupRoute("agent"),
       ctaReady: "Open rider workspace",
       ctaSetup: "Start rider setup",
-      applicationStatus: agentApplicationStatus,
+      applicationStatus: agentReady ? "approved" : agentApplicationStatus,
     },
   ];
 

@@ -4,19 +4,23 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { normalizeAppRole } from "@/lib/roleRouting";
 import { getWorkspaceHomeRoute } from "@/lib/workspaceAccess";
-import { hasApprovedWorkspaceRole } from "@/lib/roleApplications";
+import { hasWorkspaceAccess } from "@/lib/workspaceAuthorization";
 
 export default function SellerGuard({ children }: { children: React.ReactNode }) {
   const { user, role, activeRole, loading: authLoading, refreshRole } = useAuth();
   const router = useRouter();
   const [checking, setChecking] = useState(true);
+  const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
     let alive = true;
 
     const run = async () => {
       try {
-        setChecking(true);
+        if (alive) {
+          setChecking(true);
+          setAllowed(false);
+        }
 
         if (authLoading) return;
         if (!user) {
@@ -33,15 +37,18 @@ export default function SellerGuard({ children }: { children: React.ReactNode })
           router.replace(getWorkspaceHomeRoute("admin") as any);
           return;
         }
-        const approved = await hasApprovedWorkspaceRole(user.id, "vendor");
         if (currentRole !== "vendor") {
           router.replace(getWorkspaceHomeRoute(currentRole) as any);
           return;
         }
-        if (!approved && normalizeAppRole(role) !== "vendor") {
+
+        const approved = await hasWorkspaceAccess(user.id, "vendor");
+        if (!approved) {
           router.replace("/onboarding" as any);
           return;
         }
+
+        if (alive) setAllowed(true);
       } catch {
         router.replace(getWorkspaceHomeRoute("student") as any);
       } finally {
@@ -55,7 +62,7 @@ export default function SellerGuard({ children }: { children: React.ReactNode })
     };
   }, [authLoading, user, role, activeRole, refreshRole, router]);
 
-  if (authLoading || checking) {
+  if (authLoading || checking || !allowed) {
     return (
       <View style={styles.center}>
         <ActivityIndicator />

@@ -19,10 +19,10 @@ export default function SelectTicketsFastScreen() {
   React.useEffect(() => {
     let mounted = true;
     void listTicketEventsSafe().then((rows) => {
-      const selected = rows.find((item) => item.id === eventId) ?? rows[0] ?? null;
+      const selected = typeof eventId === "string" ? rows.find((item) => item.id === eventId) ?? null : null;
       if (!mounted) return;
       setEvent(selected);
-      const first = firstAvailableTier(selected);
+      const first = selected ? firstAvailableTier(selected) : null;
       setTierId(first?.id ?? "");
       setQty(first?.available ? 1 : 0);
       setLoading(false);
@@ -56,7 +56,7 @@ export default function SelectTicketsFastScreen() {
   }
 
   if (!event) {
-    return <View style={styles.center}><Ticket color={ACCENT} size={36} /><Text style={styles.title}>No tickets yet</Text><Text style={styles.muted}>Ticket options will appear here when ready.</Text></View>;
+    return <View style={styles.center}><Ticket color={ACCENT} size={36} /><Text style={styles.title}>Event unavailable</Text><Text style={styles.muted}>This event could not be found or is no longer available.</Text></View>;
   }
 
   return (
@@ -65,7 +65,7 @@ export default function SelectTicketsFastScreen() {
         <View style={styles.header}>
           <Pressable style={styles.roundBtn} onPress={() => router.back()}><ArrowLeft color={TEXT} size={24} /></Pressable>
           <Text style={styles.headerTitle}>Select Tickets</Text>
-          <View style={styles.secure}><ShieldCheck color={ACCENT} size={18} /><Text style={styles.secureText}>100% Secure</Text></View>
+          <View style={styles.secure}><ShieldCheck color={ACCENT} size={18} /><Text style={styles.secureText}>Verified Checkout</Text></View>
         </View>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: Math.max(230, insets.bottom + 190) }]}>
           <Text style={styles.kicker}>CHOOSE YOUR TICKET</Text>
@@ -107,7 +107,7 @@ export default function SelectTicketsFastScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG }, safe: { flex: 1 }, center: { flex: 1, backgroundColor: BG, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }, muted: { color: MUTED, fontSize: 13, fontWeight: "700" }, title: { color: TEXT, fontSize: 22, fontWeight: "900" },
+  root: { flex: 1, backgroundColor: BG }, safe: { flex: 1 }, center: { flex: 1, backgroundColor: BG, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }, muted: { color: MUTED, fontSize: 13, fontWeight: "700", textAlign: "center" }, title: { color: TEXT, fontSize: 22, fontWeight: "900" },
   header: { minHeight: 78, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 12 }, roundBtn: { width: 48, height: 48, borderRadius: 17, backgroundColor: "rgba(255,255,255,0.86)", borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" }, headerTitle: { flex: 1, color: TEXT, fontSize: 24, fontWeight: "900" }, secure: { flexDirection: "row", alignItems: "center", gap: 6 }, secureText: { color: ACCENT, fontSize: 12, fontWeight: "900" },
   content: { paddingHorizontal: 18, gap: 18 }, kicker: { color: TEXT, fontSize: 12, fontWeight: "900", letterSpacing: 1.7 },
   ticketCard: { minHeight: 178, borderRadius: 28, borderWidth: 1, borderColor: "rgba(105,119,216,0.28)", backgroundColor: "rgba(255,255,255,0.62)", flexDirection: "row", alignItems: "center", gap: 14, padding: 16, overflow: "hidden", shadowColor: "#13285f", shadowOpacity: 0.1, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 5 }, ticketCardActive: { borderWidth: 2, borderColor: ACCENT, backgroundColor: "rgba(255,255,255,0.94)" }, ticketCardOff: { opacity: 0.6 }, glassTop: { position: "absolute", left: 0, right: 0, top: 0, height: 74, backgroundColor: "rgba(255,255,255,0.42)" }, ticketIcon: { width: 72, height: 72, borderRadius: 22, backgroundColor: "rgba(238,241,255,0.95)", alignItems: "center", justifyContent: "center" }, ticketCopy: { flex: 1, minWidth: 0, paddingRight: 88 }, ticketNameRow: { flexDirection: "row", alignItems: "center", gap: 8 }, ticketName: { flex: 1, color: TEXT, fontSize: 18, fontWeight: "900" }, ticketDesc: { color: MUTED, fontSize: 13, lineHeight: 19, fontWeight: "700", marginTop: 8 }, price: { color: TEXT, fontSize: 22, fontWeight: "900", marginTop: 15 }, priceActive: { color: ACCENT }, badge: { borderRadius: 999, backgroundColor: ACCENT, paddingHorizontal: 8, paddingVertical: 5 }, badgeText: { color: "#fff", fontSize: 9, fontWeight: "900" }, qtyBox: { position: "absolute", right: 14, bottom: 18, width: 112, height: 52, borderRadius: 18, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fff", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12 }, qty: { color: TEXT, fontSize: 21, fontWeight: "900" },

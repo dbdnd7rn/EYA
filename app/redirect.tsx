@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
@@ -7,33 +7,55 @@ import { useAuth } from "@/providers/AuthProvider";
 import { normalizeAppRole } from "@/lib/roleRouting";
 import { ENV, isConfiguredAdminEmail } from "@/lib/env";
 import { ensureProfileRoleFromAuthUser } from "@/lib/authProfile";
+import { storeActiveWorkspace } from "@/lib/activeWorkspace";
 import { getFallbackWorkspaceRole, getWorkspaceHomeRoute, getWorkspaceStatuses } from "@/lib/workspaceAccess";
 import EyaWordmark from "@/components/brand/EyaWordmark";
 
 export default function RedirectPage() {
   const router = useRouter();
-  const { user, role, activeRole, loading, setActiveRole } = useAuth();
+  const { user, role, activeRole, loading, setActiveRole, syncSession } = useAuth();
+  const routingStarted = useRef(false);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || routingStarted.current) return;
+    routingStarted.current = true;
+    let active = true;
 
     const go = async () => {
-      if (!user) {
+      let resolvedUser = user;
+      let recoveredSession = false;
+
+      if (!resolvedUser) {
+        resolvedUser = await syncSession().catch(() => null);
+        recoveredSession = Boolean(resolvedUser);
+      }
+
+      if (!active) return;
+      if (!resolvedUser) {
         router.replace("/(auth)/login");
+        return;
+      }
+
+      // When the provider had to recover the session, use the stable User
+      // workspace first instead of sending the person into a stale saved role.
+      if (recoveredSession) {
+        await storeActiveWorkspace(resolvedUser.id, "student");
+        await setActiveRole("student");
+        if (active) router.replace(getWorkspaceHomeRoute("student") as any);
         return;
       }
 
       const normalizedRole = normalizeAppRole(role);
       const normalizedActiveRole = normalizeAppRole(activeRole);
-      const canUseAdmin = ENV.DEV_AUTH_MODE || isConfiguredAdminEmail(user.email);
+      const canUseAdmin = ENV.DEV_AUTH_MODE || isConfiguredAdminEmail(resolvedUser.email);
       const goToUserHome = async () => {
         await setActiveRole("student");
-        router.replace(getWorkspaceHomeRoute("student") as any);
+        if (active) router.replace(getWorkspaceHomeRoute("student") as any);
       };
 
       if (normalizedRole === "admin" && canUseAdmin) {
         await setActiveRole("admin");
-        router.replace(getWorkspaceHomeRoute("admin") as any);
+        if (active) router.replace(getWorkspaceHomeRoute("admin") as any);
         return;
       }
 
@@ -43,52 +65,57 @@ export default function RedirectPage() {
           return;
         }
 
-        const statuses = await getWorkspaceStatuses(user.id, user.email);
+        const statuses = await getWorkspaceStatuses(resolvedUser.id, resolvedUser.email);
         const activeStatus = statuses.find((entry) => entry.role === normalizedActiveRole) ?? null;
         if (!activeStatus?.ready) {
           await goToUserHome();
           return;
         }
 
-        router.replace(getWorkspaceHomeRoute(normalizedActiveRole) as any);
+        if (active) router.replace(getWorkspaceHomeRoute(normalizedActiveRole) as any);
         return;
       }
 
       if (normalizedRole) {
-        await setActiveRole(getFallbackWorkspaceRole(normalizedRole, user.email));
-        router.replace(getWorkspaceHomeRoute(getFallbackWorkspaceRole(normalizedRole, user.email)) as any);
+        const fallbackRole = getFallbackWorkspaceRole(normalizedRole, resolvedUser.email);
+        await setActiveRole(fallbackRole);
+        if (active) router.replace(getWorkspaceHomeRoute(fallbackRole) as any);
         return;
       }
 
-      const recoveredRole = await ensureProfileRoleFromAuthUser(user);
+      const recoveredRole = await ensureProfileRoleFromAuthUser(resolvedUser);
       if (recoveredRole) {
         const fallbackRole =
-          recoveredRole === "admin" && !canUseAdmin ? "student" : getFallbackWorkspaceRole(recoveredRole, user.email);
+          recoveredRole === "admin" && !canUseAdmin ? "student" : getFallbackWorkspaceRole(recoveredRole, resolvedUser.email);
         await setActiveRole(fallbackRole);
-        router.replace(getWorkspaceHomeRoute(fallbackRole) as any);
+        if (active) router.replace(getWorkspaceHomeRoute(fallbackRole) as any);
         return;
       }
 
-      const { data, error } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+      const { data, error } = await supabase.from("profiles").select("role").eq("id", resolvedUser.id).maybeSingle();
       if (error) {
         await goToUserHome();
         return;
       }
       const dbRole = normalizeAppRole(data?.role);
       const fallbackRole =
-        dbRole === "admin" && !canUseAdmin ? "student" : getFallbackWorkspaceRole(dbRole, user.email);
+        dbRole === "admin" && !canUseAdmin ? "student" : getFallbackWorkspaceRole(dbRole, resolvedUser.email);
       await setActiveRole(fallbackRole);
-      router.replace(getWorkspaceHomeRoute(fallbackRole) as any);
+      if (active) router.replace(getWorkspaceHomeRoute(fallbackRole) as any);
     };
 
     void go().catch(async () => {
       try {
         await setActiveRole("student");
       } finally {
-        router.replace(getWorkspaceHomeRoute("student") as any);
+        if (active) router.replace(getWorkspaceHomeRoute("student") as any);
       }
     });
-  }, [activeRole, loading, role, router, setActiveRole, user]);
+
+    return () => {
+      active = false;
+    };
+  }, [activeRole, loading, role, router, setActiveRole, syncSession, user]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f6f7fb" }}>
@@ -99,5 +126,3 @@ export default function RedirectPage() {
     </SafeAreaView>
   );
 }
-
-

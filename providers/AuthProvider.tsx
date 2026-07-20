@@ -12,7 +12,7 @@ import { clearDevAuthRecord, getDevAuthRecord, recordToUser, setDevAuthRecord } 
 import { ensureProfileRoleFromAuthUser } from "@/lib/authProfile";
 import { readStoredActiveWorkspace, storeActiveWorkspace } from "@/lib/activeWorkspace";
 import { getFallbackWorkspaceRole } from "@/lib/workspaceAccess";
-import { hasApprovedWorkspaceRole } from "@/lib/roleApplications";
+import { hasWorkspaceAccess } from "@/lib/workspaceAuthorization";
 
 type Role = "student" | "landlord" | "agent" | "vendor" | "admin" | null;
 
@@ -26,6 +26,7 @@ type AuthCtx = {
   signInDev: (input: { email: string; role: Exclude<Role, null> }) => Promise<void>;
   refreshRole: (userRef?: string | User | null) => Promise<void>;
   setActiveRole: (role: Exclude<Role, null>) => Promise<void>;
+  syncSession: () => Promise<User | null>;
 };
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -101,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isAdminAccount = normalizeAppRole(role) === "admin";
     if (resolved === "admin" && !isAdminAccount) return;
     if (resolved !== "student" && resolved !== "admin" && !isAdminAccount) {
-      const approved = user?.id ? await hasApprovedWorkspaceRole(user.id, resolved) : false;
+      const approved = user?.id ? await hasWorkspaceAccess(user.id, resolved) : false;
       const ownsRole = normalizeAppRole(role) === resolved;
       if (!approved && !ownsRole) return;
     }
@@ -148,6 +149,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await hydrateActiveRole(user, nextRole);
   };
 
+  const syncSession = async () => {
+    if (ENV.DEV_AUTH_MODE) {
+      const record = await getDevAuthRecord();
+      const nextUser = record ? recordToUser(record) : null;
+      const nextRole = sanitizeRole(normalizeAppRole(record?.role), record?.email);
+      setSession(null);
+      setUser(nextUser);
+      setRole(nextRole);
+      await hydrateActiveRole(nextUser, nextRole);
+      return nextUser;
+    }
+
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      if (isInvalidRefreshTokenError(error)) await clearAuthState();
+      throw error;
+    }
+
+    const nextSession = data.session ?? null;
+    const nextUser = nextSession?.user ?? null;
+    setSession(nextSession);
+    setUser(nextUser);
+    await refreshRole(nextUser);
+    return nextUser;
+  };
+
   useEffect(() => {
     let alive = true;
 
@@ -174,8 +201,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         if (!alive) return;
         if (error) {
-          if (isInvalidRefreshTokenError(error) || isNetworkUnavailableError(error)) {
+          if (isInvalidRefreshTokenError(error)) {
             await clearAuthState();
+            return;
+          }
+          if (isNetworkUnavailableError(error)) {
+            setSession(data.session ?? null);
+            setUser(data.session?.user ?? null);
+            if (data.session?.user) {
+              await refreshRole(data.session.user).catch(() => undefined);
+            }
             return;
           }
           throw error;
@@ -193,16 +228,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     void init().catch(async (error) => {
-      if (alive) {
-        if (isNetworkUnavailableError(error)) {
-          await clearSupabaseAuthStorage();
-        }
-        setSession(null);
-        setUser(null);
-        setRole(null);
-        setActiveRoleState(null);
-        setLoading(false);
+      if (!alive) return;
+      if (isInvalidRefreshTokenError(error)) {
+        await clearAuthState();
       }
+      setLoading(false);
     });
 
     if (ENV.DEV_AUTH_MODE) {
@@ -211,19 +241,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession ?? null);
       setUser(newSession?.user ?? null);
       setLoading(false);
       if (!newSession?.user) {
+        setRole(null);
         setActiveRoleState(null);
+        return;
+      }
+
+      // A fresh login always lands safely in the user workspace. The person can
+      // switch into an approved workspace after the auth state has fully settled.
+      if (event === "SIGNED_IN") {
+        setActiveRoleState("student");
+        void storeActiveWorkspace(newSession.user.id, "student")
+          .then(() => refreshRole(newSession.user))
+          .catch(() => refreshRole(newSession.user))
+          .catch(() => {
+            setRole("student");
+            setActiveRoleState("student");
+          });
+        return;
       }
 
       // Avoid awaiting Supabase queries inside auth state callbacks.
       // It can block auth methods (e.g. signInWithPassword) from resolving.
-      void refreshRole(newSession?.user ?? null).catch(() => {
+      void refreshRole(newSession.user).catch(() => {
         setRole(null);
-        setActiveRoleState(null);
+        setActiveRoleState("student");
       });
     });
 
@@ -261,6 +307,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshRole,
       activeRole,
       setActiveRole,
+      syncSession,
     }),
     [user, session, role, activeRole, loading],
   );

@@ -14,10 +14,10 @@ type IconComponent = React.ComponentType<{ size?: number; color?: string; fill?:
 const CTA_BLUE = "#0e2756";
 
 const highlights: { title: string; subtitle: string; Icon: IconComponent }[] = [
-  { title: "Real Tickets", subtitle: "Admin issued", Icon: Ticket },
+  { title: "Real Tickets", subtitle: "System issued", Icon: Ticket },
   { title: "Fast Entry", subtitle: "QR scanning", Icon: Zap },
-  { title: "100% Secure", subtitle: "Encrypted payments", Icon: ShieldCheck },
-  { title: "Great Vibes", subtitle: "Unforgettable moments", Icon: UsersRound },
+  { title: "100% Secure", subtitle: "Verified payments", Icon: ShieldCheck },
+  { title: "Great Experience", subtitle: "Organizer managed", Icon: UsersRound },
 ];
 
 export default function EventDetailsQuickScreen() {
@@ -30,7 +30,7 @@ export default function EventDetailsQuickScreen() {
     let active = true;
     void listTicketEventsSafe().then((rows) => {
       if (!active) return;
-      setEvent(rows.find((item) => item.id === eventId) ?? rows[0] ?? null);
+      setEvent(typeof eventId === "string" ? rows.find((item) => item.id === eventId) ?? null : null);
       setLoading(false);
     });
     return () => {
@@ -39,14 +39,14 @@ export default function EventDetailsQuickScreen() {
   }, [eventId]);
 
   if (loading) return <View style={styles.center}><ActivityIndicator color={ACCENT} /><Text style={styles.muted}>Loading event...</Text></View>;
-  if (!event) return <View style={styles.center}><Ticket size={34} color={ACCENT} /><Text style={styles.title}>Event unavailable</Text><Text style={styles.muted}>This event is not ready yet.</Text></View>;
+  if (!event) return <View style={styles.center}><Ticket size={34} color={ACCENT} /><Text style={styles.title}>Event unavailable</Text><Text style={styles.muted}>This event could not be found or is no longer available.</Text></View>;
 
-  return <View style={styles.root}><StatusBar style="dark" /><ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(178, insets.bottom + 152) }]}><Hero event={event} /><View style={styles.content}><View style={styles.dateCard}><InfoRow Icon={CalendarDays} label="Every Weekend" title={eventDateLabel(event)} /><InfoRow Icon={Clock3} label="Event Time" title={eventTimeLabel(event)} /><InfoRow Icon={MapPin} label="Venue" title={eventLocation(event)} /></View><View style={styles.about}><Text style={styles.kicker}>About This Event</Text><View style={styles.underline} /><Text style={styles.aboutText}>{event.description?.trim() || `${event.title} is ready for booking on EYA.`}</Text><Text style={styles.aboutText}>Live performances, good vibes, food, drinks and unforgettable memories.</Text></View><View style={styles.grid}>{highlights.map((item) => <HighlightCard key={item.title} item={item} />)}</View></View></ScrollView><BookBar event={event} /></View>;
+  return <View style={styles.root}><StatusBar style="dark" /><ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(178, insets.bottom + 152) }]}><Hero event={event} /><View style={styles.content}><View style={styles.dateCard}><InfoRow Icon={CalendarDays} label="Event Date" title={eventDateLabel(event)} /><InfoRow Icon={Clock3} label="Event Time" title={eventTimeLabel(event)} /><InfoRow Icon={MapPin} label="Venue" title={eventLocation(event)} /></View><View style={styles.about}><Text style={styles.kicker}>About This Event</Text><View style={styles.underline} /><Text style={styles.aboutText}>{event.description?.trim() || `${event.title} is available for booking on EYA.`}</Text></View><View style={styles.grid}>{highlights.map((item) => <HighlightCard key={item.title} item={item} />)}</View></View></ScrollView><BookBar event={event} /></View>;
 }
 
 function Hero({ event }: { event: TicketEvent }) {
   const router = useRouter();
-  return <ImageBackground source={{ uri: eventImageUrl(event, true) }} style={styles.hero} imageStyle={styles.heroImage}><LinearGradient colors={["rgba(246,247,255,0.08)", "rgba(246,247,255,0.23)", BG]} locations={[0, 0.58, 1]} style={StyleSheet.absoluteFill} /><SafeAreaView edges={["top"]} style={styles.heroSafe}><View style={styles.heroTop}><Pressable style={styles.circle} onPress={() => router.back()}><ArrowLeft color={TEXT} size={22} /></Pressable><Pressable style={styles.circle}><Heart color={ACCENT} fill={ACCENT} size={21} /></Pressable></View><View style={styles.heroCopy}><View style={styles.badge}><Text style={styles.badgeText}>{String(event.category || "Event").toUpperCase()}</Text></View><Text style={styles.heroTitle} numberOfLines={3}>{event.title}</Text><Text style={styles.heroSub}>A music & lifestyle festival experience.</Text></View></SafeAreaView></ImageBackground>;
+  return <ImageBackground source={{ uri: eventImageUrl(event, true) }} style={styles.hero} imageStyle={styles.heroImage}><LinearGradient colors={["rgba(246,247,255,0.08)", "rgba(246,247,255,0.23)", BG]} locations={[0, 0.58, 1]} style={StyleSheet.absoluteFill} /><SafeAreaView edges={["top"]} style={styles.heroSafe}><View style={styles.heroTop}><Pressable style={styles.circle} onPress={() => router.back()}><ArrowLeft color={TEXT} size={22} /></Pressable><Pressable style={styles.circle}><Heart color={ACCENT} fill={ACCENT} size={21} /></Pressable></View><View style={styles.heroCopy}><View style={styles.badge}><Text style={styles.badgeText}>{String(event.category || "Event").toUpperCase()}</Text></View><Text style={styles.heroTitle} numberOfLines={3}>{event.title}</Text><Text style={styles.heroSub}>{event.venue && event.city ? `${event.venue}, ${event.city}` : eventLocation(event)}</Text></View></SafeAreaView></ImageBackground>;
 }
 
 function InfoRow({ Icon, label, title }: { Icon: IconComponent; label: string; title: string }) {
