@@ -56,11 +56,26 @@ const METHODS: Array<{
   { id: "card", title: "Debit or Credit Card", subtitle: "Continue to PayChangu's PCI-compliant card page" },
 ];
 
+function getNationalMobileDigits(value: string): string | null {
+  const digits = value.replace(/\D/g, "");
+  const national = digits.startsWith("265")
+    ? digits.slice(3)
+    : digits.startsWith("0")
+      ? digits.slice(1)
+      : digits;
+
+  return /^[89]\d{8}$/.test(national) ? national : null;
+}
+
 function formatPhone(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 9);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
-  return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
+  const digits = value.replace(/\D/g, "");
+  const localDigits = digits.startsWith("265")
+    ? `0${digits.slice(3, 12)}`
+    : digits.slice(0, 10);
+
+  if (localDigits.length <= 4) return localDigits;
+  if (localDigits.length <= 7) return `${localDigits.slice(0, 4)} ${localDigits.slice(4)}`;
+  return `${localDigits.slice(0, 4)} ${localDigits.slice(4, 7)} ${localDigits.slice(7)}`;
 }
 
 function getFriendlyPaymentError(error: unknown) {
@@ -95,9 +110,9 @@ export default function HybridTicketCheckoutScreen() {
   const [phone, setPhone] = React.useState("");
   const quantity = Math.max(1, Math.min(10, Number(quantityParam || 1) || 1));
   const estimatedTotal = Number(tier?.priceMwk || 0) * quantity;
-  const phoneDigits = phone.replace(/\D/g, "");
+  const nationalPhoneDigits = getNationalMobileDigits(phone);
   const needsPhone = paymentMethod === "airtel_money" || paymentMethod === "mpamba";
-  const canContinue = !startingPayment && (!needsPhone || phoneDigits.length === 9);
+  const canContinue = !startingPayment && (!needsPhone || Boolean(nationalPhoneDigits));
 
   React.useEffect(() => {
     let mounted = true;
@@ -128,12 +143,13 @@ export default function HybridTicketCheckoutScreen() {
 
     try {
       setStartingPayment(true);
+      const canonicalPhone = needsPhone && nationalPhoneDigits ? `+265${nationalPhoneDigits}` : null;
       const payment = await createHybridTicketCheckout(session.access_token, {
         eventId: event.id,
         tierId: tier.id,
         quantity,
         paymentMethod,
-        phone: needsPhone ? `+265${phoneDigits}` : null,
+        phone: canonicalPhone,
       });
 
       if (payment.paymentMethod === "card") {
@@ -159,7 +175,7 @@ export default function HybridTicketCheckoutScreen() {
           txRef: payment.txRef,
           paymentId: payment.paymentIntentId,
           paymentMethod: payment.paymentMethod,
-          phone: needsPhone ? `+265${phoneDigits}` : undefined,
+          phone: canonicalPhone ?? undefined,
           bankName: bank?.bankName,
           accountNumber: bank?.accountNumber,
           accountName: bank?.accountName,
@@ -172,7 +188,7 @@ export default function HybridTicketCheckoutScreen() {
     } finally {
       setStartingPayment(false);
     }
-  }, [canContinue, event, needsPhone, paymentMethod, phoneDigits, quantity, router, session?.access_token, tier]);
+  }, [canContinue, event, nationalPhoneDigits, needsPhone, paymentMethod, quantity, router, session?.access_token, tier]);
 
   if (loading) {
     return <View style={styles.center}><ActivityIndicator color={ACCENT} /><Text style={styles.muted}>Preparing secure checkout...</Text></View>;
@@ -223,18 +239,18 @@ export default function HybridTicketCheckoutScreen() {
             <View style={styles.fieldSection}>
               <Text style={styles.kicker}>MOBILE-MONEY NUMBER</Text>
               <View style={styles.phoneCard}>
-                <Text style={styles.countryCode}>+265</Text>
                 <TextInput
                   value={phone}
                   onChangeText={(value) => setPhone(formatPhone(value))}
-                  placeholder="999 123 456"
+                  placeholder="0980 991 460"
                   placeholderTextColor={MUTED}
                   keyboardType="phone-pad"
+                  maxLength={12}
                   style={styles.phoneInput}
                   selectionColor={ACCENT}
                 />
               </View>
-              <Text style={styles.fieldHelp}>EYA will never ask for your PIN. Approve it only in the official Airtel or TNM prompt.</Text>
+              <Text style={styles.fieldHelp}>Enter the normal 10-digit Malawi number, for example 0980 991 460 or 0894 656 119. EYA will never ask for your PIN.</Text>
             </View>
           ) : null}
 
@@ -296,7 +312,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 18, gap: 18 }, kicker: { color: TEXT, fontSize: 12, fontWeight: "900", letterSpacing: 1.2 }, eventCard: { borderRadius: 26, backgroundColor: "rgba(255,255,255,0.9)", borderWidth: 1, borderColor: BORDER, padding: 14, flexDirection: "row", gap: 14 }, eventImage: { width: 104, height: 136, borderRadius: 18, backgroundColor: BORDER }, eventCopy: { flex: 1, minWidth: 0, justifyContent: "center", gap: 9 }, eventTitle: { color: TEXT, fontSize: 20, lineHeight: 25, fontWeight: "900" }, metaRow: { flexDirection: "row", alignItems: "center", gap: 8 }, metaText: { flex: 1, color: TEXT, fontSize: 12, fontWeight: "700" },
   summaryCard: { borderRadius: 24, backgroundColor: "rgba(255,255,255,0.92)", borderWidth: 1, borderColor: BORDER, padding: 17, gap: 14 }, ticketRow: { flexDirection: "row", alignItems: "center", gap: 12 }, ticketIcon: { width: 54, height: 54, borderRadius: 17, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" }, ticketCopy: { flex: 1, minWidth: 0, gap: 5 }, ticketTitle: { color: TEXT, fontSize: 16, fontWeight: "900" }, ticketSub: { color: MUTED, fontSize: 13, fontWeight: "700" }, ticketTotal: { color: TEXT, fontSize: 17, fontWeight: "900" }, divider: { height: 1, backgroundColor: BORDER }, totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, totalLabel: { color: TEXT, fontSize: 16, fontWeight: "900" }, totalValue: { color: ACCENT, fontSize: 24, fontWeight: "900" }, serverNote: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700" },
   methodsWrap: { gap: 11 }, methodCard: { minHeight: 86, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.86)", flexDirection: "row", alignItems: "center", gap: 13, padding: 13 }, methodCardActive: { borderWidth: 2, borderColor: ACCENT, backgroundColor: "#ffffff" }, methodIconBox: { width: 60, height: 54, borderRadius: 15, backgroundColor: "#f7f8fe", alignItems: "center", justifyContent: "center" }, methodCopy: { flex: 1, minWidth: 0 }, methodTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, methodSub: { color: MUTED, fontSize: 12, lineHeight: 17, fontWeight: "700", marginTop: 4 }, radioOuter: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: MUTED, alignItems: "center", justifyContent: "center" }, radioOuterActive: { borderColor: ACCENT }, radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: ACCENT },
-  fieldSection: { gap: 10 }, phoneCard: { minHeight: 66, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fff", flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 }, countryCode: { color: TEXT, fontSize: 15, fontWeight: "900" }, phoneInput: { flex: 1, minWidth: 0, color: TEXT, fontSize: 17, fontWeight: "800" }, fieldHelp: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700" },
+  fieldSection: { gap: 10 }, phoneCard: { minHeight: 66, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fff", flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 }, phoneInput: { flex: 1, minWidth: 0, color: TEXT, fontSize: 17, fontWeight: "800" }, fieldHelp: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700" },
   infoCard: { borderRadius: 22, backgroundColor: "#eef1ff", padding: 16, flexDirection: "row", alignItems: "center", gap: 13 }, infoIcon: { width: 48, height: 48, borderRadius: 15, backgroundColor: "rgba(255,255,255,0.72)", alignItems: "center", justifyContent: "center" }, infoCopy: { flex: 1 }, infoTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, infoText: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700", marginTop: 4 },
   qrInfoCard: { borderRadius: 22, backgroundColor: "#e8ddff", padding: 16, flexDirection: "row", alignItems: "center", gap: 14 }, qrIconBox: { width: 54, height: 54, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.58)", alignItems: "center", justifyContent: "center" }, qrCopy: { flex: 1 }, qrTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, qrText: { color: TEXT, opacity: 0.74, fontSize: 12, lineHeight: 18, fontWeight: "700", marginTop: 5 },
   payBarOuter: { position: "absolute", left: 14, right: 14 }, payBar: { minHeight: 86, borderRadius: 26, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fff", padding: 13, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, shadowColor: "#13285f", shadowOpacity: 0.18, shadowRadius: 26, shadowOffset: { width: 0, height: 12 }, elevation: 14 }, payLabel: { color: MUTED, fontSize: 10, fontWeight: "900", letterSpacing: 1.2 }, payAmount: { color: TEXT, fontSize: 22, fontWeight: "900", marginTop: 4 }, payButton: { flex: 1, maxWidth: 215, minHeight: 58, borderRadius: 18, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 12 }, payButtonDisabled: { backgroundColor: "#cfd4df" }, payButtonText: { color: "#fff", fontSize: 13, fontWeight: "900", textAlign: "center" },
