@@ -133,9 +133,19 @@ async function resolveOperatorRef(env: PaymentsEnv, method: "airtel_money" | "mp
 
 function normalizeMalawiMobile(value: string | null): string {
   const digits = String(value || "").replace(/\D/g, "");
-  const local = digits.startsWith("265") ? digits.slice(3) : digits.startsWith("0") ? digits.slice(1) : digits;
-  if (!/^\d{9}$/.test(local)) throw new Error("A valid Malawi mobile-money number is required.");
-  return `0${local}`;
+  const national = digits.startsWith("265")
+    ? digits.slice(3)
+    : digits.startsWith("0")
+      ? digits.slice(1)
+      : digits;
+
+  if (!/^[89]\d{8}$/.test(national)) {
+    throw new Error("A valid 10-digit Malawi mobile-money number is required.");
+  }
+
+  // PayChangu's mobile-money test guide specifies the national number without
+  // the leading zero. EYA still accepts 0XXXXXXXXX and +265XXXXXXXXX from users.
+  return national;
 }
 
 function normalizeCurrency(value: unknown): string {
@@ -177,7 +187,7 @@ async function initiateMobileMoney(
       email: intent.customer_email || undefined,
     }),
   });
-  if (!['success', 'successful'].includes(String(payload.status || '').toLowerCase())) {
+  if (!["success", "successful"].includes(String(payload.status || "").toLowerCase())) {
     throw new PaymentProviderError(asNonEmptyString(payload.message) || "PayChangu did not initialize the mobile-money charge.", 502, payload);
   }
   const data = asObject(payload.data) || {};
@@ -209,7 +219,7 @@ async function initiateBankTransfer(
       create_permanent_account: false,
     }),
   });
-  if (!['success', 'successful'].includes(String(payload.status || '').toLowerCase())) {
+  if (!["success", "successful"].includes(String(payload.status || "").toLowerCase())) {
     throw new PaymentProviderError(asNonEmptyString(payload.message) || "PayChangu did not initialize the bank-transfer charge.", 502, payload);
   }
   const data = asObject(payload.data) || {};
