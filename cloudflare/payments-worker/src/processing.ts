@@ -32,12 +32,12 @@ export async function verifyAndRecordPayChanguPayment(
   txRef: string,
 ): Promise<ProcessedPaymentVerification> {
   const normalizedTxRef = txRef.trim();
-  if (!normalizedTxRef) throw new Error("tx_ref is required.");
+  if (!normalizedTxRef) throw new Error("Payment reference is required.");
 
   const intent = await findPaymentIntentByMerchantReference(env, normalizedTxRef);
   if (!intent) throw new PaymentIntentNotFoundError();
 
-  const verification = await verifyPayChanguTransaction(env, normalizedTxRef);
+  const verification = await verifyPayChanguTransaction(env, intent);
 
   if (verification.txRef !== intent.merchant_reference) {
     throw new PaymentVerificationMismatchError(
