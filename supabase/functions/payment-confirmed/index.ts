@@ -3,6 +3,7 @@ import { withSupabase } from "@supabase/server";
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
 const MAX_BODY_BYTES = 64 * 1024;
+const VAC_CALLBACK_SIGNING_PATH = "/functions/v1/payment-confirmed";
 const encoder = new TextEncoder();
 
 function json(payload: unknown, status = 200): Response {
@@ -103,8 +104,12 @@ async function authenticateVacCallback(request: Request, rawBody: string): Promi
     throw new Error("VAC payment callback secret is not configured.");
   }
 
-  const path = new URL(request.url).pathname;
-  const canonical = [String(timestamp), request.method.toUpperCase(), path, rawBody].join(".");
+  const canonical = [
+    String(timestamp),
+    request.method.toUpperCase(),
+    VAC_CALLBACK_SIGNING_PATH,
+    rawBody,
+  ].join(".");
   const expectedSignature = await hmacSha256Hex(secret, canonical);
 
   if (!constantTimeEqual(expectedSignature, suppliedSignature)) {
