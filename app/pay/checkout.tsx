@@ -22,17 +22,25 @@ export default function PayCheckoutWebviewScreen() {
     tx_ref?: string;
     order_id?: string;
     payment_id?: string;
+    payment_method?: string;
   }>();
   const paymentUrl = typeof params.url === "string" ? decodeURIComponent(params.url) : "";
   const txRef = typeof params.tx_ref === "string" ? params.tx_ref.trim() : "";
   const orderId = typeof params.order_id === "string" ? params.order_id.trim() : "";
   const paymentId = typeof params.payment_id === "string" ? params.payment_id.trim() : "";
+  const paymentMethod = typeof params.payment_method === "string" ? params.payment_method.trim() : "";
   const completedRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const valid = useMemo(
-    () => Boolean(orderId && txRef && paymentId && isTrustedPayChanguCheckoutUrl(paymentUrl)),
-    [orderId, paymentId, paymentUrl, txRef],
+    () => Boolean(
+      orderId &&
+      txRef &&
+      paymentId &&
+      paymentMethod === "card" &&
+      isTrustedPayChanguCheckoutUrl(paymentUrl)
+    ),
+    [orderId, paymentId, paymentMethod, paymentUrl, txRef],
   );
 
   const finishCheckout = React.useCallback(() => {
@@ -40,7 +48,7 @@ export default function PayCheckoutWebviewScreen() {
     completedRef.current = true;
     router.replace({
       pathname: "/(student)/market/payment-processing",
-      params: { orderId, txRef, paymentId },
+      params: { orderId, txRef, paymentId, paymentMethod: "card" },
     } as any);
   }, [orderId, paymentId, router, txRef]);
 
@@ -50,7 +58,7 @@ export default function PayCheckoutWebviewScreen() {
         <View style={styles.center}>
           <Text style={styles.title}>Checkout blocked</Text>
           <Text style={styles.sub}>
-            EYA rejected an invalid or untrusted payment session. No payment page was opened.
+            EYA rejected an invalid or untrusted card-payment session. No payment page was opened.
           </Text>
           <Pressable style={styles.btn} onPress={() => router.back()}>
             <Text style={styles.btnText}>Go back</Text>
@@ -90,19 +98,19 @@ export default function PayCheckoutWebviewScreen() {
         renderLoading={() => (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color="#ff0f64" />
-            <Text style={styles.loadingText}>Opening secure PayChangu checkout...</Text>
+            <Text style={styles.loadingText}>Opening secure PayChangu card checkout...</Text>
           </View>
         )}
         onShouldStartLoadWithRequest={(request) => {
           const next = parseUrl(request.url ?? "");
           if (!next) return false;
 
-          // The first page must always be PayChangu's hosted checkout. After that,
-          // HTTPS redirects are permitted for bank and 3-D Secure authentication.
           if (request.isTopFrame && request.url === paymentUrl) {
             return isTrustedPayChanguCheckoutUrl(request.url);
           }
 
+          // PayChangu may redirect to an HTTPS 3-D Secure issuer page. Credentials
+          // embedded in URLs and all non-HTTPS navigation remain blocked.
           return next.protocol === "https:" && !next.username && !next.password;
         }}
         onNavigationStateChange={(state) => {
@@ -115,8 +123,6 @@ export default function PayCheckoutWebviewScreen() {
             return;
           }
 
-          // Wait until the Worker response finishes loading so its server-side
-          // verification request is not cancelled when the WebView unmounts.
           if (state.loading === false) finishCheckout();
         }}
         onHttpError={(event) => {
