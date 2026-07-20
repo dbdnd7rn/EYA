@@ -2,7 +2,7 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 
 const encoder = new TextEncoder();
-const PAYMENT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer"]);
+const PAYMENT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer", "card"]);
 const WORKER_PATH = "/v1/payment-intents";
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -51,6 +51,14 @@ function normalizeQuantity(value: unknown): number {
   return quantity;
 }
 
+function normalizePhone(value: string | null): string | null {
+  if (!value) return null;
+  const digits = value.replace(/\D/g, "");
+  const local = digits.startsWith("265") ? digits.slice(3) : digits.startsWith("0") ? digits.slice(1) : digits;
+  if (!/^\d{9}$/.test(local)) throw new Error("A valid Malawi mobile-money phone number is required.");
+  return `+265${local}`;
+}
+
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
 }
@@ -74,13 +82,11 @@ function asObject(value: unknown): Record<string, unknown> {
 async function createVacCheckout(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const workerBase = Deno.env.get("VAC_PAYMENTS_URL")?.trim().replace(/\/+$/, "");
   const secret = Deno.env.get("VAC_PAYMENT_CALLBACK_SECRET")?.trim();
-
   if (!workerBase) throw new Error("VAC payments URL is not configured.");
   if (!secret || secret.length < 32) throw new Error("VAC payment application secret is not configured.");
 
   const workerUrl = new URL(`${workerBase}${WORKER_PATH}`);
   if (workerUrl.protocol !== "https:") throw new Error("VAC payments URL must use HTTPS.");
-
   const rawBody = JSON.stringify(payload);
   const timestamp = Math.floor(Date.now() / 1000);
   const canonical = [String(timestamp), "POST", WORKER_PATH, rawBody].join(".");
@@ -119,12 +125,6 @@ async function createVacCheckout(payload: Record<string, unknown>): Promise<Reco
     throw new Error(message);
   }
   if (!isPlainObject(responsePayload)) throw new Error("VAC payments returned an invalid response.");
-
-  const paymentIntent = asObject(responsePayload.payment_intent);
-  const checkoutUrl = requiredString(paymentIntent.checkout_url, "checkout_url", 2000);
-  const parsedCheckoutUrl = new URL(checkoutUrl);
-  if (parsedCheckoutUrl.protocol !== "https:") throw new Error("VAC checkout URL must use HTTPS.");
-
   return responsePayload;
 }
 
@@ -134,7 +134,7 @@ export default {
     if (request.method !== "POST") return json({ status: "error", message: "Method not allowed." }, 405);
 
     let reservedOrderId: string | null = null;
-    let checkoutCreated = false;
+    let providerSessionCreated = false;
 
     try {
       const body: unknown = await request.json().catch(() => null);
@@ -144,13 +144,13 @@ export default {
       const tierId = requiredString(body.tier_id ?? body.tierId, "tier_id", 100);
       const quantity = normalizeQuantity(body.quantity);
       const paymentMethod = requiredString(body.payment_method ?? body.paymentMethod, "payment_method", 40);
-      const phone = optionalString(body.phone, "phone", 40);
+      const phone = normalizePhone(optionalString(body.phone, "phone", 40));
 
       if (!PAYMENT_METHODS.has(paymentMethod)) {
-        throw new Error("payment_method must be airtel_money, mpamba, or bank_transfer.");
+        throw new Error("payment_method must be airtel_money, mpamba, bank_transfer, or card.");
       }
-      if ((paymentMethod === "airtel_money" || paymentMethod === "mpamba") && (!phone || phone.replace(/\D/g, "").length < 8)) {
-        throw new Error("A valid mobile money phone number is required.");
+      if ((paymentMethod === "airtel_money" || paymentMethod === "mpamba") && !phone) {
+        throw new Error("A valid mobile-money phone number is required.");
       }
 
       const { data: authData, error: authError } = await ctx.supabase.auth.getUser();
@@ -198,11 +198,19 @@ export default {
           payment_method: paymentMethod,
         },
       });
-      checkoutCreated = true;
+      providerSessionCreated = true;
 
       const paymentIntent = asObject(vacResponse.payment_intent);
       const merchantReference = requiredString(paymentIntent.merchant_reference, "merchant_reference", 300);
-      const checkoutUrl = requiredString(paymentIntent.checkout_url, "checkout_url", 2000);
+      const paymentIntentId = requiredString(paymentIntent.id, "payment intent id", 100);
+      const checkoutUrl = typeof paymentIntent.checkout_url === "string" ? paymentIntent.checkout_url.trim() : "";
+      if (paymentMethod === "card") {
+        const parsedCheckoutUrl = new URL(requiredString(checkoutUrl, "checkout_url", 2000));
+        if (parsedCheckoutUrl.protocol !== "https:") throw new Error("VAC checkout URL must use HTTPS.");
+      } else if (checkoutUrl) {
+        throw new Error("Direct payment methods must not return a hosted checkout URL.");
+      }
+      const directCharge = asObject(paymentIntent.direct_charge);
 
       const { error: orderUpdateError } = await ctx.supabaseAdmin
         .from("ticket_orders")
@@ -222,13 +230,17 @@ export default {
         .upsert(
           {
             order_id: reservedOrderId,
-            payment_id: null,
+            payment_id: paymentIntentId,
             provider: "paychangu",
             method: paymentMethod,
             reference: merchantReference,
             amount_mwk: totalMwk,
             status: "pending",
-            provider_payload: vacResponse,
+            provider_payload: {
+              payment_intent_id: paymentIntentId,
+              provider_reference: paymentIntent.provider_reference ?? null,
+              method: paymentMethod,
+            },
           },
           { onConflict: "order_id,reference" },
         );
@@ -236,22 +248,25 @@ export default {
 
       return json({
         status: "success",
-        message: "Ticket reservation created. Complete payment to issue tickets.",
+        message: paymentMethod === "card"
+          ? "Ticket reservation created. Complete payment on the secure card page."
+          : "Ticket reservation created. Complete the payment instructions to issue tickets.",
         order: { ...order, status: "awaiting_payment", payment_status: "pending", payment_reference: merchantReference },
         event,
         tier,
-        payment_id: "",
+        payment_id: paymentIntentId,
         tx_ref: merchantReference,
-        checkout_url: checkoutUrl,
+        checkout_url: checkoutUrl || null,
+        payment_method: paymentMethod,
         direct_charge: {
-          status: String(paymentIntent.status || "pending"),
-          provider_reference: paymentIntent.provider_reference ?? null,
-          payment_account_details: null,
-          authorization: null,
+          status: String(directCharge.status || paymentIntent.status || "pending"),
+          provider_reference: typeof directCharge.provider_reference === "string" ? directCharge.provider_reference : null,
+          payment_account_details: asObject(directCharge.payment_account_details),
+          authorization: asObject(directCharge.authorization),
         },
       }, 201);
     } catch (error) {
-      if (reservedOrderId && !checkoutCreated) {
+      if (reservedOrderId && !providerSessionCreated) {
         await ctx.supabaseAdmin.rpc("release_ticket_order", {
           p_order_id: reservedOrderId,
           p_status: "failed",
@@ -260,9 +275,9 @@ export default {
 
       const message = error instanceof Error ? error.message : "Could not create ticket checkout.";
       const unauthorized = /authenticated session|login|authorization/i.test(message);
-      const invalidRequest = /required|invalid|must be|between 1 and 10|not available|sales|tickets are available/i.test(message);
+      const invalidRequest = /required|invalid|must be|between 1 and 10|not available|sales|tickets are available|mobile-money/i.test(message);
       const status = unauthorized ? 401 : invalidRequest ? 400 : 502;
-      console.error("[create-payment-checkout]", { status, message, reservedOrderId, checkoutCreated });
+      console.error("[create-payment-checkout]", { status, message, reservedOrderId, providerSessionCreated });
       return json({ status: "error", message }, status);
     }
   }),
