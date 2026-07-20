@@ -22,6 +22,7 @@ import {
 } from "./processing";
 import { paymentResultPage as html } from "./payment-page";
 import { deliverDueOutboxEvents } from "./outbox-delivery";
+import { verifyDuePendingPayments } from "./pending-verification";
 
 const PAYMENT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer", "card"]);
 const TERMINAL_PAYMENT_STATUSES = new Set(["failed", "cancelled", "expired"]);
@@ -70,7 +71,7 @@ function normalizePhone(value: string | null): string | null {
   if (!value) return null;
   const digits = value.replace(/\D/g, "");
   const local = digits.startsWith("265") ? digits.slice(3) : digits.startsWith("0") ? digits.slice(1) : digits;
-  if (!/^\d{9}$/.test(local)) throw new Error("customerPhone must be a valid Malawi number.");
+  if (!/^[89]\d{8}$/.test(local)) throw new Error("customerPhone must be a valid Malawi number.");
   return `+265${local}`;
 }
 
@@ -124,7 +125,34 @@ async function handleReadiness(env: PaymentsEnv): Promise<Response> {
   });
 }
 
-async function handleCreatePaymentIntent(request: Request, env: PaymentsEnv): Promise<Response> {
+function scheduleInitialVerification(
+  env: PaymentsEnv,
+  reference: string,
+  context?: WorkerExecutionContextLike,
+): void {
+  if (!context) return;
+  context.waitUntil(
+    new Promise<void>((resolve) => setTimeout(resolve, 4_000))
+      .then(async () => {
+        const result = await verifyAndRecordPayChanguPayment(env, reference);
+        if (result.intent.status === "paid") {
+          await deliverDueOutboxEvents(env, 10);
+        }
+      })
+      .catch((error) => {
+        console.error("[vac-payments] initial direct-charge verification failed", {
+          reference,
+          message: error instanceof Error ? error.message : "Unknown verification error.",
+        });
+      }),
+  );
+}
+
+async function handleCreatePaymentIntent(
+  request: Request,
+  env: PaymentsEnv,
+  context?: WorkerExecutionContextLike,
+): Promise<Response> {
   validateFoundationEnvironment(env);
   const rawBody = await request.text();
   const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON);
@@ -161,6 +189,10 @@ async function handleCreatePaymentIntent(request: Request, env: PaymentsEnv): Pr
       await recordPaymentProviderFailure(env, intent.id, error.message, error.providerPayload);
     }
     throw error;
+  }
+
+  if (intent.method !== "card" && intent.provider_reference) {
+    scheduleInitialVerification(env, intent.merchant_reference, context);
   }
 
   const presentation = readDirectChargePresentation(intent.method, intent.provider_payload);
@@ -316,7 +348,7 @@ function scheduleOutboxDelivery(env: PaymentsEnv, context?: WorkerExecutionConte
   context.waitUntil(
     deliverDueOutboxEvents(env)
       .then((summary) => {
-        if (summary.attempted > 0) console.log("[vac-payments] outbox delivery", summary);
+        if (summary.attempted > 0) console.log("[vac-payments] background outbox delivery", summary);
       })
       .catch((error) => console.error("[vac-payments] background outbox delivery failed", { message: error instanceof Error ? error.message : "Unknown background delivery error." })),
   );
@@ -329,7 +361,7 @@ export default {
     try {
       if (request.method === "GET" && url.pathname === "/health") return json({ status: "ok", service: "vac-payments", environment: env.ENVIRONMENT || "unknown", request_id: requestId });
       if (request.method === "GET" && url.pathname === "/ready") return await handleReadiness(env);
-      if (request.method === "POST" && url.pathname === "/v1/payment-intents") return await handleCreatePaymentIntent(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/payment-intents") return await handleCreatePaymentIntent(request, env, context);
       if ((request.method === "GET" || request.method === "POST") && (url.pathname === "/v1/paychangu/callback" || url.pathname === "/v1/paychangu/return")) {
         const response = await handlePublicPaymentResult(request, env);
         scheduleOutboxDelivery(env, context);
@@ -368,9 +400,21 @@ export default {
 
   async scheduled(controller: ScheduledControllerLike, env: PaymentsEnv, context: WorkerExecutionContextLike): Promise<void> {
     context.waitUntil(
-      deliverDueOutboxEvents(env)
-        .then((summary) => console.log("[vac-payments] scheduled outbox delivery", { cron: controller.cron, scheduledTime: controller.scheduledTime, ...summary }))
-        .catch((error) => console.error("[vac-payments] scheduled outbox delivery failed", { cron: controller.cron, scheduledTime: controller.scheduledTime, message: error instanceof Error ? error.message : "Unknown scheduled delivery error." })),
+      verifyDuePendingPayments(env, 10)
+        .then(async (verification) => {
+          const outbox = await deliverDueOutboxEvents(env);
+          console.log("[vac-payments] scheduled payment maintenance", {
+            cron: controller.cron,
+            scheduledTime: controller.scheduledTime,
+            verification,
+            outbox,
+          });
+        })
+        .catch((error) => console.error("[vac-payments] scheduled payment maintenance failed", {
+          cron: controller.cron,
+          scheduledTime: controller.scheduledTime,
+          message: error instanceof Error ? error.message : "Unknown scheduled payment error.",
+        })),
     );
   },
 };
