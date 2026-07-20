@@ -26,25 +26,17 @@ function getFriendlyPaymentError(error: unknown) {
   const message = error instanceof Error ? error.message : String((error as any)?.message || error || "");
   const lower = message.toLowerCase();
 
-  if (lower.includes("invalid secret key") || lower.includes("secret key")) {
+  if (lower.includes("secret key") || lower.includes("not configured") || lower.includes("vac payments")) {
     return {
-      title: "Payment setup needed",
-      message:
-        "The app is working, but PayChangu is rejecting the backend key. Add a valid PayChangu secret key on the backend, redeploy/restart it, then try again.",
+      title: "Checkout unavailable",
+      message: "The secure payment service is temporarily unavailable. Please try again later.",
     };
   }
 
-  if (lower.includes("backend url") || lower.includes("not configured")) {
-    return {
-      title: "Payment setup needed",
-      message: "The payment backend is not configured yet. Set EXPO_PUBLIC_PAYCHANGU_BACKEND and restart the app.",
-    };
-  }
-
-  if (lower.includes("network") || lower.includes("failed to fetch") || lower.includes("timeout")) {
+  if (lower.includes("network") || lower.includes("failed to fetch") || lower.includes("timeout") || lower.includes("abort")) {
     return {
       title: "Payment network issue",
-      message: "Could not reach the payment server. Check your internet or try again in a moment.",
+      message: "Could not reach the payment server. Check your internet and try again.",
     };
   }
 
@@ -68,14 +60,16 @@ export default function MobileMoneyPaymentFastScreen() {
   const quantity = Math.max(1, Math.min(10, Number(quantityParam || 1) || 1));
   const total = Number(tier?.priceMwk || 0) * quantity;
   const phoneDigits = phoneNumber.replace(/\D/g, "");
-  const phoneValid = phoneDigits.length >= 8;
+  const phoneValid = phoneDigits.length === 9;
   const activeProvider = providers.find((item) => item.id === paymentMethod) ?? providers[0];
 
   React.useEffect(() => {
     let mounted = true;
     void listTicketEventsSafe().then((rows) => {
-      const selectedEvent = rows.find((item) => item.id === eventId) ?? rows[0] ?? null;
-      const selectedTier = selectedEvent?.tiers.find((item) => item.id === tierId) ?? selectedEvent?.tiers[0] ?? null;
+      const selectedEvent = typeof eventId === "string" ? rows.find((item) => item.id === eventId) ?? null : null;
+      const selectedTier = selectedEvent && typeof tierId === "string"
+        ? selectedEvent.tiers.find((item) => item.id === tierId) ?? null
+        : null;
       if (!mounted) return;
       setEvent(selectedEvent);
       setTier(selectedTier);
@@ -89,7 +83,7 @@ export default function MobileMoneyPaymentFastScreen() {
   const handlePay = React.useCallback(async () => {
     if (!event || !tier) return;
     if (!session?.access_token) return Alert.alert("Login required", "Please log in again before buying tickets.");
-    if (!phoneValid) return Alert.alert("Phone required", "Enter the mobile money number that will approve this payment.");
+    if (!phoneValid) return Alert.alert("Phone required", "Enter a valid 9-digit Malawi mobile-money number.");
     try {
       setStartingPayment(true);
       const payment = await createTicketOrderPayment(session.access_token, { eventId: event.id, tierId: tier.id, quantity, paymentMethod, phone: `+265${phoneDigits}` });
@@ -100,6 +94,7 @@ export default function MobileMoneyPaymentFastScreen() {
           url: encodeURIComponent(payment.checkoutUrl),
           tx_ref: payment.txRef,
           order_id: payment.order.id,
+          payment_method: paymentMethod,
         },
       } as any);
     } catch (error) {
@@ -111,9 +106,9 @@ export default function MobileMoneyPaymentFastScreen() {
   }, [event, paymentMethod, phoneDigits, phoneValid, quantity, router, session?.access_token, tier]);
 
   if (loading) return <View style={styles.center}><ActivityIndicator color={ACCENT} /><Text style={styles.muted}>Preparing payment...</Text></View>;
-  if (!event || !tier) return <View style={styles.center}><Ticket size={36} color={ACCENT} /><Text style={styles.title}>Payment unavailable</Text><Text style={styles.muted}>Select tickets before paying.</Text></View>;
+  if (!event || !tier) return <View style={styles.center}><Ticket size={36} color={ACCENT} /><Text style={styles.title}>Payment unavailable</Text><Text style={styles.muted}>The selected event or ticket type could not be found.</Text></View>;
 
-  return <View style={styles.root}><SafeAreaView edges={["top"]} style={styles.safe}><View style={styles.header}><Pressable style={styles.roundBtn} onPress={() => router.back()}><ArrowLeft size={24} color={TEXT} /></Pressable><Text style={styles.headerTitle}>Ticket Details</Text></View><ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, { paddingBottom: Math.max(180, insets.bottom + 150) }]}><EventCard event={event} /><Text style={styles.kicker}>YOUR TICKET</Text><TicketCard quantity={quantity} tier={tier} /><Text style={styles.kicker}>PAYMENT METHOD</Text><View style={styles.paymentMethods}>{providers.map((provider) => <ProviderCard key={provider.id} provider={provider} active={provider.id === paymentMethod} onPress={() => setPaymentMethod(provider.id)} />)}</View><Text style={styles.kicker}>PHONE NUMBER</Text><View style={styles.phoneCard}><Text style={styles.countryCode}>+265</Text><TextInput value={phoneNumber} onChangeText={(value) => setPhoneNumber(formatPhone(value))} placeholder={activeProvider.placeholder} placeholderTextColor={MUTED} keyboardType="phone-pad" style={styles.phoneInput} selectionColor={ACCENT} /></View><View style={styles.qrInfoCard}><View style={styles.qrIconBox}><QrCode size={28} color={ACCENT} /></View><View style={styles.qrCopy}><Text style={styles.qrTitle}>Fast Entry with QR Code</Text><Text style={styles.qrText}>After payment, show your QR at the gate and get in instantly.</Text></View></View></ScrollView></SafeAreaView><PayBar enabled={phoneValid && !startingPayment} loading={startingPayment} onPay={handlePay} total={total} /></View>;
+  return <View style={styles.root}><SafeAreaView edges={["top"]} style={styles.safe}><View style={styles.header}><Pressable style={styles.roundBtn} onPress={() => router.back()}><ArrowLeft size={24} color={TEXT} /></Pressable><Text style={styles.headerTitle}>Secure Checkout</Text></View><ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, { paddingBottom: Math.max(180, insets.bottom + 150) }]}><EventCard event={event} /><Text style={styles.kicker}>YOUR TICKET</Text><TicketCard quantity={quantity} tier={tier} /><Text style={styles.kicker}>PAYMENT METHOD</Text><View style={styles.paymentMethods}>{providers.map((provider) => <ProviderCard key={provider.id} provider={provider} active={provider.id === paymentMethod} onPress={() => setPaymentMethod(provider.id)} />)}</View><Text style={styles.kicker}>PHONE NUMBER</Text><View style={styles.phoneCard}><Text style={styles.countryCode}>+265</Text><TextInput value={phoneNumber} onChangeText={(value) => setPhoneNumber(formatPhone(value))} placeholder={activeProvider.placeholder} placeholderTextColor={MUTED} keyboardType="phone-pad" style={styles.phoneInput} selectionColor={ACCENT} /></View><View style={styles.qrInfoCard}><View style={styles.qrIconBox}><QrCode size={28} color={ACCENT} /></View><View style={styles.qrCopy}><Text style={styles.qrTitle}>QR Ticket After Payment</Text><Text style={styles.qrText}>EYA issues your unique QR ticket only after the payment is verified.</Text></View></View></ScrollView></SafeAreaView><PayBar enabled={phoneValid && !startingPayment} loading={startingPayment} onPay={handlePay} total={total} /></View>;
 }
 
 function EventCard({ event }: { event: TicketEvent }) {
@@ -122,7 +117,7 @@ function EventCard({ event }: { event: TicketEvent }) {
 function TicketCard({ quantity, tier }: { quantity: number; tier: TicketTier }) { return <View style={styles.ticketCard}><View style={styles.ticketIcon}><Ticket size={32} color={ACCENT} /></View><View style={styles.ticketCopy}><Text style={styles.ticketTitle}>{tier.name}</Text><Text style={styles.ticketSub}>{tier.description || "Official EYA event ticket"}</Text><Text style={styles.ticketPrice}>{money(tier.priceMwk)}</Text></View><View style={styles.qtyPill}><Text style={styles.qtyText}>Qty: {quantity}</Text></View></View>; }
 function ProviderCard({ active, onPress, provider }: { active: boolean; onPress: () => void; provider: { id: MobileProvider; title: string; subtitle: string } }) { return <Pressable style={[styles.methodCard, active && styles.methodCardActive]} onPress={onPress}><View style={styles.methodLogo}><PaymentBrandLogo brand={provider.id} size={48} active={active} /></View><View style={styles.methodCopy}><Text style={styles.methodTitle}>{provider.title}</Text><Text style={styles.methodSub}>{provider.subtitle}</Text></View><View style={[styles.radioOuter, active && styles.radioOuterActive]}>{active ? <View style={styles.radioInner} /> : null}</View></Pressable>; }
 function MetaRow({ Icon, text }: { Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>; text: string }) { return <View style={styles.metaRow}><Icon size={15} color={MUTED} /><Text style={styles.metaText} numberOfLines={1}>{text}</Text></View>; }
-function PayBar({ enabled, loading, onPay, total }: { enabled: boolean; loading: boolean; onPay: () => void; total: number }) { const insets = useSafeAreaInsets(); return <View style={[styles.payBarOuter, { bottom: Math.max(14, insets.bottom + 8) }]}><View style={styles.payBar}><View><Text style={styles.payLabel}>TOTAL PAYABLE</Text><Text style={styles.payAmount}>{money(total)}</Text></View><Pressable disabled={!enabled} style={[styles.payButton, !enabled && styles.payButtonDisabled]} onPress={onPay}>{loading ? <ActivityIndicator color="#ffffff" /> : <><Text style={styles.payButtonText}>Pay Now</Text><Lock size={18} color="#ffffff" /></>}</Pressable></View></View>; }
+function PayBar({ enabled, loading, onPay, total }: { enabled: boolean; loading: boolean; onPay: () => void; total: number }) { const insets = useSafeAreaInsets(); return <View style={[styles.payBarOuter, { bottom: Math.max(14, insets.bottom + 8) }]}><View style={styles.payBar}><View><Text style={styles.payLabel}>TOTAL PAYABLE</Text><Text style={styles.payAmount}>{money(total)}</Text></View><Pressable disabled={!enabled} style={[styles.payButton, !enabled && styles.payButtonDisabled]} onPress={onPay}>{loading ? <ActivityIndicator color="#ffffff" /> : <><Text style={styles.payButtonText}>Continue to PayChangu</Text><Lock size={18} color="#ffffff" /></>}</Pressable></View></View>; }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG }, safe: { flex: 1 }, center: { flex: 1, backgroundColor: BG, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }, title: { color: TEXT, fontSize: 20, fontWeight: "900" }, muted: { color: MUTED, fontSize: 14, fontWeight: "700", textAlign: "center" }, header: { minHeight: 76, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 16 }, roundBtn: { width: 48, height: 48, borderRadius: 17, backgroundColor: "rgba(255,255,255,0.78)", borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" }, headerTitle: { color: TEXT, fontSize: 22, fontWeight: "900" }, content: { paddingHorizontal: 18, gap: 18 }, kicker: { color: TEXT, fontSize: 12, fontWeight: "900", letterSpacing: 1.2 },
