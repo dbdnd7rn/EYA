@@ -1,4 +1,4 @@
-import type { PaymentsEnv } from "./ledger";
+import type { PaymentIntentRecord, PaymentsEnv } from "./ledger";
 import { PaymentProviderError } from "./paychangu";
 
 const DEFAULT_PAYCHANGU_API_BASE_URL = "https://api.paychangu.com";
@@ -17,9 +17,7 @@ export type PayChanguVerificationResult = {
 };
 
 function asObject(value: unknown): JsonObject | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonObject)
-    : null;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : null;
 }
 
 function asNonEmptyString(value: unknown): string | null {
@@ -40,17 +38,12 @@ function normalizeApiBaseUrl(value: string | undefined): string {
   } catch {
     throw new Error("PAYCHANGU_API_BASE_URL must be a valid URL.");
   }
-
-  if (url.protocol !== "https:") {
-    throw new Error("PAYCHANGU_API_BASE_URL must use HTTPS.");
-  }
-
+  if (url.protocol !== "https:") throw new Error("PAYCHANGU_API_BASE_URL must use HTTPS.");
   return url.toString().replace(/\/$/, "");
 }
 
 function parseProviderJson(text: string): JsonObject {
   if (!text.trim()) return {};
-
   try {
     const parsed: unknown = JSON.parse(text);
     return asObject(parsed) || { raw: text };
@@ -61,27 +54,28 @@ function parseProviderJson(text: string): JsonObject {
 
 function normalizeTransactionStatus(value: unknown): PayChanguVerificationResult["status"] {
   const status = asNonEmptyString(value)?.toLowerCase();
-  if (status === "success" || status === "successful" || status === "paid") return "success";
-  if (status === "pending" || status === "processing") return "pending";
+  if (status === "success" || status === "successful" || status === "paid" || status === "completed") return "success";
+  if (status === "pending" || status === "processing" || status === "initiated") return "pending";
   if (status === "failed" || status === "failure") return "failed";
   if (status === "cancelled" || status === "canceled") return "cancelled";
   if (status === "expired") return "expired";
   throw new PaymentProviderError("PayChangu returned an unsupported transaction status.", 502, {});
 }
 
-async function fetchPayChanguJson(
-  env: PaymentsEnv,
-  path: string,
-  init: RequestInit,
-): Promise<JsonObject> {
-  const apiBaseUrl = normalizeApiBaseUrl(env.PAYCHANGU_API_BASE_URL);
+function normalizeCurrency(value: unknown): string {
+  const currency = String(value || "").trim().toUpperCase();
+  return currency === "MK" ? "MWK" : currency;
+}
+
+async function fetchPayChanguJson(env: PaymentsEnv, path: string): Promise<JsonObject> {
+  const secretKey = requiredConfig(env.PAYCHANGU_SECRET_KEY, "PAYCHANGU_SECRET_KEY");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
   let response: Response;
   try {
-    response = await fetch(`${apiBaseUrl}${path}`, {
-      ...init,
+    response = await fetch(`${normalizeApiBaseUrl(env.PAYCHANGU_API_BASE_URL)}${path}`, {
+      method: "GET",
+      headers: { Accept: "application/json", Authorization: `Bearer ${secretKey}` },
       signal: controller.signal,
     });
   } catch (error) {
@@ -95,9 +89,7 @@ async function fetchPayChanguJson(
     clearTimeout(timeout);
   }
 
-  const responseText = await response.text();
-  const providerPayload = parseProviderJson(responseText);
-
+  const providerPayload = parseProviderJson(await response.text());
   if (!response.ok) {
     throw new PaymentProviderError(
       asNonEmptyString(providerPayload.message) || "PayChangu rejected the verification request.",
@@ -105,58 +97,89 @@ async function fetchPayChanguJson(
       providerPayload,
     );
   }
-
   return providerPayload;
 }
 
-export async function verifyPayChanguTransaction(
-  env: PaymentsEnv,
-  txRef: string,
-): Promise<PayChanguVerificationResult> {
-  const secretKey = requiredConfig(env.PAYCHANGU_SECRET_KEY, "PAYCHANGU_SECRET_KEY");
-  const providerPayload = await fetchPayChanguJson(
-    env,
-    `/verify-payment/${encodeURIComponent(txRef)}`,
-    {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${secretKey}`,
-      },
-    },
-  );
-
-  if (asNonEmptyString(providerPayload.status) !== "success") {
-    throw new PaymentProviderError(
-      asNonEmptyString(providerPayload.message) || "PayChangu could not verify the transaction.",
-      502,
+function parseVerification(
+  providerPayload: JsonObject,
+  intent: PaymentIntentRecord,
+): PayChanguVerificationResult {
+  if (intent.method === "card") {
+    if (asNonEmptyString(providerPayload.status)?.toLowerCase() !== "success") {
+      throw new PaymentProviderError(asNonEmptyString(providerPayload.message) || "PayChangu could not verify the transaction.", 502, providerPayload);
+    }
+    const data = asObject(providerPayload.data) || {};
+    const txRef = asNonEmptyString(data.tx_ref);
+    const currency = normalizeCurrency(data.currency);
+    const amount = Number(data.amount);
+    if (!txRef || !currency || !Number.isSafeInteger(amount) || amount < 0) {
+      throw new PaymentProviderError("PayChangu returned incomplete hosted-checkout verification data.", 502, providerPayload);
+    }
+    return {
+      txRef,
+      providerReference: asNonEmptyString(data.reference ?? data.ref_id),
+      status: normalizeTransactionStatus(data.status),
+      currency,
+      amountMwk: amount,
       providerPayload,
-    );
+    };
   }
 
-  const data = asObject(providerPayload.data);
-  const returnedTxRef = asNonEmptyString(data?.tx_ref);
-  const currency = asNonEmptyString(data?.currency);
-  const amount = Number(data?.amount);
+  if (intent.method === "bank_transfer") {
+    if (!['success', 'successful'].includes(String(providerPayload.status || '').toLowerCase())) {
+      throw new PaymentProviderError(asNonEmptyString(providerPayload.message) || "PayChangu could not verify the bank transfer.", 502, providerPayload);
+    }
+    const data = asObject(providerPayload.data) || {};
+    const transaction = asObject(data.transaction) || data;
+    const txRef = asNonEmptyString(transaction.charge_id ?? transaction.chargeId);
+    const currency = normalizeCurrency(transaction.currency);
+    const amount = Number(transaction.amount);
+    if (!txRef || !currency || !Number.isSafeInteger(amount) || amount < 0) {
+      throw new PaymentProviderError("PayChangu returned incomplete bank-transfer verification data.", 502, providerPayload);
+    }
+    return {
+      txRef,
+      providerReference: asNonEmptyString(transaction.ref_id ?? transaction.reference),
+      status: normalizeTransactionStatus(transaction.status),
+      currency,
+      amountMwk: amount,
+      providerPayload,
+    };
+  }
 
-  if (!returnedTxRef) {
-    throw new PaymentProviderError("PayChangu verification did not include tx_ref.", 502, providerPayload);
+  const outerStatus = String(providerPayload.status || '').toLowerCase();
+  if (!['success', 'successful'].includes(outerStatus)) {
+    throw new PaymentProviderError(asNonEmptyString(providerPayload.message) || "PayChangu could not verify the mobile-money charge.", 502, providerPayload);
   }
-  if (!currency) {
-    throw new PaymentProviderError("PayChangu verification did not include currency.", 502, providerPayload);
+  const data = asObject(providerPayload.data) || {};
+  const transaction = asObject(data.transaction) || data;
+  const txRef = asNonEmptyString(transaction.charge_id ?? transaction.chargeId);
+  const currency = normalizeCurrency(transaction.currency);
+  const amount = Number(transaction.amount);
+  if (!txRef || !currency || !Number.isSafeInteger(amount) || amount < 0) {
+    throw new PaymentProviderError("PayChangu returned incomplete mobile-money verification data.", 502, providerPayload);
   }
-  if (!Number.isSafeInteger(amount) || amount < 0) {
-    throw new PaymentProviderError("PayChangu verification returned an invalid amount.", 502, providerPayload);
-  }
-
   return {
-    txRef: returnedTxRef,
-    providerReference: asNonEmptyString(data?.reference),
-    status: normalizeTransactionStatus(data?.status),
+    txRef,
+    providerReference: asNonEmptyString(transaction.ref_id ?? transaction.reference),
+    status: normalizeTransactionStatus(transaction.status ?? providerPayload.status),
     currency,
     amountMwk: amount,
     providerPayload,
   };
+}
+
+export async function verifyPayChanguTransaction(
+  env: PaymentsEnv,
+  intent: PaymentIntentRecord,
+): Promise<PayChanguVerificationResult> {
+  const ref = encodeURIComponent(intent.merchant_reference);
+  const path = intent.method === "card"
+    ? `/verify-payment/${ref}`
+    : intent.method === "bank_transfer"
+      ? `/direct-charge/transactions/${ref}/details`
+      : `/mobile-money/payments/${ref}/verify`;
+  return parseVerification(await fetchPayChanguJson(env, path), intent);
 }
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -166,20 +189,12 @@ function bytesToHex(bytes: Uint8Array): string {
 function constantTimeEqual(left: string, right: string): boolean {
   if (left.length !== right.length) return false;
   let mismatch = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  }
+  for (let index = 0; index < left.length; index += 1) mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
   return mismatch === 0;
 }
 
 async function hmacSha256Hex(secret: string, value: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(value));
   return bytesToHex(new Uint8Array(signature));
 }
@@ -190,11 +205,7 @@ export async function verifyPayChanguWebhookSignature(
   webhookSecret: string | undefined,
 ): Promise<boolean> {
   const secret = requiredConfig(webhookSecret, "PAYCHANGU_WEBHOOK_SECRET");
-  const normalizedSignature = (suppliedSignature || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^sha256=/, "");
-
+  const normalizedSignature = (suppliedSignature || "").trim().toLowerCase().replace(/^sha256=/, "");
   if (!/^[0-9a-f]{64}$/.test(normalizedSignature)) return false;
   const expectedSignature = await hmacSha256Hex(secret, rawBody);
   return constantTimeEqual(expectedSignature, normalizedSignature);
@@ -205,16 +216,19 @@ export async function createWebhookEventKey(rawBody: string): Promise<string> {
   return `sha256:${bytesToHex(new Uint8Array(digest))}`;
 }
 
-export function extractPayChanguTxRef(payload: unknown): string | null {
+export function extractPayChanguReference(payload: unknown): string | null {
   const root = asObject(payload);
   const data = asObject(root?.data);
   const transaction = asObject(root?.transaction);
   const nestedTransaction = asObject(data?.transaction);
-
   return (
     asNonEmptyString(root?.tx_ref) ||
+    asNonEmptyString(root?.charge_id) ||
     asNonEmptyString(data?.tx_ref) ||
+    asNonEmptyString(data?.charge_id) ||
     asNonEmptyString(transaction?.tx_ref) ||
-    asNonEmptyString(nestedTransaction?.tx_ref)
+    asNonEmptyString(transaction?.charge_id) ||
+    asNonEmptyString(nestedTransaction?.tx_ref) ||
+    asNonEmptyString(nestedTransaction?.charge_id)
   );
 }
