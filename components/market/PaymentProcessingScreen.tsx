@@ -156,12 +156,14 @@ export default function PaymentProcessingScreen() {
   const accountName = firstParam(params.accountName);
   const expiresAt = firstParam(params.expiresAt);
   const copy = methodPresentation(paymentMethod);
+  const MethodIcon = copy.Icon;
   const { session, user } = useAuth();
   const [detail, setDetail] = React.useState<TicketOrderDetail | null>(null);
   const [checking, setChecking] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = React.useState(() => initialCountdown(paymentMethod, expiresAt));
   const secondsLeftRef = React.useRef(secondsLeft);
+  const checkingRef = React.useRef(false);
 
   React.useEffect(() => {
     secondsLeftRef.current = secondsLeft;
@@ -173,7 +175,8 @@ export default function PaymentProcessingScreen() {
   }, []);
 
   const checkPaymentStatus = React.useCallback(async () => {
-    if (!orderId || !session?.access_token || checking) return;
+    if (!orderId || !session?.access_token || checkingRef.current) return;
+    checkingRef.current = true;
     try {
       setChecking(true);
       setError(null);
@@ -196,9 +199,10 @@ export default function PaymentProcessingScreen() {
     } catch (statusError) {
       setError(statusError instanceof Error ? statusError.message : "Payment confirmation is still pending.");
     } finally {
+      checkingRef.current = false;
       setChecking(false);
     }
-  }, [checking, orderId, router, session?.access_token, user?.id]);
+  }, [orderId, router, session?.access_token, user?.id]);
 
   React.useEffect(() => {
     if (!orderId || !session?.access_token) return undefined;
@@ -238,7 +242,7 @@ export default function PaymentProcessingScreen() {
         >
           <View style={styles.statusCard}>
             <View style={styles.statusIcon}>
-              <copy.Icon size={44} color={ACCENT} strokeWidth={2.1} />
+              <MethodIcon size={44} color={ACCENT} strokeWidth={2.1} />
             </View>
             <ActivityIndicator size="small" color={ACCENT} />
             <Text style={styles.statusTitle}>{copy.title}</Text>
