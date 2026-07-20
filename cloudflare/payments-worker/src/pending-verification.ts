@@ -34,14 +34,19 @@ async function listDuePendingReferences(
        and created_at >= ?2
      order by updated_at asc
      limit ?3`,
+  );
+
+  const boundStatement = statement.bind(
+    minimumAgeCutoff,
+    maximumAgeCutoff,
+    normalizedLimit,
   ) as D1PreparedStatementWithAll;
 
-  const result = await statement
-    .bind(minimumAgeCutoff, maximumAgeCutoff, normalizedLimit)
-    .all<PendingReferenceRow>();
+  const result = await boundStatement.all<PendingReferenceRow>();
+  const rows: PendingReferenceRow[] = result.results ?? [];
 
-  return (result.results || [])
-    .map((row) => String(row.merchant_reference || "").trim())
+  return rows
+    .map((row: PendingReferenceRow) => String(row.merchant_reference || "").trim())
     .filter(Boolean);
 }
 
