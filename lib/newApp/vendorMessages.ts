@@ -9,6 +9,28 @@ function throwIfError(error: { message: string } | null) {
   if (error) throw new Error(error.message);
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function requireUuid(value: string, field: string): string {
+  const normalized = String(value ?? "").trim();
+  if (!UUID_PATTERN.test(normalized)) {
+    throw new Error(`${field} is unavailable. Please close this page and open it again.`);
+  }
+  return normalized;
+}
+
+function normalizeOptionalUuid(value: string | null | undefined, field: string): string | null {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  if (!normalized || normalized.toLowerCase() === "null" || normalized.toLowerCase() === "undefined") {
+    return null;
+  }
+  if (!UUID_PATTERN.test(normalized)) {
+    throw new Error(`${field} is invalid. Please close this page and open it again.`);
+  }
+  return normalized;
+}
+
 const DEV_VENDOR_CHAT_KEY = "eya_dev_vendor_messages_v1";
 
 type DevVendorChatStore = {
@@ -211,24 +233,32 @@ export async function getOrCreateVendorConversation(input: {
     return created;
   }
 
-  const { data: existing, error: existingError } = await supabaseNewApp
+  const vendorId = requireUuid(input.vendorId, "Seller");
+  const customerId = requireUuid(input.customerId, "Customer");
+  const catalogItemId = normalizeOptionalUuid(input.catalogItemId, "Marketplace item");
+
+  let existingQuery = supabaseNewApp
     .from("vendor_conversations")
     .select("id, vendor_id, customer_id, channel, catalog_item_id, subject, last_message_at, created_at, updated_at")
-    .eq("vendor_id", input.vendorId)
-    .eq("customer_id", input.customerId)
-    .eq("channel", input.channel)
-    .eq("catalog_item_id", input.catalogItemId ?? null)
-    .maybeSingle();
+    .eq("vendor_id", vendorId)
+    .eq("customer_id", customerId)
+    .eq("channel", input.channel);
+
+  existingQuery = catalogItemId
+    ? existingQuery.eq("catalog_item_id", catalogItemId)
+    : existingQuery.is("catalog_item_id", null);
+
+  const { data: existing, error: existingError } = await existingQuery.maybeSingle();
   throwIfError(existingError);
   if (existing) return existing as VendorConversationRow;
 
   const { data, error } = await supabaseNewApp
     .from("vendor_conversations")
     .insert({
-      vendor_id: input.vendorId,
-      customer_id: input.customerId,
+      vendor_id: vendorId,
+      customer_id: customerId,
       channel: input.channel,
-      catalog_item_id: input.catalogItemId ?? null,
+      catalog_item_id: catalogItemId,
       subject: input.subject ?? null,
     })
     .select("id, vendor_id, customer_id, channel, catalog_item_id, subject, last_message_at, created_at, updated_at")
