@@ -230,7 +230,9 @@ export default {
         .upsert(
           {
             order_id: reservedOrderId,
-            payment_id: paymentIntentId,
+            // VAC payment intents live in Cloudflare D1, not public.payments.
+            // Keep Supabase's FK null and preserve the VAC identifiers below.
+            payment_id: null,
             provider: "paychangu",
             method: paymentMethod,
             reference: merchantReference,
