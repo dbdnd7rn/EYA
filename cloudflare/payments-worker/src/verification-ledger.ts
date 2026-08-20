@@ -219,7 +219,10 @@ export async function recordVerifiedPaymentState(
       app_user_id: intent.app_user_id,
       purpose: intent.purpose,
       merchant_reference: intent.merchant_reference,
-      amount_mwk: verification.paidAmountMwk,
+      // Fulfil EYA against its server-authoritative order value. The provider's
+      // gross paid amount (which may include PayChangu charges) is retained in
+      // payment_intents.paid_amount_mwk and the provider payload for auditing.
+      amount_mwk: intent.expected_amount_mwk,
       currency: intent.currency,
       verified_at: now,
       metadata: intent.metadata,
@@ -239,7 +242,7 @@ export async function recordVerifiedPaymentState(
              updated_at = ?5
          where id = ?1
            and merchant_reference = ?6
-           and expected_amount_mwk = ?2
+           and expected_amount_mwk = ?7
            and currency = 'MWK'
            and status in ('created', 'pending', 'failed', 'cancelled', 'expired')`,
       ).bind(
@@ -249,6 +252,7 @@ export async function recordVerifiedPaymentState(
         JSON.stringify(verification.providerPayload),
         now,
         intent.merchant_reference,
+        intent.expected_amount_mwk,
       ),
       db.prepare(
         `insert or ignore into payment_outbox_events (
