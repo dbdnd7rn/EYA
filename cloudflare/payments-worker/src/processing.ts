@@ -51,9 +51,12 @@ export async function verifyAndRecordPayChanguPayment(
     );
   }
 
-  if (verification.amountMwk !== intent.expected_amount_mwk) {
+  // PayChangu may include provider charges in the amount reported back to us.
+  // Never accept an underpayment, but allow a verified provider amount above
+  // the server-authoritative EYA order value as PayChangu recommends.
+  if (verification.amountMwk < intent.expected_amount_mwk) {
     throw new PaymentVerificationMismatchError(
-      "PayChangu verification amount does not exactly match the payment intent.",
+      "PayChangu verification amount is below the payment intent amount.",
     );
   }
 
