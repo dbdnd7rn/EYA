@@ -27,6 +27,12 @@ export type ProcessedPaymentVerification = {
   verification: PayChanguVerificationResult;
 };
 
+function hasPersistedProviderSession(intent: PaymentIntentRecord): boolean {
+  if (!intent.provider_reference?.trim()) return false;
+  if (intent.method === "card" && !intent.checkout_url?.trim()) return false;
+  return true;
+}
+
 export async function verifyAndRecordPayChanguPayment(
   env: PaymentsEnv,
   txRef: string,
@@ -36,6 +42,16 @@ export async function verifyAndRecordPayChanguPayment(
 
   const intent = await findPaymentIntentByMerchantReference(env, normalizedTxRef);
   if (!intent) throw new PaymentIntentNotFoundError();
+
+  // Never fulfil a provider-side transaction that VAC did not successfully
+  // persist as the payment intent's provider session. This protects against
+  // late webhooks for provider calls that failed before VAC could safely bind
+  // the provider session to the app payment/order.
+  if (!hasPersistedProviderSession(intent)) {
+    throw new PaymentVerificationMismatchError(
+      "The payment provider session was not recorded for this payment intent.",
+    );
+  }
 
   const verification = await verifyPayChanguTransaction(env, intent);
 
@@ -51,9 +67,9 @@ export async function verifyAndRecordPayChanguPayment(
     );
   }
 
-  // PayChangu may include provider charges in the amount reported back to us.
-  // Never accept an underpayment, but allow a verified provider amount above
-  // the server-authoritative EYA order value as PayChangu recommends.
+  // PayChangu can add provider fees to the customer-facing amount. EYA's
+  // authoritative order value is the minimum acceptable paid amount; any
+  // underpayment remains a hard verification failure.
   if (verification.amountMwk < intent.expected_amount_mwk) {
     throw new PaymentVerificationMismatchError(
       "PayChangu verification amount is below the payment intent amount.",
