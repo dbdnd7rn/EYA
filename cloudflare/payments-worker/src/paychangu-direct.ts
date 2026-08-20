@@ -159,8 +159,8 @@ function assertDirectTransaction(intent: PaymentIntentRecord, transaction: JsonO
     throw new PaymentProviderError("PayChangu returned an unexpected direct charge reference.", 502, transaction);
   }
   const amount = Number(transaction.amount);
-  if (!Number.isSafeInteger(amount) || amount !== intent.expected_amount_mwk) {
-    throw new PaymentProviderError("PayChangu returned an unexpected direct charge amount.", 502, transaction);
+  if (!Number.isSafeInteger(amount) || amount < intent.expected_amount_mwk) {
+    throw new PaymentProviderError("PayChangu returned a direct charge amount below the expected amount.", 502, transaction);
   }
   if (normalizeCurrency(transaction.currency) !== "MWK") {
     throw new PaymentProviderError("PayChangu returned an unexpected direct charge currency.", 502, transaction);
