@@ -2,6 +2,8 @@ import React from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Image,
   Pressable,
   ScrollView,
@@ -101,6 +103,13 @@ function getFriendlyPaymentError(error: unknown) {
   return { title: "Checkout unavailable", message: message || "Could not start secure checkout." };
 }
 
+function loadingCopy(method: HybridPaymentMethod) {
+  if (method === "airtel_money") return { title: "Starting Airtel Money", text: "Creating a secure payment request for your Airtel line." };
+  if (method === "mpamba") return { title: "Starting TNM Mpamba", text: "Creating a secure payment request for your TNM line." };
+  if (method === "bank_transfer") return { title: "Preparing bank details", text: "Requesting a temporary account for this ticket order." };
+  return { title: "Opening secure card checkout", text: "Preparing PayChangu's protected card-payment page." };
+}
+
 export default function HybridTicketCheckoutScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -116,11 +125,14 @@ export default function HybridTicketCheckoutScreen() {
   const [startingPayment, setStartingPayment] = React.useState(false);
   const [paymentMethod, setPaymentMethod] = React.useState<HybridPaymentMethod>("airtel_money");
   const [phone, setPhone] = React.useState("");
+  const loaderSpin = React.useRef(new Animated.Value(0)).current;
+  const loaderPulse = React.useRef(new Animated.Value(0)).current;
   const quantity = Math.max(1, Math.min(10, Number(quantityParam || 1) || 1));
   const estimatedTotal = Number(tier?.priceMwk || 0) * quantity;
   const nationalPhoneDigits = getNationalMobileDigits(phone);
   const needsPhone = paymentMethod === "airtel_money" || paymentMethod === "mpamba";
   const canContinue = !startingPayment && (!needsPhone || Boolean(nationalPhoneDigits));
+  const paymentLoadingCopy = loadingCopy(paymentMethod);
 
   React.useEffect(() => {
     let mounted = true;
@@ -141,6 +153,35 @@ export default function HybridTicketCheckoutScreen() {
       mounted = false;
     };
   }, [eventId, tierId]);
+
+  React.useEffect(() => {
+    if (!startingPayment) {
+      loaderSpin.setValue(0);
+      loaderPulse.setValue(0);
+      return undefined;
+    }
+
+    const spin = Animated.loop(
+      Animated.timing(loaderSpin, {
+        toValue: 1,
+        duration: 1050,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(loaderPulse, { toValue: 1, duration: 720, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(loaderPulse, { toValue: 0, duration: 720, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    spin.start();
+    pulse.start();
+    return () => {
+      spin.stop();
+      pulse.stop();
+    };
+  }, [loaderPulse, loaderSpin, startingPayment]);
 
   const handlePay = React.useCallback(async () => {
     if (!event || !tier || !canContinue) return;
@@ -199,11 +240,22 @@ export default function HybridTicketCheckoutScreen() {
   }, [canContinue, event, nationalPhoneDigits, needsPhone, paymentMethod, quantity, router, session?.access_token, tier]);
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator color={ACCENT} /><Text style={styles.muted}>Preparing secure checkout...</Text></View>;
+    return (
+      <View style={styles.center}>
+        <View style={styles.initialLoaderIcon}><ShieldCheck size={28} color={ACCENT} /></View>
+        <ActivityIndicator size="small" color={ACCENT} />
+        <Text style={styles.title}>Preparing secure checkout</Text>
+        <Text style={styles.muted}>Loading your ticket order and available payment options…</Text>
+      </View>
+    );
   }
   if (!event || !tier) {
     return <View style={styles.center}><Ticket size={36} color={ACCENT} /><Text style={styles.title}>Checkout unavailable</Text><Text style={styles.muted}>The selected event or ticket type could not be found.</Text></View>;
   }
+
+  const spin = loaderSpin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+  const pulseScale = loaderPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.13] });
+  const pulseOpacity = loaderPulse.interpolate({ inputRange: [0, 1], outputRange: [0.28, 0.06] });
 
   return (
     <View style={styles.root}>
@@ -295,6 +347,32 @@ export default function HybridTicketCheckoutScreen() {
           </Pressable>
         </View>
       </View>
+
+      {startingPayment ? (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingCard}>
+            <View style={styles.loadingIconStage}>
+              <Animated.View style={[styles.loadingPulse, { opacity: pulseOpacity, transform: [{ scale: pulseScale }], backgroundColor: METHOD_THEME[paymentMethod].border }]} />
+              <Animated.View style={[styles.loadingRing, { borderTopColor: METHOD_THEME[paymentMethod].border, transform: [{ rotate: spin }] }]} />
+              <View style={styles.loadingLogoCore}>
+                {needsPhone ? (
+                  <PaymentBrandLogo brand={paymentMethod} size={48} active={false} />
+                ) : paymentMethod === "bank_transfer" ? (
+                  <Landmark size={29} color={METHOD_THEME[paymentMethod].border} />
+                ) : (
+                  <CreditCard size={29} color={METHOD_THEME[paymentMethod].border} />
+                )}
+              </View>
+            </View>
+            <Text style={styles.loadingTitle}>{paymentLoadingCopy.title}</Text>
+            <Text style={styles.loadingText}>{paymentLoadingCopy.text}</Text>
+            <View style={styles.loadingSecurityRow}>
+              <ShieldCheck size={14} color="#159447" />
+              <Text style={styles.loadingSecurityText}>Keep EYA open while we create this payment session</Text>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -350,7 +428,8 @@ function MetaRow({ Icon, text }: { Icon: React.ComponentType<{ size?: number; co
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG }, safe: { flex: 1 }, center: { flex: 1, backgroundColor: BG, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }, title: { color: TEXT, fontSize: 20, fontWeight: "900" }, muted: { color: MUTED, fontSize: 14, fontWeight: "700", textAlign: "center" },
+  root: { flex: 1, backgroundColor: BG }, safe: { flex: 1 }, center: { flex: 1, backgroundColor: BG, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }, title: { color: TEXT, fontSize: 20, fontWeight: "900", textAlign: "center" }, muted: { color: MUTED, fontSize: 14, fontWeight: "700", textAlign: "center", lineHeight: 20 },
+  initialLoaderIcon: { width: 64, height: 64, borderRadius: 22, backgroundColor: "#EEF1FF", alignItems: "center", justifyContent: "center", marginBottom: 2 },
   header: { minHeight: 82, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 14 }, roundBtn: { width: 48, height: 48, borderRadius: 17, backgroundColor: "rgba(255,255,255,0.82)", borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" }, headerCopy: { flex: 1, gap: 5 }, headerTitle: { color: TEXT, fontSize: 22, fontWeight: "900" }, secureRow: { flexDirection: "row", alignItems: "center", gap: 6 }, secureText: { flex: 1, color: ACCENT, fontSize: 11, fontWeight: "800" },
   content: { paddingHorizontal: 18, gap: 18 }, kicker: { color: TEXT, fontSize: 12, fontWeight: "900", letterSpacing: 1.2 }, eventCard: { borderRadius: 26, backgroundColor: "rgba(255,255,255,0.9)", borderWidth: 1, borderColor: BORDER, padding: 14, flexDirection: "row", gap: 14 }, eventImage: { width: 104, height: 136, borderRadius: 18, backgroundColor: BORDER }, eventCopy: { flex: 1, minWidth: 0, justifyContent: "center", gap: 9 }, eventTitle: { color: TEXT, fontSize: 20, lineHeight: 25, fontWeight: "900" }, metaRow: { flexDirection: "row", alignItems: "center", gap: 8 }, metaText: { flex: 1, color: TEXT, fontSize: 12, fontWeight: "700" },
   summaryCard: { borderRadius: 24, backgroundColor: "rgba(255,255,255,0.92)", borderWidth: 1, borderColor: BORDER, padding: 17, gap: 14 }, ticketRow: { flexDirection: "row", alignItems: "center", gap: 12 }, ticketIcon: { width: 54, height: 54, borderRadius: 17, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" }, ticketCopy: { flex: 1, minWidth: 0, gap: 5 }, ticketTitle: { color: TEXT, fontSize: 16, fontWeight: "900" }, ticketSub: { color: MUTED, fontSize: 13, fontWeight: "700" }, ticketTotal: { color: TEXT, fontSize: 17, fontWeight: "900" }, divider: { height: 1, backgroundColor: BORDER }, totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, totalLabel: { color: TEXT, fontSize: 16, fontWeight: "900" }, totalValue: { color: ACCENT, fontSize: 24, fontWeight: "900" }, serverNote: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700" },
@@ -360,4 +439,14 @@ const styles = StyleSheet.create({
   infoCard: { borderRadius: 22, backgroundColor: "#eef1ff", padding: 16, flexDirection: "row", alignItems: "center", gap: 13 }, infoIcon: { width: 48, height: 48, borderRadius: 15, backgroundColor: "rgba(255,255,255,0.72)", alignItems: "center", justifyContent: "center" }, infoCopy: { flex: 1 }, infoTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, infoText: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700", marginTop: 4 },
   qrInfoCard: { borderRadius: 22, backgroundColor: "#e8ddff", padding: 16, flexDirection: "row", alignItems: "center", gap: 14 }, qrIconBox: { width: 54, height: 54, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.58)", alignItems: "center", justifyContent: "center" }, qrCopy: { flex: 1 }, qrTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, qrText: { color: TEXT, opacity: 0.74, fontSize: 12, lineHeight: 18, fontWeight: "700", marginTop: 5 },
   payBarOuter: { position: "absolute", left: 14, right: 14 }, payBar: { minHeight: 86, borderRadius: 26, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fff", padding: 13, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, shadowColor: "#13285f", shadowOpacity: 0.18, shadowRadius: 26, shadowOffset: { width: 0, height: 12 }, elevation: 14 }, payLabel: { color: MUTED, fontSize: 10, fontWeight: "900", letterSpacing: 1.2 }, payAmount: { color: TEXT, fontSize: 22, fontWeight: "900", marginTop: 4 }, payButton: { flex: 1, maxWidth: 215, minHeight: 58, borderRadius: 18, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 12 }, payButtonDisabled: { backgroundColor: "#cfd4df" }, payButtonText: { color: "#fff", fontSize: 13, fontWeight: "900", textAlign: "center" },
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 50, elevation: 50, backgroundColor: "rgba(14,24,52,0.42)", alignItems: "center", justifyContent: "center", paddingHorizontal: 26 },
+  loadingCard: { width: "100%", maxWidth: 340, borderRadius: 30, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "rgba(255,255,255,0.8)", paddingHorizontal: 24, paddingVertical: 28, alignItems: "center", shadowColor: "#0E1834", shadowOpacity: 0.25, shadowRadius: 30, shadowOffset: { width: 0, height: 18 }, elevation: 24 },
+  loadingIconStage: { width: 108, height: 108, alignItems: "center", justifyContent: "center", marginBottom: 18 },
+  loadingPulse: { position: "absolute", width: 96, height: 96, borderRadius: 48 },
+  loadingRing: { position: "absolute", width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: "#E8EAF2", borderTopColor: ACCENT },
+  loadingLogoCore: { width: 66, height: 66, borderRadius: 22, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", shadowColor: "#13285F", shadowOpacity: 0.09, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+  loadingTitle: { color: TEXT, fontSize: 20, lineHeight: 26, fontWeight: "900", textAlign: "center" },
+  loadingText: { color: MUTED, fontSize: 13, lineHeight: 20, fontWeight: "700", textAlign: "center", marginTop: 7 },
+  loadingSecurityRow: { marginTop: 18, flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 999, backgroundColor: "#F0FAF4", paddingHorizontal: 12, paddingVertical: 9 },
+  loadingSecurityText: { color: "#397453", fontSize: 11, fontWeight: "800", flexShrink: 1 },
 });
