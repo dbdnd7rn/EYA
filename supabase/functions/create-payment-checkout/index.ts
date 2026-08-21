@@ -269,10 +269,23 @@ export default {
       }, 201);
     } catch (error) {
       if (reservedOrderId && !providerSessionCreated) {
-        await ctx.supabaseAdmin.rpc("release_ticket_order", {
-          p_order_id: reservedOrderId,
-          p_status: "failed",
-        }).catch(() => undefined);
+        try {
+          const { error: releaseError } = await ctx.supabaseAdmin.rpc("release_ticket_order", {
+            p_order_id: reservedOrderId,
+            p_status: "failed",
+          });
+          if (releaseError) {
+            console.error("[create-payment-checkout] release failed", {
+              reservedOrderId,
+              message: releaseError.message,
+            });
+          }
+        } catch (releaseError) {
+          console.error("[create-payment-checkout] release failed", {
+            reservedOrderId,
+            message: releaseError instanceof Error ? releaseError.message : "Unknown release error.",
+          });
+        }
       }
 
       const message = error instanceof Error ? error.message : "Could not create ticket checkout.";
