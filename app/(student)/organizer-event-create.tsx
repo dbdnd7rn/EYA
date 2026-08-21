@@ -1,10 +1,16 @@
 import React from "react";
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { ArrowLeft, CalendarDays, CheckCircle2, ImagePlus, MapPin, Send, Ticket } from "lucide-react-native";
-import { createMyTicketEventDraft, submitMyTicketEvent, upsertMyTicketTier } from "@/lib/organizerTicketingApi";
+import {
+  createMyTicketEventDraft,
+  getMyOrganizerEventDetail,
+  submitMyTicketEvent,
+  updateMyTicketEventDraft,
+  upsertMyTicketTier,
+} from "@/lib/organizerTicketingApi";
 
 const BG = "#f5f7fc";
 const CARD = "#ffffff";
@@ -23,6 +29,14 @@ function parseMalawiLocalDateTime(value: string) {
   const iso = `${year}-${month}-${day}T${hour}:${minute}:00+02:00`;
   const time = Date.parse(iso);
   return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
+function malawiInputFromIso(value?: string | null) {
+  if (!value) return "";
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return "";
+  const malawi = new Date(time + 2 * 60 * 60 * 1000);
+  return malawi.toISOString().slice(0, 16).replace("T", " ");
 }
 
 function imageMeta(asset: UploadAsset, kind: UploadKind) {
@@ -58,6 +72,10 @@ function numberValue(value: string) {
 
 export default function OrganizerEventCreateScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ eventId?: string }>();
+  const routeEventId = typeof params.eventId === "string" ? params.eventId : "";
+  const isRevision = Boolean(routeEventId);
+
   const [title, setTitle] = React.useState("");
   const [category, setCategory] = React.useState("Music");
   const [description, setDescription] = React.useState("");
@@ -72,11 +90,56 @@ export default function OrganizerEventCreateScreen() {
   const [tierDescription, setTierDescription] = React.useState("");
   const [tierPrice, setTierPrice] = React.useState("");
   const [tierCapacity, setTierCapacity] = React.useState("");
+  const [tierId, setTierId] = React.useState<string | null>(null);
+  const [reviewNote, setReviewNote] = React.useState<string | null>(null);
   const [uploading, setUploading] = React.useState<UploadKind | null>(null);
+  const [loadingExisting, setLoadingExisting] = React.useState(isRevision);
   const [saving, setSaving] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
-  const [eventId, setEventId] = React.useState<string | null>(null);
+  const [eventId, setEventId] = React.useState<string | null>(routeEventId || null);
+  const [readyToSubmit, setReadyToSubmit] = React.useState(false);
   const [submitted, setSubmitted] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!routeEventId) return;
+    let active = true;
+    const load = async () => {
+      try {
+        setLoadingExisting(true);
+        const event = await getMyOrganizerEventDetail(routeEventId);
+        if (!active) return;
+        if (event.status !== "draft" && event.status !== "changes_requested") {
+          Alert.alert("Event locked", "This event cannot be edited in its current status.", [{ text: "Back", onPress: () => router.back() }]);
+          return;
+        }
+        setTitle(event.title);
+        setCategory(event.category || "Music");
+        setDescription(event.description || "");
+        setDateLabel(event.date_label || "");
+        setStartsAt(malawiInputFromIso(event.starts_at));
+        setEndsAt(malawiInputFromIso(event.ends_at));
+        setVenue(event.venue || "");
+        setCity(event.city || "");
+        setCardImage(event.image_url || "");
+        setHeroImage(event.hero_image_url || event.image_url || "");
+        setReviewNote(event.review_note || null);
+        const firstTier = event.tiers?.[0];
+        if (firstTier) {
+          setTierId(firstTier.id);
+          setTierName(firstTier.name || "General");
+          setTierDescription(firstTier.description || "");
+          setTierPrice(String(firstTier.price_mwk ?? ""));
+          setTierCapacity(String(firstTier.capacity_total ?? ""));
+        }
+      } catch (e: any) {
+        Alert.alert("Could not load event", e?.message || "Try again.", [{ text: "Back", onPress: () => router.back() }]);
+      } finally {
+        if (active) setLoadingExisting(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [routeEventId, router]);
 
   const pickImage = async (kind: UploadKind) => {
     try {
@@ -95,6 +158,7 @@ export default function OrganizerEventCreateScreen() {
       setUploading(kind);
       const url = await uploadEventImage(result.assets[0], kind);
       kind === "card" ? setCardImage(url) : setHeroImage(url);
+      setReadyToSubmit(false);
     } catch (e: any) {
       Alert.alert("Upload failed", e?.message || "Could not upload image.");
     } finally {
@@ -131,7 +195,7 @@ export default function OrganizerEventCreateScreen() {
 
     try {
       setSaving(true);
-      const event = await createMyTicketEventDraft({
+      const input = {
         title,
         category,
         description,
@@ -142,16 +206,23 @@ export default function OrganizerEventCreateScreen() {
         city,
         imageUrl: cardImage,
         heroImageUrl: heroImage,
-      });
-      await upsertMyTicketTier({
+      };
+      const event = eventId
+        ? await updateMyTicketEventDraft(eventId, input)
+        : await createMyTicketEventDraft(input);
+      const tier = await upsertMyTicketTier({
         eventId: event.event_id,
+        tierId,
         name: tierName,
         description: tierDescription,
         priceMwk: price,
         capacityTotal: capacity,
       });
       setEventId(event.event_id);
-      Alert.alert("Draft saved", "Your event and first ticket type are saved. Review the details, then submit to EYA Admin.");
+      setTierId(tier.tier_id);
+      setReviewNote(null);
+      setReadyToSubmit(true);
+      Alert.alert(isRevision ? "Revisions saved" : "Draft saved", "The event is still private. Submit it when you are ready for EYA Admin review.");
     } catch (e: any) {
       Alert.alert("Could not save draft", e?.message || "Try again.");
     } finally {
@@ -160,7 +231,7 @@ export default function OrganizerEventCreateScreen() {
   };
 
   const submit = async () => {
-    if (!eventId) return;
+    if (!eventId || !readyToSubmit) return;
     try {
       setSubmitting(true);
       await submitMyTicketEvent(eventId);
@@ -171,6 +242,10 @@ export default function OrganizerEventCreateScreen() {
       setSubmitting(false);
     }
   };
+
+  if (loadingExisting) {
+    return <SafeAreaView style={styles.root}><View style={styles.loadingWrap}><ActivityIndicator color={ACCENT} /><Text style={styles.loadingText}>Loading organizer draft...</Text></View></SafeAreaView>;
+  }
 
   if (submitted) {
     return (
@@ -190,26 +265,28 @@ export default function OrganizerEventCreateScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Pressable style={styles.iconBtn} onPress={() => router.back()}><ArrowLeft size={21} color={TEXT} /></Pressable>
-          <View style={{ flex: 1 }}><Text style={styles.kicker}>Organizer Event Studio</Text><Text style={styles.title}>Create event</Text></View>
+          <View style={{ flex: 1 }}><Text style={styles.kicker}>Organizer Event Studio</Text><Text style={styles.title}>{isRevision ? "Revise event" : "Create event"}</Text></View>
         </View>
 
         <View style={styles.notice}>
           <Text style={styles.noticeTitle}>Admin-controlled publishing</Text>
-          <Text style={styles.noticeText}>Saving creates a private organizer draft. Submitting sends it to EYA Admin. Customers see it only after approval.</Text>
+          <Text style={styles.noticeText}>Saving creates or updates a private organizer draft. Customers see it only after EYA Admin approval.</Text>
         </View>
 
+        {reviewNote ? <View style={styles.reviewBox}><Text style={styles.reviewKicker}>EYA REQUESTED CHANGES</Text><Text style={styles.reviewCopy}>{reviewNote}</Text></View> : null}
+
         <Section title="Event details" icon={<CalendarDays size={18} color={ACCENT} />}>
-          <Field label="Event name" value={title} onChangeText={setTitle} placeholder="Melodies & Mimosas" />
-          <Field label="Category" value={category} onChangeText={setCategory} placeholder="Music" />
-          <Field label="Description" value={description} onChangeText={setDescription} placeholder="Tell attendees what to expect" multiline />
-          <Field label="Display date" value={dateLabel} onChangeText={setDateLabel} placeholder="6 September 2026" />
-          <Field label="Start date & time" value={startsAt} onChangeText={setStartsAt} placeholder="2026-09-06 18:00" autoCapitalize="none" />
-          <Field label="End date & time (optional)" value={endsAt} onChangeText={setEndsAt} placeholder="2026-09-07 01:00" autoCapitalize="none" />
+          <Field label="Event name" value={title} onChangeText={(v) => { setTitle(v); setReadyToSubmit(false); }} placeholder="Melodies & Mimosas" />
+          <Field label="Category" value={category} onChangeText={(v) => { setCategory(v); setReadyToSubmit(false); }} placeholder="Music" />
+          <Field label="Description" value={description} onChangeText={(v) => { setDescription(v); setReadyToSubmit(false); }} placeholder="Tell attendees what to expect" multiline />
+          <Field label="Display date" value={dateLabel} onChangeText={(v) => { setDateLabel(v); setReadyToSubmit(false); }} placeholder="6 September 2026" />
+          <Field label="Start date & time" value={startsAt} onChangeText={(v) => { setStartsAt(v); setReadyToSubmit(false); }} placeholder="2026-09-06 18:00" autoCapitalize="none" />
+          <Field label="End date & time (optional)" value={endsAt} onChangeText={(v) => { setEndsAt(v); setReadyToSubmit(false); }} placeholder="2026-09-07 01:00" autoCapitalize="none" />
         </Section>
 
         <Section title="Venue" icon={<MapPin size={18} color={ACCENT} />}>
-          <Field label="Venue" value={venue} onChangeText={setVenue} placeholder="BICC" />
-          <Field label="City" value={city} onChangeText={setCity} placeholder="Lilongwe" />
+          <Field label="Venue" value={venue} onChangeText={(v) => { setVenue(v); setReadyToSubmit(false); }} placeholder="BICC" />
+          <Field label="City" value={city} onChangeText={(v) => { setCity(v); setReadyToSubmit(false); }} placeholder="Lilongwe" />
         </Section>
 
         <Section title="Event images" icon={<ImagePlus size={18} color={ACCENT} />}>
@@ -217,29 +294,29 @@ export default function OrganizerEventCreateScreen() {
           <ImagePickerCard label="Hero image" uri={heroImage} busy={uploading === "hero"} onPress={() => void pickImage("hero")} />
         </Section>
 
-        <Section title="First ticket type" icon={<Ticket size={18} color={ACCENT} />}>
-          <Field label="Ticket name" value={tierName} onChangeText={setTierName} placeholder="General" />
-          <Field label="Description" value={tierDescription} onChangeText={setTierDescription} placeholder="General admission" />
-          <Field label="Price (MWK)" value={tierPrice} onChangeText={setTierPrice} placeholder="50000" keyboardType="numeric" />
-          <Field label="Capacity" value={tierCapacity} onChangeText={setTierCapacity} placeholder="500" keyboardType="numeric" />
+        <Section title="Primary ticket type" icon={<Ticket size={18} color={ACCENT} />}>
+          <Field label="Ticket name" value={tierName} onChangeText={(v) => { setTierName(v); setReadyToSubmit(false); }} placeholder="General" />
+          <Field label="Description" value={tierDescription} onChangeText={(v) => { setTierDescription(v); setReadyToSubmit(false); }} placeholder="General admission" />
+          <Field label="Price (MWK)" value={tierPrice} onChangeText={(v) => { setTierPrice(v); setReadyToSubmit(false); }} placeholder="50000" keyboardType="numeric" />
+          <Field label="Capacity" value={tierCapacity} onChangeText={(v) => { setTierCapacity(v); setReadyToSubmit(false); }} placeholder="500" keyboardType="numeric" />
         </Section>
 
-        {!eventId ? (
-          <Pressable style={[styles.primaryBtn, saving && styles.disabled]} disabled={saving || !!uploading} onPress={() => void saveDraft()}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Ticket size={18} color="#fff" />}
-            <Text style={styles.primaryText}>{saving ? "Saving..." : "Save private draft"}</Text>
-          </Pressable>
-        ) : (
+        <Pressable style={[styles.primaryBtn, saving && styles.disabled]} disabled={saving || !!uploading} onPress={() => void saveDraft()}>
+          {saving ? <ActivityIndicator color="#fff" /> : <Ticket size={18} color="#fff" />}
+          <Text style={styles.primaryText}>{saving ? "Saving..." : isRevision ? "Save revisions" : "Save private draft"}</Text>
+        </Pressable>
+
+        {eventId && readyToSubmit ? (
           <View style={styles.readyCard}>
             <CheckCircle2 size={24} color="#087443" />
-            <View style={{ flex: 1 }}><Text style={styles.readyTitle}>Draft ready</Text><Text style={styles.readyText}>Your event is still private. Submit when the information is ready for EYA review.</Text></View>
+            <View style={{ flex: 1 }}><Text style={styles.readyTitle}>Draft ready</Text><Text style={styles.readyText}>These saved details are ready to be submitted for EYA review.</Text></View>
           </View>
-        )}
+        ) : null}
 
-        {eventId ? (
+        {eventId && readyToSubmit ? (
           <Pressable style={[styles.submitBtn, submitting && styles.disabled]} disabled={submitting} onPress={() => void submit()}>
             {submitting ? <ActivityIndicator color="#fff" /> : <Send size={18} color="#fff" />}
-            <Text style={styles.primaryText}>{submitting ? "Submitting..." : "Submit to EYA Admin"}</Text>
+            <Text style={styles.primaryText}>{submitting ? "Submitting..." : isRevision ? "Resubmit to EYA Admin" : "Submit to EYA Admin"}</Text>
           </Pressable>
         ) : null}
       </ScrollView>
@@ -270,6 +347,9 @@ const styles = StyleSheet.create({
   notice: { backgroundColor: "#eef1ff", borderRadius: 20, padding: 15, gap: 5 },
   noticeTitle: { color: ACCENT, fontSize: 13, fontWeight: "900" },
   noticeText: { color: "#4f5d7a", fontSize: 12, lineHeight: 18, fontWeight: "700" },
+  reviewBox: { backgroundColor: "#fff4df", borderRadius: 20, padding: 15, gap: 5 },
+  reviewKicker: { color: "#a35b00", fontSize: 10, fontWeight: "900", letterSpacing: 0.8 },
+  reviewCopy: { color: "#754500", fontSize: 13, lineHeight: 19, fontWeight: "800" },
   section: { backgroundColor: CARD, borderRadius: 24, borderWidth: 1, borderColor: BORDER, padding: 16, gap: 13 },
   sectionHead: { flexDirection: "row", alignItems: "center", gap: 8 },
   sectionTitle: { color: TEXT, fontSize: 17, fontWeight: "900" },
@@ -289,6 +369,8 @@ const styles = StyleSheet.create({
   readyCard: { borderRadius: 20, backgroundColor: "#e9f8ef", padding: 15, flexDirection: "row", alignItems: "center", gap: 10 },
   readyTitle: { color: "#087443", fontSize: 14, fontWeight: "900" },
   readyText: { color: "#39745a", fontSize: 11, lineHeight: 16, fontWeight: "700", marginTop: 2 },
+  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
+  loadingText: { color: MUTED, fontSize: 13, fontWeight: "800" },
   successWrap: { flex: 1, padding: 28, alignItems: "center", justifyContent: "center", gap: 14 },
   successIcon: { width: 84, height: 84, borderRadius: 42, backgroundColor: "#e4f7ec", alignItems: "center", justifyContent: "center" },
   successTitle: { color: TEXT, fontSize: 25, fontWeight: "900", textAlign: "center" },
