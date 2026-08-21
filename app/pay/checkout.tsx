@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import { CreditCard, Lock, ShieldCheck } from "lucide-react-native";
 import { isTrustedPayChanguCheckoutUrl } from "@/lib/standardTicketCheckout";
 
 const CALLBACK_PATHS = new Set(["/v1/paychangu/callback", "/v1/paychangu/return"]);
@@ -97,8 +98,25 @@ export default function PayCheckoutWebviewScreen() {
         mixedContentMode="never"
         renderLoading={() => (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator size="large" color="#ff0f64" />
-            <Text style={styles.loadingText}>Opening secure PayChangu card checkout...</Text>
+            <View style={styles.loadingCard}>
+              <View style={styles.cardIconStage}>
+                <View style={styles.cardIconHalo} />
+                <View style={styles.cardIconCore}>
+                  <CreditCard size={30} color="#6B5CD4" />
+                </View>
+              </View>
+              <ActivityIndicator size="small" color="#6B5CD4" />
+              <Text style={styles.loadingTitle}>Opening secure card checkout</Text>
+              <Text style={styles.loadingText}>Connecting to PayChangu’s protected PCI-compliant payment page…</Text>
+              <View style={styles.securePill}>
+                <ShieldCheck size={14} color="#159447" />
+                <Text style={styles.securePillText}>Card details stay outside EYA</Text>
+              </View>
+              <View style={styles.lockRow}>
+                <Lock size={12} color="#7A84A0" />
+                <Text style={styles.lockText}>HTTPS only · trusted PayChangu checkout</Text>
+              </View>
+            </View>
           </View>
         )}
         onShouldStartLoadWithRequest={(request) => {
@@ -146,6 +164,15 @@ const styles = StyleSheet.create({
   sub: { color: "#5f6b85", fontWeight: "600", fontSize: 13, lineHeight: 20, textAlign: "center" },
   btn: { marginTop: 8, borderRadius: 14, backgroundColor: "#0e2756", paddingVertical: 12, paddingHorizontal: 17 },
   btnText: { color: "#fff", fontWeight: "900" },
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
-  loadingText: { color: "#5f6b85", fontWeight: "700" },
+  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#F5F6FC", paddingHorizontal: 24 },
+  loadingCard: { width: "100%", maxWidth: 340, borderRadius: 30, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#E5E7F0", alignItems: "center", paddingHorizontal: 24, paddingVertical: 30, shadowColor: "#13285F", shadowOpacity: 0.12, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
+  cardIconStage: { width: 94, height: 94, alignItems: "center", justifyContent: "center", marginBottom: 14 },
+  cardIconHalo: { position: "absolute", width: 94, height: 94, borderRadius: 47, backgroundColor: "#F0EDFF" },
+  cardIconCore: { width: 66, height: 66, borderRadius: 22, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#E1DDFB", alignItems: "center", justifyContent: "center", shadowColor: "#6B5CD4", shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  loadingTitle: { color: "#13285F", fontWeight: "900", fontSize: 20, lineHeight: 26, textAlign: "center", marginTop: 12 },
+  loadingText: { color: "#66708A", fontWeight: "700", fontSize: 13, lineHeight: 20, textAlign: "center", marginTop: 6 },
+  securePill: { marginTop: 18, borderRadius: 999, backgroundColor: "#F0FAF4", flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12, paddingVertical: 9 },
+  securePillText: { color: "#397453", fontWeight: "900", fontSize: 11 },
+  lockRow: { marginTop: 12, flexDirection: "row", alignItems: "center", gap: 6 },
+  lockText: { color: "#7A84A0", fontWeight: "700", fontSize: 10 },
 });
