@@ -2,7 +2,7 @@ import React from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, CheckCircle2, Clock3, MapPin, RotateCcw, ShieldCheck, Ticket, XCircle } from "lucide-react-native";
+import { ArrowLeft, CheckCircle2, Clock3, MapPin, RotateCcw, ShieldCheck, UserPlus, XCircle } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
 import { listPendingAdminTicketEvents, reviewAdminTicketEvent, type AdminTicketReviewEvent } from "@/lib/adminTicketReviewApi";
 
@@ -83,6 +83,14 @@ export default function AdminEventReviewsScreen() {
           <Text style={styles.securityText}>Only an Admin approval can move an organizer submission into the published customer marketplace.</Text>
         </View>
 
+        <Pressable style={styles.organizerAccessBtn} onPress={() => router.push("/admin/organizer-access" as any)}>
+          <View style={styles.organizerAccessIcon}><UserPlus size={20} color={ACCENT} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.organizerAccessTitle}>Temporary organizer access</Text>
+            <Text style={styles.organizerAccessSub}>Grant, renew, expire or revoke Event Studio access.</Text>
+          </View>
+        </Pressable>
+
         {loading ? <State><ActivityIndicator color={ACCENT} /><Text style={styles.stateText}>Loading submissions...</Text></State> : null}
         {!loading && error ? <State><Text style={styles.errorText}>{error}</Text><Pressable style={styles.retryBtn} onPress={() => void load()}><Text style={styles.retryText}>Try again</Text></Pressable></State> : null}
         {!loading && !error && !events.length ? <State><CheckCircle2 size={34} color="#087443" /><Text style={styles.emptyTitle}>Review queue is clear</Text><Text style={styles.stateText}>New organizer submissions will appear here.</Text></State> : null}
@@ -146,6 +154,10 @@ const styles = StyleSheet.create({
   kicker: { color: ACCENT, fontSize: 10, fontWeight: "900", letterSpacing: 1, textTransform: "uppercase" }, title: { color: TEXT, fontSize: 25, fontWeight: "900", marginTop: 2 },
   countBadge: { minWidth: 42, height: 42, borderRadius: 21, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" }, countText: { color: ACCENT, fontSize: 16, fontWeight: "900" },
   securityNote: { borderRadius: 18, backgroundColor: "#e8f7ee", padding: 13, flexDirection: "row", alignItems: "center", gap: 9 }, securityText: { flex: 1, color: "#276346", fontSize: 12, lineHeight: 17, fontWeight: "800" },
+  organizerAccessBtn: { minHeight: 72, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 11 },
+  organizerAccessIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" },
+  organizerAccessTitle: { color: TEXT, fontSize: 14, fontWeight: "900" },
+  organizerAccessSub: { color: MUTED, fontSize: 11, lineHeight: 16, fontWeight: "700", marginTop: 2 },
   state: { minHeight: 190, borderRadius: 24, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center", gap: 10, padding: 24 }, stateText: { color: MUTED, fontSize: 13, lineHeight: 18, fontWeight: "700", textAlign: "center" }, emptyTitle: { color: TEXT, fontSize: 19, fontWeight: "900" }, errorText: { color: "#a32929", fontWeight: "800", textAlign: "center" }, retryBtn: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 18, backgroundColor: "#eef1ff" }, retryText: { color: ACCENT, fontWeight: "900" },
   list: { gap: 14 }, card: { borderRadius: 24, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 16, gap: 13 }, cardHead: { flexDirection: "row", alignItems: "flex-start", gap: 10 }, eventTitle: { color: TEXT, fontSize: 19, lineHeight: 23, fontWeight: "900" }, meta: { color: MUTED, fontSize: 12, fontWeight: "700", marginTop: 3 },
   pendingBadge: { borderRadius: 999, backgroundColor: "#fff4d9", paddingHorizontal: 9, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 4 }, pendingText: { color: "#8a5a00", fontSize: 10, fontWeight: "900" },
