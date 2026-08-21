@@ -2,9 +2,10 @@ import React from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, CalendarDays, ChevronRight, CircleDollarSign, PencilLine, Plus, Ticket, Users } from "lucide-react-native";
+import { ArrowLeft, CalendarDays, ChevronRight, CircleDollarSign, PencilLine, Plus, ShieldAlert, Ticket, Users } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
 import { listMyOrganizerEvents, type OrganizerTicketEventStatus, type OrganizerTicketEventSummary } from "@/lib/organizerTicketingApi";
+import { getMyTicketOrganizerAccess, type MyTicketOrganizerAccess } from "@/lib/ticketOrganizerAccess";
 
 const BG = "#f5f7fc";
 const CARD = "#ffffff";
@@ -35,8 +36,15 @@ function statusTone(status: OrganizerTicketEventStatus) {
   return { bg: "#eef1ff", text: ACCENT };
 }
 
+function expiryLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
 export default function OrganizerEventsScreen() {
   const router = useRouter();
+  const [access, setAccess] = React.useState<MyTicketOrganizerAccess | null>(null);
   const [events, setEvents] = React.useState<OrganizerTicketEventSummary[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -46,9 +54,15 @@ export default function OrganizerEventsScreen() {
     refresh ? setRefreshing(true) : setLoading(true);
     try {
       setError(null);
+      const currentAccess = await getMyTicketOrganizerAccess();
+      setAccess(currentAccess);
+      if (!currentAccess) {
+        setEvents([]);
+        return;
+      }
       setEvents(await listMyOrganizerEvents());
     } catch (e: any) {
-      setError(e?.message || "Could not load your events.");
+      setError(e?.message || "Could not load Organizer Workspace.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -84,37 +98,56 @@ export default function OrganizerEventsScreen() {
             <Text style={styles.kicker}>Organizer workspace</Text>
             <Text style={styles.title}>Event Studio</Text>
           </View>
-          <Pressable style={styles.addBtn} onPress={() => router.push("/(student)/organizer-event-create" as any)}>
-            <Plus size={19} color="#fff" />
-            <Text style={styles.addText}>Create</Text>
-          </Pressable>
-        </View>
-
-        <Text style={styles.intro}>Create events, submit them to EYA for review, and follow sales after publication. Organizers cannot self-publish.</Text>
-
-        <View style={styles.statsRow}>
-          <StatCard icon={<Ticket size={19} color={ACCENT} />} label="Tickets sold" value={totals.sold.toLocaleString()} />
-          <StatCard icon={<CircleDollarSign size={19} color={ACCENT} />} label="Gross sales" value={kwacha(totals.gross)} />
-          <StatCard icon={<Users size={19} color={ACCENT} />} label="Live events" value={String(totals.live)} />
+          {access ? (
+            <Pressable style={styles.addBtn} onPress={() => router.push("/(student)/organizer-event-create" as any)}>
+              <Plus size={19} color="#fff" />
+              <Text style={styles.addText}>Create</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {loading ? (
-          <View style={styles.stateCard}><ActivityIndicator color={ACCENT} /><Text style={styles.stateText}>Loading your events...</Text></View>
+          <View style={styles.stateCard}><ActivityIndicator color={ACCENT} /><Text style={styles.stateText}>Checking organizer access...</Text></View>
         ) : error ? (
           <View style={styles.stateCard}><Text style={styles.errorText}>{error}</Text><Pressable style={styles.retryBtn} onPress={() => void load()}><Text style={styles.retryText}>Try again</Text></Pressable></View>
-        ) : !events.length ? (
-          <View style={styles.emptyCard}>
-            <View style={styles.emptyIcon}><CalendarDays size={30} color={ACCENT} /></View>
-            <Text style={styles.emptyTitle}>Create your first event</Text>
-            <Text style={styles.emptySub}>Build the listing and ticket types, then submit it to EYA Admin. It appears to customers only after approval.</Text>
-            <Pressable style={styles.primaryBtn} onPress={() => router.push("/(student)/organizer-event-create" as any)}>
-              <Plus size={18} color="#fff" /><Text style={styles.primaryText}>Create event</Text>
-            </Pressable>
+        ) : !access ? (
+          <View style={styles.blockedCard}>
+            <View style={styles.blockedIcon}><ShieldAlert size={31} color="#a35b00" /></View>
+            <Text style={styles.blockedTitle}>Organizer access unavailable</Text>
+            <Text style={styles.blockedText}>Event Studio is private and invite-only. EYA Admin must activate a temporary Organizer Workspace before this account can create or manage events.</Text>
+            <Pressable style={styles.backHomeBtn} onPress={() => router.back()}><Text style={styles.backHomeText}>Return to EYA</Text></Pressable>
           </View>
         ) : (
-          <View style={styles.list}>
-            {events.map((event) => <EventCard key={event.id} event={event} />)}
-          </View>
+          <>
+            <View style={styles.accessCard}>
+              <Text style={styles.accessLabel}>TEMPORARY ORGANIZER ACCESS</Text>
+              <Text style={styles.accessName}>{access.organization_name}</Text>
+              <Text style={styles.accessExpiry}>Access expires {expiryLabel(access.expires_at)}</Text>
+            </View>
+
+            <Text style={styles.intro}>Create events, submit them to EYA for review, and follow sales after publication. Organizers cannot self-publish.</Text>
+
+            <View style={styles.statsRow}>
+              <StatCard icon={<Ticket size={19} color={ACCENT} />} label="Tickets sold" value={totals.sold.toLocaleString()} />
+              <StatCard icon={<CircleDollarSign size={19} color={ACCENT} />} label="Gross sales" value={kwacha(totals.gross)} />
+              <StatCard icon={<Users size={19} color={ACCENT} />} label="Live events" value={String(totals.live)} />
+            </View>
+
+            {!events.length ? (
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIcon}><CalendarDays size={30} color={ACCENT} /></View>
+                <Text style={styles.emptyTitle}>Create your first event</Text>
+                <Text style={styles.emptySub}>Build the listing and ticket types, then submit it to EYA Admin. It appears to customers only after approval.</Text>
+                <Pressable style={styles.primaryBtn} onPress={() => router.push("/(student)/organizer-event-create" as any)}>
+                  <Plus size={18} color="#fff" /><Text style={styles.primaryText}>Create event</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.list}>
+                {events.map((event) => <EventCard key={event.id} event={event} />)}
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -174,6 +207,10 @@ const styles = StyleSheet.create({
   addBtn: { minHeight: 44, borderRadius: 22, backgroundColor: ACCENT, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 6 },
   addText: { color: "#fff", fontWeight: "900", fontSize: 13 },
   intro: { color: MUTED, fontSize: 13, fontWeight: "700", lineHeight: 19 },
+  accessCard: { borderRadius: 20, backgroundColor: "#eef1ff", padding: 15, gap: 4 },
+  accessLabel: { color: ACCENT, fontSize: 9, fontWeight: "900", letterSpacing: 0.9 },
+  accessName: { color: TEXT, fontSize: 17, fontWeight: "900" },
+  accessExpiry: { color: "#56637d", fontSize: 11, fontWeight: "700" },
   statsRow: { flexDirection: "row", gap: 10 },
   statCard: { flex: 1, minWidth: 0, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 20, padding: 12, gap: 5 },
   statIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" },
@@ -184,6 +221,12 @@ const styles = StyleSheet.create({
   errorText: { color: "#a32929", fontWeight: "800", textAlign: "center" },
   retryBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18, backgroundColor: "#eef1ff" },
   retryText: { color: ACCENT, fontWeight: "900" },
+  blockedCard: { minHeight: 280, borderRadius: 28, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 24, alignItems: "center", justifyContent: "center", gap: 11 },
+  blockedIcon: { width: 66, height: 66, borderRadius: 33, backgroundColor: "#fff4df", alignItems: "center", justifyContent: "center" },
+  blockedTitle: { color: TEXT, fontSize: 20, fontWeight: "900", textAlign: "center" },
+  blockedText: { color: MUTED, fontSize: 13, lineHeight: 19, fontWeight: "700", textAlign: "center", maxWidth: 360 },
+  backHomeBtn: { marginTop: 5, minHeight: 46, borderRadius: 23, backgroundColor: "#eef1ff", paddingHorizontal: 18, alignItems: "center", justifyContent: "center" },
+  backHomeText: { color: ACCENT, fontSize: 13, fontWeight: "900" },
   emptyCard: { borderRadius: 28, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 24, alignItems: "center", gap: 10 },
   emptyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" },
   emptyTitle: { color: TEXT, fontSize: 21, fontWeight: "900" },
