@@ -2,7 +2,7 @@ import React from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, CalendarDays, ChevronRight, CircleDollarSign, Plus, Ticket, Users } from "lucide-react-native";
+import { ArrowLeft, CalendarDays, ChevronRight, CircleDollarSign, PencilLine, Plus, Ticket, Users } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
 import { listMyOrganizerEvents, type OrganizerTicketEventStatus, type OrganizerTicketEventSummary } from "@/lib/organizerTicketingApi";
 
@@ -126,8 +126,10 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 }
 
 function EventCard({ event }: { event: OrganizerTicketEventSummary }) {
+  const router = useRouter();
   const tone = statusTone(event.status);
   const soldPercent = event.capacity_total > 0 ? Math.min(100, Math.round((event.tickets_sold / event.capacity_total) * 100)) : 0;
+  const canEdit = event.status === "draft" || event.status === "changes_requested";
   return (
     <View style={styles.eventCard}>
       <View style={styles.eventHead}>
@@ -146,7 +148,18 @@ function EventCard({ event }: { event: OrganizerTicketEventSummary }) {
         <View><Text style={styles.metricValue}>{event.capacity_remaining.toLocaleString()}</Text><Text style={styles.metricLabel}>remaining</Text></View>
       </View>
       <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${soldPercent}%` }]} /></View>
-      <View style={styles.eventFoot}><Text style={styles.footText}>{soldPercent}% of capacity sold</Text><ChevronRight size={18} color={MUTED} /></View>
+      <View style={styles.eventFoot}>
+        <Text style={styles.footText}>{soldPercent}% of capacity sold</Text>
+        {canEdit ? (
+          <Pressable
+            style={styles.editBtn}
+            onPress={() => router.push({ pathname: "/(student)/organizer-event-create", params: { eventId: event.id } } as any)}
+          >
+            <PencilLine size={14} color={ACCENT} />
+            <Text style={styles.editText}>{event.status === "changes_requested" ? "Fix & resubmit" : "Edit draft"}</Text>
+          </Pressable>
+        ) : <ChevronRight size={18} color={MUTED} />}
+      </View>
     </View>
   );
 }
@@ -192,6 +205,8 @@ const styles = StyleSheet.create({
   metricLabel: { color: MUTED, fontSize: 10, fontWeight: "700", marginTop: 2 },
   progressTrack: { height: 7, borderRadius: 999, backgroundColor: "#eef1f7", overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: ACCENT, borderRadius: 999 },
-  eventFoot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  eventFoot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   footText: { color: MUTED, fontSize: 11, fontWeight: "800" },
+  editBtn: { minHeight: 36, borderRadius: 18, backgroundColor: "#eef1ff", paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 5 },
+  editText: { color: ACCENT, fontSize: 10, fontWeight: "900" },
 });
