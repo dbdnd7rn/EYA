@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Tex
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { ArrowLeft, CalendarDays, CheckCircle2, ImagePlus, MapPin, Send, Ticket } from "lucide-react-native";
+import { ArrowLeft, CalendarDays, CheckCircle2, ImagePlus, MapPin, Send, ShieldAlert, Ticket } from "lucide-react-native";
 import {
   createMyTicketEventDraft,
   getMyOrganizerEventDetail,
@@ -11,6 +11,7 @@ import {
   updateMyTicketEventDraft,
   upsertMyTicketTier,
 } from "@/lib/organizerTicketingApi";
+import { getMyTicketOrganizerAccess } from "@/lib/ticketOrganizerAccess";
 
 const BG = "#f5f7fc";
 const CARD = "#ffffff";
@@ -93,7 +94,9 @@ export default function OrganizerEventCreateScreen() {
   const [tierId, setTierId] = React.useState<string | null>(null);
   const [reviewNote, setReviewNote] = React.useState<string | null>(null);
   const [uploading, setUploading] = React.useState<UploadKind | null>(null);
-  const [loadingExisting, setLoadingExisting] = React.useState(isRevision);
+  const [loadingExisting, setLoadingExisting] = React.useState(true);
+  const [accessChecked, setAccessChecked] = React.useState(false);
+  const [hasAccess, setHasAccess] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [eventId, setEventId] = React.useState<string | null>(routeEventId || null);
@@ -101,11 +104,16 @@ export default function OrganizerEventCreateScreen() {
   const [submitted, setSubmitted] = React.useState(false);
 
   React.useEffect(() => {
-    if (!routeEventId) return;
     let active = true;
     const load = async () => {
       try {
         setLoadingExisting(true);
+        const access = await getMyTicketOrganizerAccess();
+        if (!active) return;
+        setHasAccess(Boolean(access));
+        setAccessChecked(true);
+        if (!access || !routeEventId) return;
+
         const event = await getMyOrganizerEventDetail(routeEventId);
         if (!active) return;
         if (event.status !== "draft" && event.status !== "changes_requested") {
@@ -132,7 +140,10 @@ export default function OrganizerEventCreateScreen() {
           setTierCapacity(String(firstTier.capacity_total ?? ""));
         }
       } catch (e: any) {
-        Alert.alert("Could not load event", e?.message || "Try again.", [{ text: "Back", onPress: () => router.back() }]);
+        if (!active) return;
+        setAccessChecked(true);
+        setHasAccess(false);
+        Alert.alert("Organizer access unavailable", e?.message || "Try again.");
       } finally {
         if (active) setLoadingExisting(false);
       }
@@ -142,6 +153,7 @@ export default function OrganizerEventCreateScreen() {
   }, [routeEventId, router]);
 
   const pickImage = async (kind: UploadKind) => {
+    if (!hasAccess) return;
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
@@ -167,6 +179,7 @@ export default function OrganizerEventCreateScreen() {
   };
 
   const saveDraft = async () => {
+    if (!hasAccess) return;
     const startIso = parseMalawiLocalDateTime(startsAt);
     const endIso = endsAt.trim() ? parseMalawiLocalDateTime(endsAt) : null;
     const price = numberValue(tierPrice);
@@ -231,7 +244,7 @@ export default function OrganizerEventCreateScreen() {
   };
 
   const submit = async () => {
-    if (!eventId || !readyToSubmit) return;
+    if (!hasAccess || !eventId || !readyToSubmit) return;
     try {
       setSubmitting(true);
       await submitMyTicketEvent(eventId);
@@ -244,7 +257,20 @@ export default function OrganizerEventCreateScreen() {
   };
 
   if (loadingExisting) {
-    return <SafeAreaView style={styles.root}><View style={styles.loadingWrap}><ActivityIndicator color={ACCENT} /><Text style={styles.loadingText}>Loading organizer draft...</Text></View></SafeAreaView>;
+    return <SafeAreaView style={styles.root}><View style={styles.loadingWrap}><ActivityIndicator color={ACCENT} /><Text style={styles.loadingText}>Checking Organizer Workspace...</Text></View></SafeAreaView>;
+  }
+
+  if (accessChecked && !hasAccess) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <View style={styles.blockedWrap}>
+          <View style={styles.blockedIcon}><ShieldAlert size={36} color="#a35b00" /></View>
+          <Text style={styles.blockedTitle}>Organizer access unavailable</Text>
+          <Text style={styles.blockedText}>Event creation is private and invite-only. EYA Admin must activate a temporary Organizer Workspace for this account.</Text>
+          <Pressable style={styles.blockedBtn} onPress={() => router.back()}><Text style={styles.blockedBtnText}>Return to EYA</Text></Pressable>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   if (submitted) {
@@ -269,8 +295,8 @@ export default function OrganizerEventCreateScreen() {
         </View>
 
         <View style={styles.notice}>
-          <Text style={styles.noticeTitle}>Admin-controlled publishing</Text>
-          <Text style={styles.noticeText}>Saving creates or updates a private organizer draft. Customers see it only after EYA Admin approval.</Text>
+          <Text style={styles.noticeTitle}>Temporary, Admin-controlled access</Text>
+          <Text style={styles.noticeText}>This workspace works only while the EYA Admin grant is active. Saving creates or updates a private draft; customers see it only after Admin approval.</Text>
         </View>
 
         {reviewNote ? <View style={styles.reviewBox}><Text style={styles.reviewKicker}>EYA REQUESTED CHANGES</Text><Text style={styles.reviewCopy}>{reviewNote}</Text></View> : null}
@@ -371,6 +397,12 @@ const styles = StyleSheet.create({
   readyText: { color: "#39745a", fontSize: 11, lineHeight: 16, fontWeight: "700", marginTop: 2 },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   loadingText: { color: MUTED, fontSize: 13, fontWeight: "800" },
+  blockedWrap: { flex: 1, padding: 28, alignItems: "center", justifyContent: "center", gap: 13 },
+  blockedIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: "#fff4df", alignItems: "center", justifyContent: "center" },
+  blockedTitle: { color: TEXT, fontSize: 23, fontWeight: "900", textAlign: "center" },
+  blockedText: { color: MUTED, fontSize: 14, lineHeight: 20, fontWeight: "700", textAlign: "center", maxWidth: 360 },
+  blockedBtn: { minHeight: 48, borderRadius: 24, backgroundColor: "#eef1ff", paddingHorizontal: 20, alignItems: "center", justifyContent: "center" },
+  blockedBtnText: { color: ACCENT, fontSize: 13, fontWeight: "900" },
   successWrap: { flex: 1, padding: 28, alignItems: "center", justifyContent: "center", gap: 14 },
   successIcon: { width: 84, height: 84, borderRadius: 42, backgroundColor: "#e4f7ec", alignItems: "center", justifyContent: "center" },
   successTitle: { color: TEXT, fontSize: 25, fontWeight: "900", textAlign: "center" },
