@@ -11,6 +11,23 @@ import { storeActiveWorkspace } from "@/lib/activeWorkspace";
 import { getFallbackWorkspaceRole, getWorkspaceHomeRoute, getWorkspaceStatuses } from "@/lib/workspaceAccess";
 import EyaWordmark from "@/components/brand/EyaWordmark";
 
+const REDIRECT_WATCHDOG_MS = 7000;
+const REDIRECT_STEP_TIMEOUT_MS = 3500;
+
+async function withRedirectTimeout<T>(promise: Promise<T>, ms = REDIRECT_STEP_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Startup routing step timed out.")), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export default function RedirectPage() {
   const router = useRouter();
   const { user, role, activeRole, loading, setActiveRole, syncSession } = useAuth();
@@ -20,100 +37,119 @@ export default function RedirectPage() {
     if (loading || routingStarted.current) return;
     routingStarted.current = true;
     let active = true;
+    let routed = false;
+
+    const replaceOnce = (route: string) => {
+      if (!active || routed) return;
+      routed = true;
+      router.replace(route as any);
+    };
+
+    const routeToUserHome = async () => {
+      await withRedirectTimeout(setActiveRole("student"), 1800).catch(() => undefined);
+      replaceOnce(getWorkspaceHomeRoute("student"));
+    };
+
+    const watchdog = setTimeout(() => {
+      if (!active || routed) return;
+      // Startup must never leave a signed-in person trapped on this spinner.
+      // Route to the safest workspace immediately; workspace state can recover
+      // after the app is usable again.
+      void setActiveRole("student").catch(() => undefined);
+      void (user?.id ? storeActiveWorkspace(user.id, "student").catch(() => undefined) : Promise.resolve());
+      replaceOnce(getWorkspaceHomeRoute("student"));
+    }, REDIRECT_WATCHDOG_MS);
 
     const go = async () => {
       let resolvedUser = user;
       let recoveredSession = false;
 
       if (!resolvedUser) {
-        resolvedUser = await syncSession().catch(() => null);
+        resolvedUser = await withRedirectTimeout(syncSession()).catch(() => null);
         recoveredSession = Boolean(resolvedUser);
       }
 
-      if (!active) return;
+      if (!active || routed) return;
       if (!resolvedUser) {
-        router.replace("/(auth)/login");
+        replaceOnce("/(auth)/login");
         return;
       }
 
       // When the provider had to recover the session, use the stable User
       // workspace first instead of sending the person into a stale saved role.
       if (recoveredSession) {
-        await storeActiveWorkspace(resolvedUser.id, "student");
-        await setActiveRole("student");
-        if (active) router.replace(getWorkspaceHomeRoute("student") as any);
+        await withRedirectTimeout(storeActiveWorkspace(resolvedUser.id, "student"), 1800).catch(() => undefined);
+        await withRedirectTimeout(setActiveRole("student"), 1800).catch(() => undefined);
+        replaceOnce(getWorkspaceHomeRoute("student"));
         return;
       }
 
       const normalizedRole = normalizeAppRole(role);
       const normalizedActiveRole = normalizeAppRole(activeRole);
       const canUseAdmin = ENV.DEV_AUTH_MODE || isConfiguredAdminEmail(resolvedUser.email);
-      const goToUserHome = async () => {
-        await setActiveRole("student");
-        if (active) router.replace(getWorkspaceHomeRoute("student") as any);
-      };
 
       if (normalizedRole === "admin" && canUseAdmin) {
-        await setActiveRole("admin");
-        if (active) router.replace(getWorkspaceHomeRoute("admin") as any);
+        await withRedirectTimeout(setActiveRole("admin"), 1800).catch(() => undefined);
+        replaceOnce(getWorkspaceHomeRoute("admin"));
         return;
       }
 
       if (normalizedActiveRole) {
         if (normalizedActiveRole === "student" || normalizedActiveRole === "admin") {
-          router.replace(getWorkspaceHomeRoute(normalizedActiveRole) as any);
+          replaceOnce(getWorkspaceHomeRoute(normalizedActiveRole));
           return;
         }
 
-        const statuses = await getWorkspaceStatuses(resolvedUser.id, resolvedUser.email);
+        const statuses = await withRedirectTimeout(getWorkspaceStatuses(resolvedUser.id, resolvedUser.email));
+        if (!active || routed) return;
         const activeStatus = statuses.find((entry) => entry.role === normalizedActiveRole) ?? null;
         if (!activeStatus?.ready) {
-          await goToUserHome();
+          await routeToUserHome();
           return;
         }
 
-        if (active) router.replace(getWorkspaceHomeRoute(normalizedActiveRole) as any);
+        replaceOnce(getWorkspaceHomeRoute(normalizedActiveRole));
         return;
       }
 
       if (normalizedRole) {
         const fallbackRole = getFallbackWorkspaceRole(normalizedRole, resolvedUser.email);
-        await setActiveRole(fallbackRole);
-        if (active) router.replace(getWorkspaceHomeRoute(fallbackRole) as any);
+        await withRedirectTimeout(setActiveRole(fallbackRole), 1800).catch(() => undefined);
+        replaceOnce(getWorkspaceHomeRoute(fallbackRole));
         return;
       }
 
-      const recoveredRole = await ensureProfileRoleFromAuthUser(resolvedUser);
+      const recoveredRole = await withRedirectTimeout(ensureProfileRoleFromAuthUser(resolvedUser)).catch(() => null);
+      if (!active || routed) return;
       if (recoveredRole) {
         const fallbackRole =
           recoveredRole === "admin" && !canUseAdmin ? "student" : getFallbackWorkspaceRole(recoveredRole, resolvedUser.email);
-        await setActiveRole(fallbackRole);
-        if (active) router.replace(getWorkspaceHomeRoute(fallbackRole) as any);
+        await withRedirectTimeout(setActiveRole(fallbackRole), 1800).catch(() => undefined);
+        replaceOnce(getWorkspaceHomeRoute(fallbackRole));
         return;
       }
 
-      const { data, error } = await supabase.from("profiles").select("role").eq("id", resolvedUser.id).maybeSingle();
+      const profileLookup = supabase.from("profiles").select("role").eq("id", resolvedUser.id).maybeSingle();
+      const { data, error } = await withRedirectTimeout(profileLookup);
+      if (!active || routed) return;
       if (error) {
-        await goToUserHome();
+        await routeToUserHome();
         return;
       }
       const dbRole = normalizeAppRole(data?.role);
       const fallbackRole =
         dbRole === "admin" && !canUseAdmin ? "student" : getFallbackWorkspaceRole(dbRole, resolvedUser.email);
-      await setActiveRole(fallbackRole);
-      if (active) router.replace(getWorkspaceHomeRoute(fallbackRole) as any);
+      await withRedirectTimeout(setActiveRole(fallbackRole), 1800).catch(() => undefined);
+      replaceOnce(getWorkspaceHomeRoute(fallbackRole));
     };
 
-    void go().catch(async () => {
-      try {
-        await setActiveRole("student");
-      } finally {
-        if (active) router.replace(getWorkspaceHomeRoute("student") as any);
-      }
+    void go().catch(() => {
+      void routeToUserHome();
     });
 
     return () => {
       active = false;
+      clearTimeout(watchdog);
     };
   }, [activeRole, loading, role, router, setActiveRole, syncSession, user]);
 
