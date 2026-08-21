@@ -1,4 +1,3 @@
-import { ENV } from "@/lib/env";
 import { supabase } from "@/lib/supabase";
 
 export type TicketGuestPassMode = "live_link" | "offline";
@@ -36,6 +35,8 @@ export type CreatedTicketGuestPass = {
   replaced_guest_pass_id: string | null;
 };
 
+const GUEST_PASS_WEB_URL = "https://eya-guest-pass-pompo-pompo-deliveries.vercel.app";
+
 function normalize(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -43,7 +44,7 @@ function normalize(value: unknown) {
 export function guestPassWebUrl(shareToken: string) {
   const token = normalize(shareToken);
   if (!token) throw new Error("Guest link token is unavailable.");
-  return `${ENV.SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/ticket-guest-pass#t=${encodeURIComponent(token)}`;
+  return `${GUEST_PASS_WEB_URL}/#t=${encodeURIComponent(token)}`;
 }
 
 export async function createTicketGuestPass(input: {
