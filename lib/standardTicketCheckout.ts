@@ -1,7 +1,10 @@
 import { ENV } from "@/lib/env";
 
 const REQUEST_TIMEOUT_MS = 15_000;
-const PAYCHANGU_CHECKOUT_HOSTS = new Set(["checkout.paychangu.com"]);
+const PAYCHANGU_CHECKOUT_HOSTS = new Set([
+  "checkout.paychangu.com",
+  "test-checkout.paychangu.com",
+]);
 
 export type HybridPaymentMethod = "airtel_money" | "mpamba" | "bank_transfer" | "card";
 
