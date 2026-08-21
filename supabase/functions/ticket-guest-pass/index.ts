@@ -7,15 +7,33 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
+const encoder = new TextEncoder();
 
 const JSON_HEADERS = {
-  "content-type": "application/json; charset=utf-8",
-  "cache-control": "no-store, max-age=0",
-  "referrer-policy": "no-referrer",
+  "Content-Type": "application/json; charset=UTF-8",
+  "Cache-Control": "no-store, max-age=0",
+  "Referrer-Policy": "no-referrer",
 };
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+}
+
+function html(body: string) {
+  const headers = new Headers();
+  headers.set("Content-Type", "text/html; charset=UTF-8");
+  headers.set("Content-Disposition", "inline; filename=\"eya-guest-pass.html\"");
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  headers.set("Pragma", "no-cache");
+  headers.set("Referrer-Policy", "no-referrer");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
+  headers.set("Content-Language", "en");
+  headers.set(
+    "Content-Security-Policy",
+    "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+  );
+  return new Response(encoder.encode(body), { status: 200, headers });
 }
 
 function message(error: unknown, fallback: string) {
@@ -29,7 +47,8 @@ function htmlPage() {
   return `<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
 <meta name="referrer" content="no-referrer" />
 <title>EYA Guest Pass</title>
@@ -41,7 +60,7 @@ function htmlPage() {
 <body>
 <div class="wrap">
   <div class="brand"><div class="logo">EYA</div><div class="secure">LIVE GUEST PASS</div></div>
-  <div id="loading" class="card loading"><div class="spinner"></div>Securing guest ticket…</div>
+  <div id="loading" class="card loading"><div class="spinner"></div>Securing guest ticket...</div>
   <div id="error" class="error"></div>
   <div id="pass" class="card" style="display:none">
     <div class="hero"><div class="eyebrow">OFFICIAL EVENT PASS</div><div id="eventTitle" class="title">EYA Event</div><div id="eventMeta" class="meta"></div></div>
@@ -80,7 +99,7 @@ function htmlPage() {
     if (event?.date_label) parts.push(event.date_label);
     if (event?.venue) parts.push(event.venue);
     if (event?.city) parts.push(event.city);
-    return parts.join(' • ');
+    return parts.join(' - ');
   }
   async function refresh() {
     if (!token) return fail('This guest link is incomplete. Ask the ticket holder to send a new guest link.');
@@ -103,7 +122,7 @@ function htmlPage() {
   setInterval(() => {
     if (!currentExpiry) return;
     const left = Math.max(0, Math.ceil((currentExpiry - Date.now()) / 1000));
-    text('count', 'Auto-refreshing • expires in ' + left + 's');
+    text('count', 'Auto-refreshing - expires in ' + left + 's');
   }, 1000);
   refresh();
 })();
@@ -116,26 +135,15 @@ Deno.serve(async (req: Request) => {
     return new Response(null, {
       status: 204,
       headers: {
-        "access-control-allow-origin": "*",
-        "access-control-allow-methods": "GET,POST,OPTIONS",
-        "access-control-allow-headers": "content-type",
-        "cache-control": "no-store",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Access-Control-Allow-Headers": "content-type",
+        "Cache-Control": "no-store",
       },
     });
   }
 
-  if (req.method === "GET") {
-    return new Response(htmlPage(), {
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store, max-age=0",
-        "referrer-policy": "no-referrer",
-        "x-content-type-options": "nosniff",
-        "x-frame-options": "DENY",
-        "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
-      },
-    });
-  }
+  if (req.method === "GET") return html(htmlPage());
 
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed." }, 405);
 
