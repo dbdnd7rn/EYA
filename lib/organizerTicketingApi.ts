@@ -33,6 +33,40 @@ export type OrganizerTicketEventSummary = {
   capacity_remaining: number;
 };
 
+export type OrganizerTicketTierDetail = {
+  id: string;
+  name: string;
+  description: string;
+  price_mwk: number;
+  capacity_total: number;
+  capacity_sold: number;
+  capacity_reserved: number;
+  available: boolean;
+  sale_starts_at: string | null;
+  sale_ends_at: string | null;
+  sort_order: number;
+};
+
+export type OrganizerTicketEventDetail = {
+  id: string;
+  title: string;
+  category: string;
+  description: string | null;
+  date_label: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  venue: string;
+  city: string;
+  image_url: string;
+  hero_image_url: string;
+  status: OrganizerTicketEventStatus;
+  review_note: string | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  published_at: string | null;
+  tiers: OrganizerTicketTierDetail[];
+};
+
 export type OrganizerEventDraftInput = {
   title: string;
   category: string;
@@ -77,6 +111,24 @@ export async function listMyOrganizerEvents(): Promise<OrganizerTicketEventSumma
     capacity_total: Number(row?.capacity_total ?? 0),
     capacity_remaining: Number(row?.capacity_remaining ?? 0),
   })) as OrganizerTicketEventSummary[];
+}
+
+export async function getMyOrganizerEventDetail(eventId: string): Promise<OrganizerTicketEventDetail> {
+  const { data, error } = await supabase.rpc("get_my_organizer_event_detail", { p_event_id: eventId });
+  if (error) throw new Error(message(error, "Could not load organizer event."));
+  if (!data?.id) throw new Error("Organizer event not found.");
+  const tiers = Array.isArray(data?.tiers) ? data.tiers : [];
+  return {
+    ...(data as OrganizerTicketEventDetail),
+    tiers: tiers.map((tier: any) => ({
+      ...tier,
+      price_mwk: Number(tier?.price_mwk ?? 0),
+      capacity_total: Number(tier?.capacity_total ?? 0),
+      capacity_sold: Number(tier?.capacity_sold ?? 0),
+      capacity_reserved: Number(tier?.capacity_reserved ?? 0),
+      sort_order: Number(tier?.sort_order ?? 100),
+    })),
+  };
 }
 
 export async function createMyTicketEventDraft(input: OrganizerEventDraftInput) {
