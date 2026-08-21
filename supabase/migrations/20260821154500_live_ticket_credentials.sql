@@ -195,7 +195,7 @@ begin
     v_hash := encode(extensions.digest(v_raw, 'sha256'), 'hex');
   end if;
 
-  select it.*, tlc.generation
+  select it, tlc.generation
   into v_ticket, v_generation
   from public.ticket_live_credentials tlc
   join public.issued_tickets it on it.id = tlc.issued_ticket_id
