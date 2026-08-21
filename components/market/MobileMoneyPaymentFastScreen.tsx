@@ -15,6 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import {
   ArrowLeft,
   Calendar,
+  Check,
   Clock,
   CreditCard,
   Landmark,
@@ -55,6 +56,13 @@ const METHODS: Array<{
   { id: "bank_transfer", title: "Bank Transfer", subtitle: "Receive a temporary Malawian bank account" },
   { id: "card", title: "Debit or Credit Card", subtitle: "Continue to PayChangu's PCI-compliant card page" },
 ];
+
+const METHOD_THEME: Record<HybridPaymentMethod, { border: string; soft: string; icon: string }> = {
+  airtel_money: { border: "#ED1C24", soft: "#FFF5F5", icon: "#FFF0F1" },
+  mpamba: { border: "#159447", soft: "#F3FBF6", icon: "#EAF8EF" },
+  bank_transfer: { border: "#0D7285", soft: "#F1FAFB", icon: "#EAF6F8" },
+  card: { border: "#6B5CD4", soft: "#F6F4FF", icon: "#EFECFF" },
+};
 
 function getNationalMobileDigits(value: string): string | null {
   const digits = value.replace(/\D/g, "");
@@ -223,7 +231,13 @@ export default function HybridTicketCheckoutScreen() {
             <Text style={styles.serverNote}>EYA's backend recalculates and locks the final amount before PayChangu creates the charge.</Text>
           </View>
 
-          <Text style={styles.kicker}>CHOOSE PAYMENT METHOD</Text>
+          <View style={styles.paymentHeadingRow}>
+            <View>
+              <Text style={styles.kicker}>CHOOSE PAYMENT METHOD</Text>
+              <Text style={styles.paymentHeadingSub}>Select the payment option you want to use</Text>
+            </View>
+            <View style={styles.securePill}><Lock size={12} color={ACCENT} /><Text style={styles.securePillText}>Secure</Text></View>
+          </View>
           <View style={styles.methodsWrap}>
             {METHODS.map((method) => (
               <PaymentMethodCard
@@ -237,20 +251,25 @@ export default function HybridTicketCheckoutScreen() {
 
           {needsPhone ? (
             <View style={styles.fieldSection}>
-              <Text style={styles.kicker}>MOBILE-MONEY NUMBER</Text>
-              <View style={styles.phoneCard}>
+              <View style={styles.fieldHeadingRow}>
+                <Text style={styles.kicker}>MOBILE-MONEY NUMBER</Text>
+                <Text style={styles.fieldProvider}>{paymentMethod === "airtel_money" ? "Airtel Money" : "TNM Mpamba"}</Text>
+              </View>
+              <View style={[styles.phoneCard, nationalPhoneDigits && styles.phoneCardValid]}>
+                <PaymentBrandLogo brand={paymentMethod} size={38} active={false} />
                 <TextInput
                   value={phone}
                   onChangeText={(value) => setPhone(formatPhone(value))}
-                  placeholder="0980 991 460"
+                  placeholder={paymentMethod === "airtel_money" ? "0991 234 567" : "0881 234 567"}
                   placeholderTextColor={MUTED}
                   keyboardType="phone-pad"
                   maxLength={12}
                   style={styles.phoneInput}
-                  selectionColor={ACCENT}
+                  selectionColor={METHOD_THEME[paymentMethod].border}
                 />
+                {nationalPhoneDigits ? <View style={styles.phoneValidBadge}><Check size={14} color="#ffffff" /></View> : null}
               </View>
-              <Text style={styles.fieldHelp}>Enter the normal 10-digit Malawi number, for example 0980 991 460 or 0894 656 119. EYA will never ask for your PIN.</Text>
+              <Text style={styles.fieldHelp}>Use the Malawi number registered for {paymentMethod === "airtel_money" ? "Airtel Money" : "TNM Mpamba"}. EYA will never ask for your PIN.</Text>
             </View>
           ) : null}
 
@@ -281,15 +300,39 @@ export default function HybridTicketCheckoutScreen() {
 }
 
 function PaymentMethodCard({ active, method, onPress }: { active: boolean; method: typeof METHODS[number]; onPress: () => void }) {
+  const theme = METHOD_THEME[method.id];
+  const isMobileMoney = method.id === "airtel_money" || method.id === "mpamba";
+
   return (
-    <Pressable style={[styles.methodCard, active && styles.methodCardActive]} onPress={onPress}>
-      <View style={styles.methodIconBox}>
-        {method.id === "airtel_money" || method.id === "mpamba" ? (
-          <PaymentBrandLogo brand={method.id} size={50} active={active} />
-        ) : method.id === "bank_transfer" ? <Landmark size={27} color={active ? ACCENT : TEXT} /> : <CreditCard size={27} color={active ? ACCENT : TEXT} />}
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.methodCard,
+        active && styles.methodCardActive,
+        active && { borderColor: theme.border, backgroundColor: theme.soft },
+        pressed && styles.methodCardPressed,
+      ]}
+    >
+      <View style={[styles.methodIconBox, { backgroundColor: isMobileMoney ? "#ffffff" : theme.icon }]}>
+        {isMobileMoney ? (
+          <PaymentBrandLogo brand={method.id} size={58} active={active} />
+        ) : method.id === "bank_transfer" ? <Landmark size={28} color={active ? theme.border : TEXT} /> : <CreditCard size={28} color={active ? theme.border : TEXT} />}
       </View>
-      <View style={styles.methodCopy}><Text style={styles.methodTitle}>{method.title}</Text><Text style={styles.methodSub}>{method.subtitle}</Text></View>
-      <View style={[styles.radioOuter, active && styles.radioOuterActive]}>{active ? <View style={styles.radioInner} /> : null}</View>
+      <View style={styles.methodCopy}>
+        <View style={styles.methodTitleRow}>
+          <Text style={styles.methodTitle}>{method.title}</Text>
+          {active ? (
+            <View style={[styles.selectedChip, { backgroundColor: theme.border }]}>
+              <Check size={11} color="#ffffff" strokeWidth={3} />
+              <Text style={styles.selectedChipText}>Selected</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={styles.methodSub}>{method.subtitle}</Text>
+      </View>
+      <View style={[styles.radioOuter, active && { borderColor: theme.border }]}>
+        {active ? <View style={[styles.radioInner, { backgroundColor: theme.border }]} /> : null}
+      </View>
     </Pressable>
   );
 }
@@ -311,8 +354,9 @@ const styles = StyleSheet.create({
   header: { minHeight: 82, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 14 }, roundBtn: { width: 48, height: 48, borderRadius: 17, backgroundColor: "rgba(255,255,255,0.82)", borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" }, headerCopy: { flex: 1, gap: 5 }, headerTitle: { color: TEXT, fontSize: 22, fontWeight: "900" }, secureRow: { flexDirection: "row", alignItems: "center", gap: 6 }, secureText: { flex: 1, color: ACCENT, fontSize: 11, fontWeight: "800" },
   content: { paddingHorizontal: 18, gap: 18 }, kicker: { color: TEXT, fontSize: 12, fontWeight: "900", letterSpacing: 1.2 }, eventCard: { borderRadius: 26, backgroundColor: "rgba(255,255,255,0.9)", borderWidth: 1, borderColor: BORDER, padding: 14, flexDirection: "row", gap: 14 }, eventImage: { width: 104, height: 136, borderRadius: 18, backgroundColor: BORDER }, eventCopy: { flex: 1, minWidth: 0, justifyContent: "center", gap: 9 }, eventTitle: { color: TEXT, fontSize: 20, lineHeight: 25, fontWeight: "900" }, metaRow: { flexDirection: "row", alignItems: "center", gap: 8 }, metaText: { flex: 1, color: TEXT, fontSize: 12, fontWeight: "700" },
   summaryCard: { borderRadius: 24, backgroundColor: "rgba(255,255,255,0.92)", borderWidth: 1, borderColor: BORDER, padding: 17, gap: 14 }, ticketRow: { flexDirection: "row", alignItems: "center", gap: 12 }, ticketIcon: { width: 54, height: 54, borderRadius: 17, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" }, ticketCopy: { flex: 1, minWidth: 0, gap: 5 }, ticketTitle: { color: TEXT, fontSize: 16, fontWeight: "900" }, ticketSub: { color: MUTED, fontSize: 13, fontWeight: "700" }, ticketTotal: { color: TEXT, fontSize: 17, fontWeight: "900" }, divider: { height: 1, backgroundColor: BORDER }, totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, totalLabel: { color: TEXT, fontSize: 16, fontWeight: "900" }, totalValue: { color: ACCENT, fontSize: 24, fontWeight: "900" }, serverNote: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700" },
-  methodsWrap: { gap: 11 }, methodCard: { minHeight: 86, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.86)", flexDirection: "row", alignItems: "center", gap: 13, padding: 13 }, methodCardActive: { borderWidth: 2, borderColor: ACCENT, backgroundColor: "#ffffff" }, methodIconBox: { width: 60, height: 54, borderRadius: 15, backgroundColor: "#f7f8fe", alignItems: "center", justifyContent: "center" }, methodCopy: { flex: 1, minWidth: 0 }, methodTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, methodSub: { color: MUTED, fontSize: 12, lineHeight: 17, fontWeight: "700", marginTop: 4 }, radioOuter: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: MUTED, alignItems: "center", justifyContent: "center" }, radioOuterActive: { borderColor: ACCENT }, radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: ACCENT },
-  fieldSection: { gap: 10 }, phoneCard: { minHeight: 66, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fff", flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 }, phoneInput: { flex: 1, minWidth: 0, color: TEXT, fontSize: 17, fontWeight: "800" }, fieldHelp: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700" },
+  paymentHeadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, paymentHeadingSub: { color: MUTED, fontSize: 12, fontWeight: "700", marginTop: 5 }, securePill: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, backgroundColor: "#EEF1FF", paddingHorizontal: 10, paddingVertical: 7 }, securePillText: { color: ACCENT, fontSize: 11, fontWeight: "900" },
+  methodsWrap: { gap: 12 }, methodCard: { minHeight: 96, borderRadius: 23, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.88)", flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 14, paddingVertical: 13, shadowColor: "#13285f", shadowOpacity: 0.045, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 1 }, methodCardActive: { borderWidth: 2, shadowOpacity: 0.1, shadowRadius: 16, shadowOffset: { width: 0, height: 7 }, elevation: 3 }, methodCardPressed: { transform: [{ scale: 0.992 }], opacity: 0.94 }, methodIconBox: { width: 68, height: 66, borderRadius: 19, alignItems: "center", justifyContent: "center" }, methodCopy: { flex: 1, minWidth: 0 }, methodTitleRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 7 }, methodTitle: { color: TEXT, fontSize: 16, fontWeight: "900" }, methodSub: { color: MUTED, fontSize: 12, lineHeight: 17, fontWeight: "700", marginTop: 5 }, selectedChip: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }, selectedChipText: { color: "#ffffff", fontSize: 9, fontWeight: "900", letterSpacing: 0.2 }, radioOuter: { width: 23, height: 23, borderRadius: 12, borderWidth: 2, borderColor: "#A7AEC0", alignItems: "center", justifyContent: "center", backgroundColor: "#ffffff" }, radioInner: { width: 11, height: 11, borderRadius: 6 },
+  fieldSection: { gap: 10 }, fieldHeadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }, fieldProvider: { color: ACCENT, fontSize: 12, fontWeight: "900" }, phoneCard: { minHeight: 70, borderRadius: 22, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fff", flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 12, shadowColor: "#13285f", shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 1 }, phoneCardValid: { borderColor: "#8DD7A8", borderWidth: 1.5 }, phoneInput: { flex: 1, minWidth: 0, color: TEXT, fontSize: 18, fontWeight: "900", letterSpacing: 0.2 }, phoneValidBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: "#159447", alignItems: "center", justifyContent: "center" }, fieldHelp: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700" },
   infoCard: { borderRadius: 22, backgroundColor: "#eef1ff", padding: 16, flexDirection: "row", alignItems: "center", gap: 13 }, infoIcon: { width: 48, height: 48, borderRadius: 15, backgroundColor: "rgba(255,255,255,0.72)", alignItems: "center", justifyContent: "center" }, infoCopy: { flex: 1 }, infoTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, infoText: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700", marginTop: 4 },
   qrInfoCard: { borderRadius: 22, backgroundColor: "#e8ddff", padding: 16, flexDirection: "row", alignItems: "center", gap: 14 }, qrIconBox: { width: 54, height: 54, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.58)", alignItems: "center", justifyContent: "center" }, qrCopy: { flex: 1 }, qrTitle: { color: TEXT, fontSize: 15, fontWeight: "900" }, qrText: { color: TEXT, opacity: 0.74, fontSize: 12, lineHeight: 18, fontWeight: "700", marginTop: 5 },
   payBarOuter: { position: "absolute", left: 14, right: 14 }, payBar: { minHeight: 86, borderRadius: 26, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fff", padding: 13, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, shadowColor: "#13285f", shadowOpacity: 0.18, shadowRadius: 26, shadowOffset: { width: 0, height: 12 }, elevation: 14 }, payLabel: { color: MUTED, fontSize: 10, fontWeight: "900", letterSpacing: 1.2 }, payAmount: { color: TEXT, fontSize: 22, fontWeight: "900", marginTop: 4 }, payButton: { flex: 1, maxWidth: 215, minHeight: 58, borderRadius: 18, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 12 }, payButtonDisabled: { backgroundColor: "#cfd4df" }, payButtonText: { color: "#fff", fontSize: 13, fontWeight: "900", textAlign: "center" },
