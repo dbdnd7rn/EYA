@@ -5,22 +5,33 @@ This file is the single checkpoint for ticketing work while development continue
 ## READY TO TEST ON PHONE
 
 ### 1. App startup after organizer/admin hardening
-Status: BLOCKED / NEEDS RETEST
+Status: NEEDS RETEST AFTER STARTUP WATCHDOG FIX
+
+Latest startup reliability fix:
+- `ad0f5d2` - prevent indefinite `/redirect` loading.
+- If workspace/profile resolution stalls, EYA should route to the normal User workspace within about 7 seconds instead of spinning forever.
 
 Steps:
 1. Pull latest `feat/hybrid-checkout`.
 2. Start Expo with a clean cache.
 3. Fully close Expo Go, reopen, and scan the new QR.
 4. Confirm EYA gets past the launch/loading screen.
+5. If the saved workspace cannot resolve quickly, wait up to 7 seconds and confirm EYA falls back to the User workspace.
 
 Expected:
 - EYA opens normally.
-- No infinite loading screen.
-- Existing student/customer and Admin workspaces still open.
+- No indefinite loading screen.
+- Existing student/customer workspace opens.
+- Admin can still be entered through the normal workspace flow.
+
+Known log:
+- Metro successfully bundled the Android app (`expo-router/entry.js`, 3860 modules).
+- The current SafeAreaView deprecation message is only a warning and is not the startup blocker.
 
 If it fails:
 - Capture the last 20 terminal lines from Metro/PowerShell.
 - Capture any red Expo error screen.
+- Note whether the visible spinner says `Starting EYA...`, shows only the EYA logo + pink spinner, or is another screen. That identifies the exact startup stage.
 - Do not continue feature testing until startup is stable.
 
 ### 2. Customer ticket discovery authority
@@ -138,6 +149,7 @@ Need design decision for how EYA tickets remain scannable when attendee mobile d
 - Direct legacy rewrite of `pending_review` organizer event was blocked.
 - Admin review RPC successfully transitions a valid submission to published.
 - Anonymous ticket catalog grants reduced to SELECT only; RLS remains authoritative.
+- Android Metro bundling completed successfully after organizer/admin changes; current blocker is runtime routing, not compilation.
 
 ## BUILD RULES DURING CHARGING / NO-PHONE PERIOD
 
