@@ -128,19 +128,18 @@ export async function notifyPaymentState(payment, status, extra = {}) {
 
   const amountLabel = `MWK ${Math.round(Number(payment.amount_mwk || 0)).toLocaleString("en-MW")}`;
   if (status === "paid") {
-    const title = payment.metadata?.purpose === "wallet_topup" ? "Wallet top-up successful" : "Payment successful";
-    const body =
-      payment.metadata?.purpose === "wallet_topup"
-        ? `${amountLabel} was added to your wallet.`
-        : `${amountLabel} payment was verified successfully.`;
+    const walletSuspended = payment.metadata?.purpose === "wallet_topup";
     await sendPushNotificationsToUsers([payment.user_id], {
-      title,
-      body,
-      type: "payment_success",
+      title: walletSuspended ? "Payment verified" : "Payment successful",
+      body: walletSuspended
+        ? `${amountLabel} payment was verified. Wallet services remain suspended and no Wallet balance was changed.`
+        : `${amountLabel} payment was verified successfully.`,
+      type: walletSuspended ? "payment_verified_wallet_suspended" : "payment_success",
       data: {
         paymentId: payment.id,
         reference: payment.reference,
         relatedOrderId: payment.related_order_id || null,
+        walletSuspended,
         ...extra,
       },
     });
@@ -166,33 +165,81 @@ export async function notifyPaymentState(payment, status, extra = {}) {
 export async function notifyCampusOrderCreated(orderId) {
   const { data: order, error: orderError } = await supabaseNewApp
     .from("orders")
-    .select("id,customer_id,vendor_id,channel,total_mwk")
+    .select("id,customer_id,vendor_id,channel,total_mwk,payment_status")
     .eq("id", orderId)
     .maybeSingle();
   if (orderError) throw new Error(orderError.message);
   if (!order) return;
 
-  const { data: vendor, error: vendorError } = await supabaseNewApp
-    .from("vendors")
-    .select("id,owner_id,name")
-    .eq("id", order.vendor_id)
-    .maybeSingle();
+  const [{ data: vendor, error: vendorError }, { data: payment, error: paymentError }] = await Promise.all([
+    supabaseNewApp
+      .from("vendors")
+      .select("id,owner_id,name")
+      .eq("id", order.vendor_id)
+      .maybeSingle(),
+    supabase
+      .from("payments")
+      .select("provider,status")
+      .eq("related_order_id", orderId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
   if (vendorError) throw new Error(vendorError.message);
+  if (paymentError) throw new Error(paymentError.message);
 
   const amountLabel = `MWK ${Math.round(Number(order.total_mwk || 0)).toLocaleString("en-MW")}`;
+  const isPaid = String(order.payment_status || "").toLowerCase() === "paid";
+  const isPendingCash =
+    String(order.payment_status || "").toLowerCase() === "pending" &&
+    String(payment?.provider || "").toLowerCase() === "cash" &&
+    String(payment?.status || "").toLowerCase() === "pending";
+
+  const customerNotification = isPaid
+    ? {
+        title: "Order confirmed",
+        body: `Your ${order.channel} order has been created and paid successfully.`,
+        type: "order_created",
+      }
+    : isPendingCash
+      ? {
+          title: "Cash order confirmed",
+          body: `Your ${order.channel} order is confirmed. Pay ${amountLabel} in cash only at verified handoff.`,
+          type: "cash_order_created",
+        }
+      : {
+          title: "Order created",
+          body: `Your ${order.channel} order was created. Payment is still pending.`,
+          type: "order_payment_pending",
+        };
+
   await sendPushNotificationsToUsers([order.customer_id], {
-    title: "Order confirmed",
-    body: `Your ${order.channel} order has been created and paid successfully.`,
-    type: "order_created",
-    data: { orderId, role: "customer" },
+    ...customerNotification,
+    data: { orderId, role: "customer", paymentStatus: order.payment_status || null },
   });
 
   if (vendor?.owner_id) {
+    const vendorNotification = isPaid
+      ? {
+          title: "New paid order",
+          body: `${vendor.name || "Your shop"} received a new ${order.channel} order worth ${amountLabel}.`,
+          type: "vendor_order_created",
+        }
+      : isPendingCash
+        ? {
+            title: "New cash order",
+            body: `${vendor.name || "Your shop"} received a ${order.channel} cash order worth ${amountLabel}. Collect payment only at verified handoff.`,
+            type: "vendor_cash_order_created",
+          }
+        : {
+            title: "New pending order",
+            body: `${vendor.name || "Your shop"} received a ${order.channel} order worth ${amountLabel}; payment is still pending.`,
+            type: "vendor_order_payment_pending",
+          };
+
     await sendPushNotificationsToUsers([vendor.owner_id], {
-      title: "New paid order",
-      body: `${vendor.name || "Your shop"} received a new ${order.channel} order worth ${amountLabel}.`,
-      type: "vendor_order_created",
-      data: { orderId, role: "vendor" },
+      ...vendorNotification,
+      data: { orderId, role: "vendor", paymentStatus: order.payment_status || null },
     });
   }
 }
