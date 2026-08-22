@@ -224,9 +224,11 @@ async function deliverOutboxEvent(
   parseJsonObject(rawBody, "Outbox payload");
 
   const timestamp = Math.floor(Date.now() / 1000);
+  const nonce = crypto.randomUUID().toLowerCase();
   const signature = await signApplicationEvent(
     row.app_id,
     timestamp,
+    nonce,
     callbackUrl.pathname,
     rawBody,
     env.APP_SECRETS_JSON,
@@ -244,6 +246,7 @@ async function deliverOutboxEvent(
         "Content-Type": "application/json",
         "x-vac-app-id": row.app_id,
         "x-vac-timestamp": String(timestamp),
+        "x-vac-nonce": nonce,
         "x-vac-signature": signature,
         "x-vac-idempotency-key": row.idempotency_key,
       },
