@@ -1,179 +1,111 @@
 # EYA Backend Reconciliation
 
-Date: 2026-08-22
-Branch: `reconcile/eya-main-backend-20260822`
+Status: canonical Vercel candidate assembled on `reconcile/eya-main-backend-20260822`; production cutover not yet performed.
 
-## Goal
+## Production target
 
-Make `dbdnd7rn/EYA-Main-Backend` the single canonical Node/backend repository for EYA while preserving the Cloudflare VAC Payments worker and the backend security gateway.
+- EYA application backend: **Vercel**
+- Auth/data/RLS/RPC: **Supabase**
+- Provider-facing payments: **VAC Payments on Cloudflare**
+- Render: legacy only during migration; retire after remaining callers are removed
 
-Production Render is not changed by this branch.
+## Current canonical runtime
 
-## Correct base
+- `index.js` exports the canonical Express app for Vercel and never calls `app.listen()`.
+- `src/server-v2.js` owns the canonical route surface.
+- `src/local-server.js` starts that same canonical app for local Node development.
+- `npm start` and `npm run dev` now use the canonical runtime rather than the historical Render gateway.
+- Historical `/api/paychangu/*` and provider browser-return routes are terminally rejected by the Vercel app.
+- Wallet routes remain terminally rejected.
+- Permanent ticket-code Admin check-in remains terminally rejected.
 
-This reconciliation is based on:
+## Preserved architecture and security invariants
 
-`feat/payment-architecture-v1-hybrid-checkout`
+- Wallet is suspended product-wide.
+- Permanent ticket IDs/codes are support/reference values only and never gate authority.
+- Ticket admission remains `issued ticket -> short-lived live credential -> rotating QR -> trusted atomic gate verification`.
+- COD remains pending until verified handoff.
+- Admin/delivery identity is derived from a validated Supabase session, never caller-supplied actor headers.
+- Cloudflare/VAC Payments remains payment authority. Vercel does not own PayChangu secrets, provider webhooks or provider verification.
+- No blanket production Supabase migration push is part of this work.
 
-not `main`, because that branch contains the current payment/security architecture, including:
+## Canonical application routes
 
-- `cloudflare/payments-worker`
-- `src/secure-entry.js`
-- the secure external Render entrypoint
+The Vercel candidate includes the valid EYA-specific server surfaces required by the caller inventory:
 
-`src/secure-entry.js` remains the externally started process and must be preserved while the inner EYA backend is reconciled.
+- authenticated Admin commerce/support operations;
+- Admin vendor/catalog/housing/user/broadcast operations;
+- Delivery Agent dispatch/assignment/status operations;
+- COD checkout and order handoff;
+- read-only ticket event/order/My Tickets convenience APIs without static admission QR generation;
+- encrypted ticket-organization payout-destination intake.
 
-## Source being reconciled
+The canonical server deliberately excludes competing Node ticket-payment authority and static permanent-code admission.
 
-Newer EYA application backend copy:
+## Payment boundary
 
-`dbdnd7rn/EYA/backend` on `feat/hybrid-checkout`
+Cloudflare/VAC Payments remains the provider boundary for Airtel Money, TNM Mpamba, bank transfer and card.
 
-## File status
+The temporary generic marketplace/food payment bridge remains isolated while those callers are migrated to VAC Payments. Do not point that bridge at Vercel because the canonical Vercel app intentionally returns HTTP 410 for historical Node PayChangu routes.
 
-### Already identical / preserved
+## Environment placement
 
-- `.gitignore`
-- `package-lock.json`
-- `src/supabase.js`
-- `cloudflare/` — shared VAC Payments infrastructure; must be preserved
+### Vercel
 
-### Added from EYA/backend on this reconciliation branch
+- `PUBLIC_BASE_URL`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_NEW_APP_SCHEMA`
+- `ADMIN_EMAILS` where used as a secondary allowlist
+- `EXPO_PUSH_ACCESS_TOKEN`
+- `PAYOUT_DESTINATION_ENCRYPTION_KEY_B64`
+- `PAYOUT_DESTINATION_ENCRYPTION_KEY_VERSION`
+- VAC app/callback credentials only where Vercel is explicitly the trusted caller/receiver
 
-- `src/foodMenu.js`
-- `src/payoutDestinations.js`
-- `src/tickets.js`
+### Cloudflare
 
-### Synchronized from EYA/backend on this reconciliation branch
+- PayChangu provider credentials
+- VAC application-secret mapping
+- provider webhook/callback verification material
+- D1 payment ledger, replay and rate-limit state
 
-- `src/config.js`
-- `src/paychangu.js`
-- `env.example`
+Never expose server credentials through `EXPO_PUBLIC_*` or `NEXT_PUBLIC_*` variables.
 
-### Reconciled with additional security corrections
+## App configuration cutover
 
-- `src/fulfillment.js`
-- `src/secure-entry.js`
-- `src/push.js`
+The EYA app now separates:
 
-The newer fulfilment changes were classified before merging. The branch now includes:
+- `EXPO_PUBLIC_EYA_API_URL` / `NEXT_PUBLIC_EYA_API_URL` for the Vercel EYA application backend;
+- `EXPO_PUBLIC_LEGACY_PAYMENT_BACKEND_URL` / `NEXT_PUBLIC_LEGACY_PAYMENT_BACKEND_URL` only for the temporary generic-commerce payment bridge.
 
-- EYA project ownership (`project: "eya"` instead of the older Pa-Level default);
-- food customization price/name snapshots from server-side catalog data;
-- ticket-order fulfilment hook after trusted payment verification;
-- COD orders created with `payment_status = pending` and a pending cash payment;
-- COD becomes paid only at authorized handoff verification;
-- delivery must reach `arriving` before first handoff verification;
-- repeated handoff verification is idempotent;
-- historical Wallet top-up verification records reconciliation metadata/events but does not credit a Wallet balance;
-- Wallet verification returns `finalized: false` because payment verification is not Wallet fulfilment;
-- direct Node Wallet checkout export is hard-disabled and throws `Wallet services are suspended.` even if an internal caller somehow bypasses the HTTP gateway.
+The tracked app `.env` file was removed from Git because `.env` is already ignored. `.env.example` remains the safe configuration template.
 
-Notification wording is also reconciled with those rules:
+## Validation checkpoint
 
-- verified historical Wallet-top-up payments no longer claim that money was credited to a Wallet;
-- pending cash orders no longer tell customers/vendors that the order is already paid;
-- COD notifications state that cash is collected only at verified handoff.
+GitHub Actions `Reconciliation Check` run 23 completed successfully on commit `8fd6770b43d432b07dd4a252f3ad2e7a6eec13c7` after the canonical Vercel runtime became the default local start path. The workflow validates syntax for the Vercel export/canonical modules and runs the Wallet, ticket-admission, COD and route-surface regression suite.
 
-Legacy Wallet helper functions remain physically present inside `fulfillment.js` only because the old inner server and historical code are still being reconciled. The externally reachable gateway blocks Wallet, and the exported checkout function cannot execute Wallet mutations. Remove the dead helpers after `server.js` no longer references legacy Wallet behavior.
+This is source/CI validation only. It is not a production deployment claim.
 
-### Security policy/regression files added
+## Vercel cutover checkpoint
 
-- `src/securityPolicy.js`
-- `test/security-policy.test.js`
-- `npm run test:security`
+The connected Vercel account currently has no dedicated `EYA-Main-Backend` / EYA API project. Existing projects are unrelated and must not be repurposed.
 
-The route policy explicitly enforces these invariants before requests reach the inner service:
+Create/import a dedicated Vercel project from `dbdnd7rn/EYA-Main-Backend`, deploy this reconciliation branch as **Preview** first, configure only the Vercel-side environment variables above, then smoke-test:
 
-- every `/api/wallet/*` path and `/api/checkout/wallet` is suspended;
-- `POST /api/admin/tickets/check-in` is terminally blocked so permanent ticket codes cannot become admission authority again;
-- private ticket order/My Tickets routes require a verified session at the gateway;
-- ticket-finance, order-handoff, delivery, Admin, cash checkout and sensitive PayChangu routes are classified as privileged;
-- caller-controlled actor/Admin headers are stripped and replaced only after Supabase bearer verification.
+- `/health`;
+- authenticated Admin routes;
+- delivery assignment/status;
+- COD checkout and verified handoff;
+- ticket reads;
+- ticket-finance payout-destination intake;
+- Wallet and static ticket-code routes returning the intended 410 responses.
 
-The route-policy regression suite passes locally under Node's built-in test runner.
+Only after Preview validation should the app's EYA API URL move to the verified Vercel deployment.
 
-### Caller inventory added
+## Remaining blockers
 
-`CALLER_INVENTORY.md` records the actual current EYA callers from `dbdnd7rn/EYA/feat/hybrid-checkout`.
-
-Key result: the canonical Node cutover is materially smaller than the newer monolithic `EYA/backend/src/server.js` suggests.
-
-- ticket checkout goes to Supabase Edge `create-payment-checkout`, not Node;
-- ticket payment truth/fulfilment comes from the signed VAC Payments callback, not a client or Node verify route;
-- live ticket credential issuance/check-in are authenticated Supabase RPCs;
-- Node ticket routes are needed only as read convenience/fallback routes for event/order/My Tickets data;
-- cash checkout, handoff, delivery and the commerce/Admin workspace really do depend on Node;
-- Admin ticket event/tier/order management currently uses Supabase helpers rather than Node ticket-admin CRUD.
-
-Therefore the canonical server must not copy Node ticket payment initiation/verification or static admission code merely because it exists in the newer monolith.
-
-## `server.js` route classification
-
-### Preserve / merge
-
-- health and payment return pages;
-- authenticated order handoff view/verification;
-- Admin payments/orders/support;
-- Admin vendors/catalog/housing/users/broadcast management;
-- Delivery Agent dispatch/assignment/status routes;
-- trusted payout-destination intake;
-- read-only ticket event/order/My Tickets convenience routes, without generated static QR admission data;
-- cash checkout with pending-until-handoff semantics.
-
-### Preserve only behind the existing security gateway / trusted auth
-
-- generic PayChangu initiate/verify/reconcile routes while production caller inventory is incomplete;
-- Admin and delivery mutation routes;
-- any service-role-backed route.
-
-`src/secure-entry.js` validates bearer identity, strips caller-supplied actor/Admin headers, protects payment verification ownership, bounds privileged JSON bodies, blocks Wallet paths, protects private ticket/finance/order routes and independently blocks the legacy static ticket check-in route. Those controls must not be weakened during the inner-server merge.
-
-### Exclude / replace
-
-- all `/api/wallet/*` functionality;
-- Wallet checkout;
-- Node `/api/tickets/orders` ticket-payment initiation as a competing authority;
-- Node ticket payment verify/finalize routes as a competing authority;
-- static QR generation from `ticket_code`;
-- `POST /api/admin/tickets/check-in` using permanent `ticket_code` as admission authority.
-
-Ticket admission must remain on the live short-lived credential architecture. Production migration `live_ticket_credentials` issues 60-second credentials, permits only a short overlap for the previous credential and atomically invalidates credentials after successful check-in. Permanent ticket IDs/codes may remain support/reference identifiers only.
-
-## Additional app-side admission finding
-
-The caller inventory found a legacy `checkInAdminTicketViaSupabase()` implementation still present in `EYA/lib/adminControlApi.ts`. It looks up and consumes permanent `ticket_code` values directly in Supabase. The current gate-specific API (`lib/ticketGateApi.ts`) correctly accepts only live/guest/offline credentials and calls `check_in_ticket_entry_credential`.
-
-Required app hardening: deprecate/remove the static-code helper and ensure every scanner path uses `ticketGateApi.ts`. This is an app security cleanup, not a reason to restore the old Node route.
-
-## COD merge invariants
-
-The newer monolithic server has inconsistent COD checks. The canonical merge must use one definition everywhere:
-
-- a delivery is eligible when the order is paid, **or** when it is an authorized pending cash order;
-- pending cash orders must appear in dispatch/Admin views and be assignable;
-- a delivery status update may move through searching/assigned/picked_up/arriving, but must not make a pending cash payment paid merely by setting `delivered`;
-- verified handoff owns the final COD `payment_status=paid` and delivered transition.
-
-## Security constraints during merge
-
-1. Wallet stays suspended.
-2. `src/secure-entry.js` remains the external security boundary until an equivalent or stronger replacement is proven.
-3. Cloudflare remains the VAC Payments / PayChangu provider boundary for the newer signed payment architecture.
-4. Do not reactivate legacy static ticket QR/admission authority while merging Node ticket routes.
-5. Do not deploy this branch to Render until payment and actor regression tests pass.
-6. Do not switch Render away from `Tchoka/EYA-backend` until the candidate canonical backend is complete and tested.
-7. Do not run blanket production Supabase migration pushes while migration history reconciliation remains open.
-8. The Cloudflare Worker→EYA callback nonce change must still be deployed as a coordinated two-sided protocol change, never one side alone.
-
-## Next controlled steps
-
-1. Build the canonical inner server from the real caller set rather than copying the 100KB monolith wholesale.
-2. Port the valid Admin commerce/support/vendor/catalog/housing/user/broadcast routes.
-3. Port delivery routes with the COD invariants above.
-4. Preserve cash checkout and handoff routes with pending-until-verified-handoff semantics.
-5. Keep read-only ticket convenience routes free of static admission QR data.
-6. Remove dead Wallet mutation helpers once no canonical server route references them.
-7. Update the backend README after the final server shape is known.
-8. Run Node syntax/startup checks plus actor/COD/payment/ticket-admission regression tests.
-9. Only after passing tests, plan the Render Git-source switch to `dbdnd7rn/EYA-Main-Backend`.
+1. Create/import the dedicated Vercel backend project and run Preview smoke tests.
+2. Migrate the remaining generic marketplace/food payment caller from the legacy Render bridge to VAC Payments on Cloudflare.
+3. Keep the Supabase migration-history blocker open; no blanket production `db push`.
+4. Finish payment direct-insert authority and notification-integrity hardening.
+5. Retire Render only after no app/environment caller depends on it.
