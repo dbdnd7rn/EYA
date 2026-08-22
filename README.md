@@ -1,19 +1,34 @@
 # EYA Main Backend
 
-Backend services used by EYA and shared VAC infrastructure.
+Canonical EYA application backend plus shared VAC payment infrastructure.
 
-This repository is part of the same EYA system as `dbdnd7rn/EYA`. Security and architecture decisions must be evaluated across both repositories and every Supabase / Cloudflare / Render / provider boundary.
+This repository is part of the same EYA system as `dbdnd7rn/EYA`. Security and architecture decisions must be evaluated across the app, Vercel, Supabase, Cloudflare and provider boundaries.
 
-## Current architecture
+## Production architecture
 
-### Cloudflare payment boundary
+### EYA application backend — Vercel
+
+`index.js` exports the canonical Express application from `src/server-v2.js` for Vercel.
+
+Vercel owns EYA-specific server authority such as:
+- authenticated Admin operations;
+- delivery and rider operations;
+- COD/order handoff;
+- catalog/housing/user administration;
+- ticket read operations;
+- organizer/finance orchestration that is not provider payment execution.
+
+The Vercel backend derives trusted identity from Supabase sessions and must not trust caller-supplied Admin/actor identity headers as authority.
+
+### VAC Payments — Cloudflare
 
 `cloudflare/payments-worker`
 
-The VAC Payments Worker is the current provider-facing payment authority for EYA ticket payments and future shared VAC payment use cases.
+VAC Payments is the provider-facing payment authority for EYA and future VAC applications.
 
 It owns:
 - PayChangu provider secrets;
+- Airtel Money, TNM Mpamba, bank-transfer and card provider integration;
 - Cloudflare D1 provider-independent payment ledger;
 - HMAC-authenticated server-to-server payment commands;
 - request nonce/replay protection;
@@ -23,45 +38,47 @@ It owns:
 - idempotent payment-state transitions;
 - payment outbox/reconciliation infrastructure.
 
-The EYA mobile application must never receive the private application HMAC secret or PayChangu secret key.
+The EYA mobile application must never receive a VAC application HMAC secret or PayChangu secret key.
 
-Current trusted path:
+Trusted payment path:
 
 ```text
 EYA mobile app
-  -> authenticated EYA Supabase Edge Function
-  -> EYA server-authoritative order reservation / amount
+  -> authenticated EYA trusted server/Edge boundary
+  -> server-authoritative order reservation / amount
   -> HMAC + timestamp + nonce signed request
   -> VAC Payments Cloudflare Worker
   -> D1
   -> PayChangu
 ```
 
-Provider callbacks/webhooks are not payment proof by themselves. The Worker independently re-verifies PayChangu transaction state before recording payment success.
+Provider callbacks/webhooks are not payment proof by themselves. VAC Payments independently re-verifies PayChangu transaction state before recording payment success.
 
-### Node / Render-capable backend
+## Provider-neutral Vercel rule
 
-`src/`
+The canonical Vercel app does not own provider-facing PayChangu initiation, verification, webhooks or browser return pages. Historical `/api/paychangu/*` and `/pay/*` provider routes are terminally rejected by the canonical app.
 
-The repository also contains the longer-lived Node backend used by earlier EYA / campus-market flows and by services such as fulfilment, push and secure-entry support.
-
-Treat this code as a separate server surface that must remain authenticated and audited. Render may be used for workloads that genuinely need a persistent/heavier Node runtime, but it must not duplicate or bypass Cloudflare/D1 payment authority merely because it is available.
-
-Security hardening on this branch includes removing trust in caller-supplied Admin/user identity headers. Server endpoints must validate a real Supabase bearer session and derive the actor from that session.
+A temporary generic-commerce payment caller in the app may still depend on the legacy Render endpoint during migration. That dependency is isolated behind `LEGACY_PAYMENT_BACKEND_URL` and must be removed when generic commerce is moved to VAC Payments. It must never be repointed to the Vercel backend.
 
 ## Wallet suspension
 
-EYA Wallet and wallet-backed payments are SUSPENDED.
+EYA Wallet and wallet-backed payments are **SUSPENDED**.
 
 Rules:
 - do not expose Wallet endpoints as active product functionality;
 - do not credit or debit Wallet balances from normal user flows;
 - do not offer Wallet as a checkout method;
 - retain historical Wallet records only for controlled audit/reconciliation;
-- delayed historical payment verification must not reactivate the Wallet;
+- delayed historical payment verification must not reactivate Wallet;
 - no new backend feature may depend on Wallet until EYA explicitly reverses the suspension.
 
-Any older comment or route in this repository that describes Wallet top-up as normal current behavior is legacy and must be treated as disabled/migration code, not product authority.
+Any older comment or route that describes Wallet top-up as normal current behavior is legacy and must be treated as disabled/migration code, not product authority.
+
+## Ticket admission rule
+
+Permanent `ticket_code` values are support/reference identifiers only. They are not gate authority.
+
+Admission must use the live rotating credential system with short-lived credentials, expiry/version checks and trusted atomic gate verification. The canonical backend terminally rejects the historical static ticket-code Admin check-in route.
 
 ## Backend placement policy
 
@@ -69,10 +86,30 @@ Use the correct trusted boundary instead of putting everything in the mobile fro
 
 - **Supabase/Postgres RPC:** atomic database invariants and ownership-bound transactional state changes.
 - **Supabase Edge Functions:** authenticated privileged orchestration, service-role operations and signing calls to trusted backends.
+- **Vercel / EYA backend:** EYA-specific Admin, delivery, COD/handoff, catalog, user, ticket and finance orchestration.
 - **Cloudflare Worker/D1:** payment-provider boundary, public webhooks/callbacks, replay/rate-limit controls and payment ledger.
-- **Render/Node:** longer-running or heavier backend workloads that do not fit Edge/Worker runtimes.
 
 Secrets, payment truth, role/workspace authorization, refunds and payouts must never be controlled by the mobile client.
+
+## Environment placement
+
+### Vercel
+Configure only EYA application-backend secrets such as:
+- `SUPABASE_URL`;
+- `SUPABASE_SERVICE_ROLE_KEY`;
+- `ADMIN_EMAILS` where used as a secondary allowlist;
+- `EXPO_PUSH_ACCESS_TOKEN`;
+- payout-destination encryption key material;
+- VAC Payments application/callback credentials only where the Vercel backend is explicitly the trusted caller/receiver.
+
+### Cloudflare
+Keep provider payment secrets here:
+- `PAYCHANGU_SECRET_KEY`;
+- `PAYCHANGU_WEBHOOK_SECRET`;
+- VAC `APP_SECRETS_JSON`;
+- callback routing/secrets required by VAC Payments.
+
+Never place server secrets in `EXPO_PUBLIC_*` or `NEXT_PUBLIC_*` variables.
 
 ## Security priorities
 
@@ -93,15 +130,10 @@ Audit this repository for:
 The top-level EYA plan and finding register live in the app repository:
 - `docs/EYA_MASTER_ARCHITECTURE_AND_DELIVERY_PLAN.md`
 - `docs/EYA_SECURITY_AUDIT.md`
+- `docs/EYA_BACKEND_SOURCE_RECONCILIATION_20260822.md`
 
 ## Local setup
 
-The root Node backend and Cloudflare Worker have separate configuration/runtime requirements. Use their own environment examples and package scripts.
+The root EYA backend and Cloudflare Worker have separate configuration/runtime requirements. Use their own environment examples and package scripts.
 
-Never commit:
-- PayChangu secret keys;
-- webhook secrets;
-- Supabase service-role keys;
-- VAC application HMAC secrets;
-- payout-destination encryption keys;
-- production `.env` / `.dev.vars` files.
+Never commit production `.env`, `.dev.vars`, PayChangu secrets, webhook secrets, Supabase service-role keys, VAC HMAC secrets or payout-destination encryption keys.
