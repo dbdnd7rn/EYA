@@ -49,12 +49,15 @@ function authHeaders(accessToken?: string | null): Record<string, string> {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
-export async function getOrderHandoffDetails(orderId: string, accessToken?: string | null): Promise<OrderHandoffDetails> {
-  if (!ENV.PAYCHANGU_BACKEND) {
-    throw new Error("PayChangu backend URL is not configured.");
+function eyaApiBaseUrl() {
+  if (!ENV.EYA_API_URL) {
+    throw new Error("EYA API URL is not configured. Set EXPO_PUBLIC_EYA_API_URL.");
   }
+  return ENV.EYA_API_URL.replace(/\/+$/, "");
+}
 
-  const url = `${ENV.PAYCHANGU_BACKEND.replace(/\/+$/, "")}/api/orders/${encodeURIComponent(orderId)}/handoff`;
+export async function getOrderHandoffDetails(orderId: string, accessToken?: string | null): Promise<OrderHandoffDetails> {
+  const url = `${eyaApiBaseUrl()}/api/orders/${encodeURIComponent(orderId)}/handoff`;
   const res = await fetch(url, { method: "GET", headers: authHeaders(accessToken) });
   const data = await res.json().catch(() => ({}));
 
@@ -71,11 +74,7 @@ export async function verifyOrderHandoff(input: {
   pin?: string;
   qrToken?: string;
 }): Promise<{ status: string; message: string; order_id: string; payment_id: string; verified_at: string | null }> {
-  if (!ENV.PAYCHANGU_BACKEND) {
-    throw new Error("PayChangu backend URL is not configured.");
-  }
-
-  const url = `${ENV.PAYCHANGU_BACKEND.replace(/\/+$/, "")}/api/orders/${encodeURIComponent(input.orderId)}/handoff/verify`;
+  const url = `${eyaApiBaseUrl()}/api/orders/${encodeURIComponent(input.orderId)}/handoff/verify`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders(input.accessToken) },
