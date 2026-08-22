@@ -4,8 +4,10 @@ export type TicketOrganizerAccessStatus = "active" | "expired" | "revoked";
 
 export type MyTicketOrganizerAccess = {
   id: string;
+  organization_id: string;
   user_id: string;
   organization_name: string;
+  organization_status?: string;
   status: "active";
   starts_at: string;
   expires_at: string;
@@ -39,14 +41,14 @@ function errorMessage(error: unknown, fallback: string) {
 
 export async function getMyTicketOrganizerAccess(): Promise<MyTicketOrganizerAccess | null> {
   const { data, error } = await supabase.rpc("get_my_ticket_organizer_access");
-  if (error) throw new Error(errorMessage(error, "Could not check organizer access."));
+  if (error) throw new Error(errorMessage(error, "Could not check Ticket Management access."));
   if (!data?.id) return null;
   return data as MyTicketOrganizerAccess;
 }
 
 export async function listAdminTicketOrganizerAccess(): Promise<AdminTicketOrganizerAccess[]> {
   const { data, error } = await supabase.rpc("admin_list_ticket_organizer_access");
-  if (error) throw new Error(errorMessage(error, "Could not load organizer access."));
+  if (error) throw new Error(errorMessage(error, "Could not load Ticket Management access."));
   return Array.isArray(data) ? (data as AdminTicketOrganizerAccess[]) : [];
 }
 
@@ -62,8 +64,17 @@ export async function grantAdminTicketOrganizerAccess(input: {
     p_expires_at: input.expiresAt,
     p_note: input.note?.trim() || null,
   });
-  if (error) throw new Error(errorMessage(error, "Could not grant organizer access."));
-  return data as { ok: true; grant_id: string; user_id: string; organization_name: string; status: "active"; starts_at: string; expires_at: string };
+  if (error) throw new Error(errorMessage(error, "Could not grant Ticket Management access."));
+  return data as {
+    ok: true;
+    grant_id: string;
+    organization_id: string;
+    user_id: string;
+    organization_name: string;
+    status: "active";
+    starts_at: string;
+    expires_at: string;
+  };
 }
 
 export async function extendAdminTicketOrganizerAccess(input: {
@@ -76,7 +87,7 @@ export async function extendAdminTicketOrganizerAccess(input: {
     p_expires_at: input.expiresAt,
     p_note: input.note?.trim() || null,
   });
-  if (error) throw new Error(errorMessage(error, "Could not extend organizer access."));
+  if (error) throw new Error(errorMessage(error, "Could not extend Ticket Management access."));
   return data as { ok: true; grant_id: string; status: "active"; expires_at: string };
 }
 
@@ -90,8 +101,17 @@ export async function regrantAdminTicketOrganizerAccess(input: {
     p_expires_at: input.expiresAt,
     p_note: input.note?.trim() || null,
   });
-  if (error) throw new Error(errorMessage(error, "Could not re-enable organizer access."));
-  return data as { ok: true; grant_id: string; user_id: string; organization_name: string; status: "active"; starts_at: string; expires_at: string };
+  if (error) throw new Error(errorMessage(error, "Could not re-enable Ticket Management access."));
+  return data as {
+    ok: true;
+    grant_id: string;
+    organization_id: string;
+    user_id: string;
+    organization_name: string;
+    status: "active";
+    starts_at: string;
+    expires_at: string;
+  };
 }
 
 export async function revokeAdminTicketOrganizerAccess(input: { grantId: string; note?: string | null }) {
@@ -99,6 +119,6 @@ export async function revokeAdminTicketOrganizerAccess(input: { grantId: string;
     p_grant_id: input.grantId,
     p_note: input.note?.trim() || null,
   });
-  if (error) throw new Error(errorMessage(error, "Could not revoke organizer access."));
+  if (error) throw new Error(errorMessage(error, "Could not revoke Ticket Management access."));
   return data as { ok: true; grant_id: string; status: "revoked" };
 }
