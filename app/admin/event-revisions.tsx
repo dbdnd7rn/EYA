@@ -29,7 +29,7 @@ function DiffRow({ label, live, proposed }: { label: string; live: unknown; prop
     <View style={[styles.diffRow, changed && styles.diffChanged]}>
       <Text style={styles.diffLabel}>{label}</Text>
       <View style={styles.diffColumns}>
-        <View style={{ flex: 1 }}><Text style={styles.versionLabel}>LIVE</Text><Text style={styles.diffValue}>{String(live ?? "—")}</Text></View>
+        <View style={{ flex: 1 }}><Text style={styles.versionLabel}>CURRENT LIVE</Text><Text style={styles.diffValue}>{String(live ?? "—")}</Text></View>
         <View style={{ flex: 1 }}><Text style={styles.versionLabel}>PROPOSED</Text><Text style={[styles.diffValue, changed && styles.proposedValue]}>{String(proposed ?? "—")}</Text></View>
       </View>
     </View>
@@ -81,9 +81,9 @@ export default function AdminEventRevisionsScreen() {
       Alert.alert("Review note required", "Explain what the organizer must change or why the revision is rejected.");
       return;
     }
-    const label = action === "approve" ? "Approve V2" : action === "request_changes" ? "Request changes" : "Reject revision";
+    const label = action === "approve" ? "Approve proposed changes" : action === "request_changes" ? "Request changes" : "Reject revision";
     const body = action === "approve"
-      ? "This atomically replaces the currently approved event and ticket terms. Customers keep seeing V1 until this approval succeeds."
+      ? "This atomically replaces the current live event and approved ticket terms. Customers keep seeing the current live event until this approval succeeds."
       : `${label} for ${row.revision_event.title}?`;
     Alert.alert(label, body, [
       { text: "Cancel", style: "cancel" },
@@ -110,21 +110,21 @@ export default function AdminEventRevisionsScreen() {
           <View style={styles.count}><Text style={styles.countText}>{rows.length}</Text></View>
         </View>
 
-        <View style={styles.securityNote}><ShieldCheck size={19} color="#087443" /><Text style={styles.securityText}>Customers continue buying the last approved version while these proposed changes wait for Admin approval.</Text></View>
+        <View style={styles.securityNote}><ShieldCheck size={19} color="#087443" /><Text style={styles.securityText}>Customers continue buying the current approved event while these proposed changes wait for Admin approval.</Text></View>
 
         {loading ? <State><ActivityIndicator color={ACCENT} /><Text style={styles.stateText}>Loading revisions...</Text></State> : null}
         {!loading && error ? <State><Text style={styles.errorText}>{error}</Text><Pressable style={styles.retry} onPress={() => void load()}><Text style={styles.retryText}>Try again</Text></Pressable></State> : null}
-        {!loading && !error && !rows.length ? <State><CheckCircle2 size={34} color="#087443" /><Text style={styles.emptyTitle}>No live changes waiting</Text><Text style={styles.stateText}>Published events remain on their current approved versions.</Text></State> : null}
+        {!loading && !error && !rows.length ? <State><CheckCircle2 size={34} color="#087443" /><Text style={styles.emptyTitle}>No live changes waiting</Text><Text style={styles.stateText}>Published events remain on their current approved terms.</Text></State> : null}
 
         {!loading && !error ? rows.map((row) => {
           const liveTiers = new Map(row.live_tiers.map((tier) => [tier.id, tier]));
           return (
             <View key={row.id} style={styles.card}>
               <View style={styles.cardHead}>
-                <View style={{ flex: 1 }}><Text style={styles.eventTitle}>{row.revision_event.title}</Text><Text style={styles.meta}>V{row.base_version_number} live → proposed V{row.base_version_number + 1}</Text></View>
+                <View style={{ flex: 1 }}><Text style={styles.eventTitle}>{row.revision_event.title}</Text><Text style={styles.meta}>Current live event → proposed changes</Text></View>
                 <View style={styles.pending}><Clock3 size={12} color="#8a5a00" /><Text style={styles.pendingText}>Review</Text></View>
               </View>
-              <Text style={styles.organizer}>{row.organizer?.full_name || row.organizer?.email || "Temporary organizer"}</Text>
+              <Text style={styles.organizer}>{row.organizer?.full_name || row.organizer?.email || "Organizer"}</Text>
               <DiffRow label="Title" live={row.live_event.title} proposed={row.revision_event.title} />
               <DiffRow label="Venue" live={row.live_event.venue} proposed={row.revision_event.venue} />
               <DiffRow label="City" live={row.live_event.city} proposed={row.revision_event.city} />
@@ -146,7 +146,7 @@ export default function AdminEventRevisionsScreen() {
               <View style={styles.actions}>
                 <Pressable style={[styles.action, styles.change]} disabled={busy === row.id} onPress={() => act(row, "request_changes")}><RotateCcw size={15} color="#a35b00" /><Text style={styles.changeText}>Changes</Text></Pressable>
                 <Pressable style={[styles.action, styles.reject]} disabled={busy === row.id} onPress={() => act(row, "reject")}><XCircle size={15} color="#a32929" /><Text style={styles.rejectText}>Reject</Text></Pressable>
-                <Pressable style={[styles.action, styles.approve]} disabled={busy === row.id} onPress={() => act(row, "approve")}>{busy === row.id ? <ActivityIndicator size="small" color="#fff" /> : <CheckCircle2 size={15} color="#fff" />}<Text style={styles.approveText}>Approve V2</Text></Pressable>
+                <Pressable style={[styles.action, styles.approve]} disabled={busy === row.id} onPress={() => act(row, "approve")}>{busy === row.id ? <ActivityIndicator size="small" color="#fff" /> : <CheckCircle2 size={15} color="#fff" />}<Text style={styles.approveText}>Approve changes</Text></Pressable>
               </View>
             </View>
           );
