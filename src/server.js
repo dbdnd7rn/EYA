@@ -1,10 +1,12 @@
+import express from "express";
 import { requireCoreConfig } from "./config.js";
 import { createCanonicalApp } from "./server-v2.js";
 
-// Vercel's Express preset may auto-detect src/server.js as the application
-// entrypoint. Keep this file as a thin compatibility export so both Vercel's
-// detected entry and the repository-root index.js use the exact same canonical
-// provider-neutral EYA application.
+// Vercel's Express preset statically looks for an entrypoint that imports
+// Express directly. Keep that explicit import here while delegating all route
+// construction to the canonical provider-neutral EYA application.
+void express;
+
 requireCoreConfig();
 
 const app = createCanonicalApp();
