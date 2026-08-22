@@ -138,7 +138,7 @@ export default function OrganizerEventRevisionScreen() {
       setLoading(true);
       hydrate(await getMyTicketEventRevision(revisionId));
     } catch (e: any) {
-      Alert.alert("Could not load revision", e?.message || "Try again.", [{ text: "Back", onPress: () => router.back() }]);
+      Alert.alert("Could not load proposed changes", e?.message || "Try again.", [{ text: "Back", onPress: () => router.back() }]);
     } finally {
       setLoading(false);
     }
@@ -166,14 +166,14 @@ export default function OrganizerEventRevisionScreen() {
       setDirty(true);
       return;
     }
-    Alert.alert("Remove ticket from proposed version?", "Existing live tickets are not deleted. For an already-live tier EYA will propose disabling future sales, subject to Admin approval.", [
+    Alert.alert("Remove ticket from proposed changes?", "Existing live tickets are not deleted. For an already-live ticket type, EYA will propose disabling future sales subject to Admin approval.", [
       { text: "Cancel", style: "cancel" },
       { text: "Remove", style: "destructive", onPress: async () => {
         try {
           await removeMyTicketEventRevisionTier(tier.id);
           await load();
         } catch (e: any) {
-          Alert.alert("Could not update revision", e?.message || "Try again.");
+          Alert.alert("Could not update proposed changes", e?.message || "Try again.");
         }
       } },
     ]);
@@ -204,7 +204,7 @@ export default function OrganizerEventRevisionScreen() {
     if (!startIso) return Alert.alert("Start time required", "Use YYYY-MM-DD HH:mm.");
     if (endsAt.trim() && endIso === undefined) return Alert.alert("Check end time", "Use YYYY-MM-DD HH:mm.");
     if (!cardImage || !heroImage) return Alert.alert("Images required", "Card and hero images are required.");
-    if (!tiers.length) return Alert.alert("Ticket required", "Keep at least one ticket type in the proposed version.");
+    if (!tiers.length) return Alert.alert("Ticket required", "Keep at least one ticket type in the proposed changes.");
 
     for (const tier of tiers) {
       const price = numberValue(tier.price);
@@ -234,9 +234,9 @@ export default function OrganizerEventRevisionScreen() {
         });
       }
       await load();
-      Alert.alert("Revision saved", "The customer-facing live version has not changed. Submit this revision when it is ready for EYA Admin review.");
+      Alert.alert("Proposed changes saved", "The current live event has not changed. Submit these proposed changes when they are ready for EYA Admin review.");
     } catch (e: any) {
-      Alert.alert("Could not save revision", e?.message || "Try again.");
+      Alert.alert("Could not save proposed changes", e?.message || "Try again.");
     } finally {
       setSaving(false);
     }
@@ -244,7 +244,7 @@ export default function OrganizerEventRevisionScreen() {
 
   const submit = async () => {
     if (!revision || !editable || dirty) return;
-    Alert.alert("Submit proposed changes?", `Customers will keep seeing V${revision.base_version_number}. EYA Admin must approve this revision before anything changes publicly.`, [
+    Alert.alert("Submit proposed changes?", "Customers will keep seeing the current live event. EYA Admin must approve these proposed changes before anything changes publicly.", [
       { text: "Cancel", style: "cancel" },
       { text: "Submit to EYA", onPress: async () => {
         try {
@@ -252,7 +252,7 @@ export default function OrganizerEventRevisionScreen() {
           await submitMyTicketEventRevision(revision.id);
           await load();
         } catch (e: any) {
-          Alert.alert("Could not submit revision", e?.message || "Try again.");
+          Alert.alert("Could not submit proposed changes", e?.message || "Try again.");
         } finally {
           setSubmitting(false);
         }
@@ -260,16 +260,16 @@ export default function OrganizerEventRevisionScreen() {
     ]);
   };
 
-  if (loading || !revision) return <SafeAreaView style={styles.root}><View style={styles.loading}><ActivityIndicator color={ACCENT} /><Text style={styles.loadingText}>Loading proposed version...</Text></View></SafeAreaView>;
+  if (loading || !revision) return <SafeAreaView style={styles.root}><View style={styles.loading}><ActivityIndicator color={ACCENT} /><Text style={styles.loadingText}>Loading proposed changes...</Text></View></SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}><Pressable style={styles.iconBtn} onPress={() => router.back()}><ArrowLeft size={21} color={TEXT} /></Pressable><View style={{ flex: 1 }}><Text style={styles.kicker}>Live event revision</Text><Text style={styles.title}>Proposed V{revision.base_version_number + 1}</Text></View></View>
+        <View style={styles.header}><Pressable style={styles.iconBtn} onPress={() => router.back()}><ArrowLeft size={21} color={TEXT} /></Pressable><View style={{ flex: 1 }}><Text style={styles.kicker}>Published event changes</Text><Text style={styles.title}>Proposed changes</Text></View></View>
 
-        <View style={styles.liveNotice}><RefreshCw size={19} color="#087443" /><View style={{ flex: 1 }}><Text style={styles.liveTitle}>V{revision.base_version_number} stays live</Text><Text style={styles.liveText}>Saving or submitting this page does not change what customers see or pay. Only EYA Admin approval can activate V{revision.base_version_number + 1}.</Text></View></View>
+        <View style={styles.liveNotice}><RefreshCw size={19} color="#087443" /><View style={{ flex: 1 }}><Text style={styles.liveTitle}>Current live event stays active</Text><Text style={styles.liveText}>Saving or submitting this page does not change what customers see or pay. Only EYA Admin approval can publish these proposed changes.</Text></View></View>
         {revision.review_note ? <View style={styles.reviewNote}><Text style={styles.reviewLabel}>EYA REVIEW NOTE</Text><Text style={styles.reviewText}>{revision.review_note}</Text></View> : null}
-        {!editable ? <View style={styles.locked}><Text style={styles.lockedTitle}>{revision.status === "pending_review" ? "Revision under Admin review" : `Revision ${revision.status}`}</Text><Text style={styles.lockedText}>The live approved event continues operating independently.</Text></View> : null}
+        {!editable ? <View style={styles.locked}><Text style={styles.lockedTitle}>{revision.status === "pending_review" ? "Proposed changes under Admin review" : `Proposed changes: ${revision.status}`}</Text><Text style={styles.lockedText}>The current live approved event continues operating independently.</Text></View> : null}
 
         <Section title="Event details">
           <Field label="Event name" value={title} editable={editable} onChangeText={(v) => change(setTitle, v)} />
@@ -290,20 +290,20 @@ export default function OrganizerEventRevisionScreen() {
         <View style={styles.sectionHeadRow}><Text style={styles.sectionHeading}>Ticket terms</Text>{editable ? <Pressable style={styles.addTier} onPress={addTier}><Plus size={15} color={ACCENT} /><Text style={styles.addTierText}>Add ticket</Text></Pressable> : null}</View>
         {tiers.map((tier, index) => (
           <View key={tier.id} style={styles.ticketCard}>
-            <View style={styles.ticketHead}><View style={{ flex: 1 }}><Text style={styles.ticketTitle}>Ticket {index + 1}</Text><Text style={styles.ticketSub}>{tier.persisted ? "Copied from live approved version" : "New proposed ticket"}</Text></View>{editable ? <Pressable onPress={() => void removeTier(tier)} hitSlop={10}><Trash2 size={18} color="#a32929" /></Pressable> : null}</View>
+            <View style={styles.ticketHead}><View style={{ flex: 1 }}><Text style={styles.ticketTitle}>Ticket {index + 1}</Text><Text style={styles.ticketSub}>{tier.persisted ? "Copied from current approved tickets" : "New proposed ticket"}</Text></View>{editable ? <Pressable onPress={() => void removeTier(tier)} hitSlop={10}><Trash2 size={18} color="#a32929" /></Pressable> : null}</View>
             <Field label="Ticket name" value={tier.name} editable={editable} onChangeText={(v) => patchTier(tier.id, { name: v })} />
             <Field label="Description" value={tier.description} editable={editable} onChangeText={(v) => patchTier(tier.id, { description: v })} />
             <Field label="Price MWK" value={tier.price} editable={editable} keyboardType="numeric" onChangeText={(v) => patchTier(tier.id, { price: v })} />
             <Field label="Capacity" value={tier.capacity} editable={editable} keyboardType="numeric" onChangeText={(v) => patchTier(tier.id, { capacity: v })} />
             <Field label="Sale starts" value={tier.saleStarts} editable={editable} placeholder="YYYY-MM-DD HH:mm" onChangeText={(v) => patchTier(tier.id, { saleStarts: v })} />
             <Field label="Sale ends" value={tier.saleEnds} editable={editable} placeholder="YYYY-MM-DD HH:mm" onChangeText={(v) => patchTier(tier.id, { saleEnds: v })} />
-            <View style={styles.switchRow}><Text style={styles.switchLabel}>Available for sale in proposed version</Text><Switch value={tier.available} disabled={!editable} onValueChange={(v) => patchTier(tier.id, { available: v })} /></View>
+            <View style={styles.switchRow}><Text style={styles.switchLabel}>Available for sale after approval</Text><Switch value={tier.available} disabled={!editable} onValueChange={(v) => patchTier(tier.id, { available: v })} /></View>
           </View>
         ))}
 
         {editable ? <>
-          <Pressable style={[styles.saveBtn, (saving || uploading) && styles.disabled]} disabled={saving || !!uploading} onPress={() => void save()}>{saving ? <ActivityIndicator color="#fff" /> : <CheckCircle2 size={18} color="#fff" />}<Text style={styles.btnText}>{dirty ? "Save proposed version" : "Saved"}</Text></Pressable>
-          <Pressable style={[styles.submitBtn, (dirty || submitting) && styles.disabled]} disabled={dirty || submitting} onPress={() => void submit()}>{submitting ? <ActivityIndicator color="#fff" /> : <Send size={18} color="#fff" />}<Text style={styles.btnText}>Submit V{revision.base_version_number + 1} to EYA Admin</Text></Pressable>
+          <Pressable style={[styles.saveBtn, (saving || uploading) && styles.disabled]} disabled={saving || !!uploading} onPress={() => void save()}>{saving ? <ActivityIndicator color="#fff" /> : <CheckCircle2 size={18} color="#fff" />}<Text style={styles.btnText}>{dirty ? "Save proposed changes" : "Saved"}</Text></Pressable>
+          <Pressable style={[styles.submitBtn, (dirty || submitting) && styles.disabled]} disabled={dirty || submitting} onPress={() => void submit()}>{submitting ? <ActivityIndicator color="#fff" /> : <Send size={18} color="#fff" />}<Text style={styles.btnText}>Submit proposed changes to EYA Admin</Text></Pressable>
           {dirty ? <Text style={styles.hint}>Save your latest changes before submitting.</Text> : null}
         </> : null}
       </ScrollView>
@@ -313,7 +313,7 @@ export default function OrganizerEventRevisionScreen() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) { return <View style={styles.section}><Text style={styles.sectionHeading}>{title}</Text>{children}</View>; }
 function Field(props: React.ComponentProps<typeof TextInput> & { label: string }) { const { label, multiline, ...input } = props; return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput {...input} multiline={multiline} placeholderTextColor="#9aa3b8" style={[styles.input, multiline && styles.multiline, input.editable === false && styles.readonly]} /></View>; }
-function ImageCard({ label, uri, busy, editable, onPress }: { label: string; uri: string; busy: boolean; editable: boolean; onPress: () => void }) { return <Pressable style={styles.imageCard} onPress={onPress} disabled={!editable || busy}>{uri ? <Image source={{ uri }} style={styles.image} /> : <View style={styles.imageEmpty}><ImagePlus size={23} color={ACCENT} /></View>}<View style={{ flex: 1 }}><Text style={styles.imageTitle}>{label}</Text><Text style={styles.imageSub}>{busy ? "Uploading..." : editable ? "Tap to replace in proposed version" : "Approved proposed image"}</Text></View>{busy ? <ActivityIndicator color={ACCENT} /> : null}</Pressable>; }
+function ImageCard({ label, uri, busy, editable, onPress }: { label: string; uri: string; busy: boolean; editable: boolean; onPress: () => void }) { return <Pressable style={styles.imageCard} onPress={onPress} disabled={!editable || busy}>{uri ? <Image source={{ uri }} style={styles.image} /> : <View style={styles.imageEmpty}><ImagePlus size={23} color={ACCENT} /></View>}<View style={{ flex: 1 }}><Text style={styles.imageTitle}>{label}</Text><Text style={styles.imageSub}>{busy ? "Uploading..." : editable ? "Tap to replace in proposed changes" : "Proposed image under review"}</Text></View>{busy ? <ActivityIndicator color={ACCENT} /> : null}</Pressable>; }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG }, content: { padding: 18, paddingBottom: 90, gap: 14 }, loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 }, loadingText: { color: MUTED, fontWeight: "800" },
