@@ -28,13 +28,22 @@ function resolveAuthRedirectUrl() {
 
 const requestedDevAuthMode = (process.env.EXPO_PUBLIC_DEV_AUTH_MODE ?? "false").toLowerCase() === "true";
 
-// Canonical public backend URL. During migration we still accept the old
-// PAYCHANGU_BACKEND variable as a compatibility alias so existing callers do
-// not break before the Vercel cutover is complete. The alias must eventually be
-// removed after every caller uses EYA_API_URL directly.
+// Canonical public EYA application backend URL. This is the Vercel target.
 const configuredEyaApiUrl = firstNonEmpty(
   process.env.EXPO_PUBLIC_EYA_API_URL,
   process.env.NEXT_PUBLIC_EYA_API_URL,
+  // Temporary compatibility fallback while old builds are being migrated.
+  process.env.EXPO_PUBLIC_PAYCHANGU_BACKEND,
+  process.env.NEXT_PUBLIC_PAYCHANGU_BACKEND,
+);
+
+// Temporary bridge for the existing generic commerce payment caller only. This
+// must disappear once that caller has moved to the trusted EYA -> VAC Payments
+// Cloudflare flow. Never point this at the new Vercel EYA backend because the
+// Vercel backend intentionally does not host provider-facing PayChangu routes.
+const configuredLegacyPaymentBackendUrl = firstNonEmpty(
+  process.env.EXPO_PUBLIC_LEGACY_PAYMENT_BACKEND_URL,
+  process.env.NEXT_PUBLIC_LEGACY_PAYMENT_BACKEND_URL,
   process.env.EXPO_PUBLIC_PAYCHANGU_BACKEND,
   process.env.NEXT_PUBLIC_PAYCHANGU_BACKEND,
 );
@@ -45,9 +54,10 @@ export const ENV = {
   NEW_APP_SCHEMA: process.env.EXPO_PUBLIC_NEW_APP_SCHEMA ?? "",
   WEB_BASE_URL: (process.env.EXPO_PUBLIC_WEB_BASE_URL ?? "https://eya.vercel.app").trim(),
   EYA_API_URL: configuredEyaApiUrl,
-  // Deprecated compatibility alias. This no longer means that the EYA backend
-  // owns PayChangu. Provider authority belongs to VAC Payments on Cloudflare.
+  // Deprecated compatibility alias used by older non-payment backend callers.
+  // It now resolves to the EYA application API, not to payment authority.
   PAYCHANGU_BACKEND: configuredEyaApiUrl,
+  LEGACY_PAYMENT_BACKEND_URL: configuredLegacyPaymentBackendUrl,
   CLOUDINARY_CLOUD_NAME: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ?? "",
   CLOUDINARY_UPLOAD_PRESET: process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? "",
   ENABLE_PUSH_NOTIFICATIONS: (process.env.EXPO_PUBLIC_ENABLE_PUSH_NOTIFICATIONS ?? "true").toLowerCase() !== "false",
@@ -98,6 +108,7 @@ export function getOptionalServiceWarnings() {
   if (!ENV.CLOUDINARY_CLOUD_NAME) warnings.push("Cloudinary cloud name is missing. Image uploads will fail.");
   if (!ENV.CLOUDINARY_UPLOAD_PRESET) warnings.push("Cloudinary upload preset is missing. Image uploads will fail.");
   if (!ENV.EYA_API_URL) warnings.push("EYA API URL is missing. Vercel-backed Admin, delivery, COD and handoff APIs will fail.");
+  if (!ENV.LEGACY_PAYMENT_BACKEND_URL) warnings.push("Legacy commerce payment bridge is missing. Keep it only until generic payments move to VAC Payments on Cloudflare.");
   if (!/^https?:\/\//i.test(ENV.WEB_BASE_URL)) warnings.push("Web base URL is invalid. Browser/deep-link redirects may fail.");
   return warnings;
 }
