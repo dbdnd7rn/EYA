@@ -1,6 +1,7 @@
 export type AppAuth = {
   appId: string;
   timestamp: number;
+  nonce: string;
 };
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
@@ -50,24 +51,26 @@ async function hmacSha256Hex(secret: string, value: string): Promise<string> {
   return bytesToHex(new Uint8Array(signature));
 }
 
-export function buildCanonicalRequest(request: Request, timestamp: number, rawBody: string): string {
+export function buildCanonicalRequest(request: Request, timestamp: number, nonce: string, rawBody: string): string {
   const url = new URL(request.url);
-  return [String(timestamp), request.method.toUpperCase(), url.pathname, rawBody].join(".");
+  return [String(timestamp), nonce, request.method.toUpperCase(), url.pathname, rawBody].join(".");
 }
 
 export async function authenticateAppRequest(
   request: Request,
   rawBody: string,
   appSecretsJson: string,
+  db: D1Database,
 ): Promise<AppAuth> {
   const appId = (request.headers.get("x-vac-app-id") || "").trim();
   const timestampRaw = (request.headers.get("x-vac-timestamp") || "").trim();
+  const nonce = (request.headers.get("x-vac-nonce") || "").trim().toLowerCase();
   const suppliedSignature = (request.headers.get("x-vac-signature") || "")
     .trim()
     .toLowerCase()
     .replace(/^sha256=/, "");
 
-  if (!appId || !timestampRaw || !suppliedSignature) {
+  if (!appId || !timestampRaw || !nonce || !suppliedSignature) {
     throw new Error("Missing signed application headers.");
   }
 
@@ -81,6 +84,10 @@ export async function authenticateAppRequest(
     throw new Error("Signed request has expired.");
   }
 
+  if (!/^[0-9a-f-]{36}$/.test(nonce)) {
+    throw new Error("Invalid request nonce format.");
+  }
+
   if (!/^[0-9a-f]{64}$/.test(suppliedSignature)) {
     throw new Error("Invalid request signature format.");
   }
@@ -91,13 +98,26 @@ export async function authenticateAppRequest(
     throw new Error("Unknown or inactive application.");
   }
 
-  const canonical = buildCanonicalRequest(request, timestamp, rawBody);
+  const canonical = buildCanonicalRequest(request, timestamp, nonce, rawBody);
   const expectedSignature = await hmacSha256Hex(secret, canonical);
   if (!constantTimeEqual(expectedSignature, suppliedSignature)) {
     throw new Error("Invalid application signature.");
   }
 
-  return { appId, timestamp };
+  const expiresAt = new Date((nowSeconds + MAX_CLOCK_SKEW_SECONDS) * 1000).toISOString();
+  try {
+    await db.batch([
+      db.prepare("delete from request_nonces where expires_at <= ?").bind(new Date(nowSeconds * 1000).toISOString()),
+      db.prepare("insert into request_nonces (app_id, nonce, expires_at) values (?, ?, ?)").bind(appId, nonce, expiresAt),
+    ]);
+  } catch (error) {
+    if (/unique|constraint/i.test(error instanceof Error ? error.message : String(error))) {
+      throw new Error("Signed request nonce has already been used.");
+    }
+    throw error;
+  }
+
+  return { appId, timestamp, nonce };
 }
 
 export async function signApplicationEvent(
