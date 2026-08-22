@@ -1,3 +1,5 @@
+import type { D1DatabaseLike } from "./ledger";
+
 export type AppAuth = {
   appId: string;
   timestamp: number;
@@ -60,7 +62,7 @@ export async function authenticateAppRequest(
   request: Request,
   rawBody: string,
   appSecretsJson: string,
-  db: D1Database,
+  db: D1DatabaseLike,
 ): Promise<AppAuth> {
   const appId = (request.headers.get("x-vac-app-id") || "").trim();
   const timestampRaw = (request.headers.get("x-vac-timestamp") || "").trim();
