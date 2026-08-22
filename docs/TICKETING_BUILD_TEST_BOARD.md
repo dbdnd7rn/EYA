@@ -255,7 +255,108 @@ Expected after approval:
 - old V1 approval remains in immutable approval history;
 - direct live price/venue mutation outside the revision workflow remains blocked.
 
-### 12. Ticket transfer Phase 1
+### 12. Organizer Early Payout / Event Advance
+Status: READY AFTER A REAL TEST ORGANIZER EVENT IS APPROVED AND HAS PAID TEST SALES
+
+IMPORTANT:
+- this phase tests EYA accounting, reserve protection, requests and Admin approval only;
+- actual PayChangu payout API execution is NOT connected yet;
+- do not send real organizer money during this test.
+
+Admin first:
+- Admin -> Event Reviews -> Event finance & payouts
+- Direct route: `/admin/event-payouts`
+
+Steps:
+1. Open the approved organizer event.
+2. Set a protected refund reserve.
+3. Set the EYA/platform fee amount for the test.
+4. Set any other manual hold if needed.
+5. Tap `Save & Open`.
+
+Organizer:
+- Organizer Dashboard -> approved event -> `Finance & payouts`
+- Direct route: `/(organizer)/event-finance?eventId=...`
+
+Expected before request:
+- event ticket sales are shown from paid ticket orders;
+- refunded amount is shown separately;
+- protected refund reserve is visible;
+- EYA/platform fee is visible;
+- other hold is visible;
+- paid-to-organizer is visible;
+- only the server-calculated `Available now` amount can be requested;
+- if Admin has not configured finance controls, available payout remains unavailable/zero.
+
+Early Payout test:
+1. Request an amount lower than or equal to `Available now`.
+2. Confirm wording says `Early Payout` / advance, not withdrawal/final settlement.
+3. Admin opens `/admin/event-payouts`.
+4. Confirm Admin sees requested amount, current eligible amount, reserve and previously-paid amount.
+5. Approve LESS than the organizer requested.
+6. Refresh Organizer Finance.
+
+Expected:
+- approved amount is reserved immediately and cannot be requested again;
+- organizer history shows `Approved · awaiting payout`;
+- remaining available amount is reduced by the approved amount;
+- one event cannot have a second pending/approved payout request at the same time;
+- no PayChangu money moves yet.
+
+Freeze test:
+1. Admin taps `Freeze` for the event finance account.
+2. Organizer refreshes Finance & payouts.
+
+Expected:
+- new payout requests are blocked while frozen;
+- existing financial/audit history remains.
+
+### 13. Refund impact on an Early Payout
+Status: SERVER VERIFIED; PHONE TEST LATER WHEN REAL REFUND FLOW EXISTS
+
+Expected accounting behavior:
+- a refunded ticket/order reduces active paid event funds;
+- protected reserve and holds still remain protected;
+- future payout eligibility falls automatically;
+- if refunds make prior organizer advances exceed currently supportable event funds, EYA shows `Organizer advance liability` / `Settlement hold`;
+- further payouts become zero/blocked until the liability is resolved.
+
+Do not simulate a real customer refund manually on production just to test this screen. Wait for the proper ticket refund workflow/provider integration.
+
+### 14. Final Settlement
+Status: READY LATER AFTER A SAFE TEST EVENT HAS ENDED
+
+Organizer Finance & payouts switches from Early Payout to Final Settlement after the event has finished.
+
+Before final settlement:
+1. Admin reconciles refunds/disputes.
+2. Admin keeps any required reserve/hold in place while reconciliation is incomplete.
+3. Confirm Organizer cannot request final settlement while reserve or hold remains.
+4. Admin clears protected refund reserve to `0` only when safe.
+5. Admin clears other hold to `0` only when safe.
+
+Organizer:
+1. Open `Finance & payouts`.
+2. Confirm `Final settlement` is ready.
+3. Request Final Settlement.
+
+Admin:
+1. Review the final-settlement request.
+2. Admin may approve the full amount or less.
+3. If less is approved, remaining eligible balance stays open for another final-settlement request later.
+
+Expected:
+- final settlement is unavailable before event completion;
+- final settlement is unavailable while refund reserve/hold remains;
+- it is unavailable when an organizer advance liability exists;
+- only the remaining eligible event balance can be settled;
+- finance status becomes `settled` only after the final payout is recorded paid and eligible balance reaches zero;
+- Admin cannot manually set `settled` from the finance-control screen.
+
+IMPORTANT:
+- actual PayChangu payout execution is still NOT wired; Admin approval currently reserves the amount only.
+
+### 15. Ticket transfer Phase 1
 Status: READY AFTER STARTUP
 
 Visit:
@@ -267,7 +368,7 @@ Expected:
 - sender live credential is invalidated;
 - recipient can mint a new live credential.
 
-### 13. Guest/offline ticket Phase 2
+### 16. Guest/offline ticket Phase 2
 Status: PRODUCT DIRECTION UNDER REVIEW
 
 Current technical implementation exists, but browser live guest admission is not the intended final product direction. External ticket sharing should move toward app-first claim/install behavior.
@@ -319,7 +420,33 @@ Current technical implementation exists, but browser live guest admission is not
 - Signed-in non-Admin was explicitly blocked from Admin revision list/review RPCs.
 - Organizer access after re-enable now follows the trusted temporary organizer identity + current active grant, while original event grant ID remains preserved for audit.
 - Revision material-trigger execution was tested under the real `authenticated` database role: an Admin can still pause a published organizer event without gaining any material-change bypass, and the rollback left no rows behind.
-- Production cleanup audit passed after rollback tests: zero revision rows, zero revision-tier/log/apply-context rows, zero test approval versions, zero rollback-named events; the existing 5 published Admin-created catalog events remain unchanged.
+- Production cleanup audit passed after revision rollback tests: zero revision rows, zero revision-tier/log/apply-context rows, zero test approval versions, zero rollback-named events; the existing 5 published Admin-created catalog events remain unchanged.
+- Early Payout + refund-liability rollback test passed:
+  - MWK 10,000 paid event sales;
+  - MWK 3,000 protected reserve + MWK 500 platform fee + MWK 500 other hold;
+  - MWK 6,000 eligible before payout;
+  - organizer requested MWK 4,000;
+  - Admin approved MWK 3,000;
+  - after payout, only MWK 3,000 remained eligible;
+  - when the order was marked refunded, availability fell to zero and organizer advance liability became MWK 3,000;
+  - further payout request was blocked;
+  - transaction rolled back cleanly.
+- Final Settlement rollback test passed:
+  - final settlement was blocked while refund reserve remained;
+  - after Admin cleared reserve/hold, MWK 9,500 was eligible;
+  - partial MWK 9,000 settlement left MWK 500 open;
+  - second MWK 500 settlement completed the event finance account;
+  - finance status auto-changed to `settled` only when balance reached zero;
+  - transaction rolled back cleanly.
+- Approved-only payout boundary rollback test passed:
+  - a fake organizer event without a real EYA approval version could not receive finance controls or request money;
+  - a normal organizer event submitted and approved through Admin review could configure finance and request Early Payout successfully;
+  - transaction rolled back cleanly.
+- Finance tables have no direct anon/authenticated SELECT/INSERT/UPDATE access.
+- Anonymous users cannot execute finance RPCs.
+- Internal finance snapshot helper is service-role-only.
+- Signed-in non-Admin was explicitly blocked from Admin finance-list RPCs.
+- Finance cleanup audit passed: zero finance-control rows, zero finance logs, zero payout requests and zero rollback finance events remain; the existing 5 published Admin-created catalog events remain unchanged.
 
 ## NEEDS PRODUCT DECISION TOGETHER
 
@@ -356,7 +483,24 @@ Rule:
 - only Admin approval atomically applies the revision and creates the next immutable approval version;
 - organizer/Admin may separately pause the live event when needed.
 
-### E. Organizer access grace period
+### E. Organizer payout execution + refund integration
+Early Payout and Final Settlement accounting/request/approval are implemented, but actual money execution is deliberately not connected yet.
+
+Need to decide/verify before real payouts:
+- exact PayChangu payout API flow for Airtel Money, TNM Mpamba and bank;
+- where organizer payout destination/KYC details are stored and how they are verified;
+- provider idempotency/reconciliation for payout retries;
+- actual ticket refund execution for card and mobile-money rails;
+- partial refund model and provider status reconciliation;
+- when refund reserve should be released;
+- suggested risk-based early-payout/reserve policy for new vs established organizers.
+
+Current rule:
+- no hardcoded reserve percentage;
+- Admin explicitly sets reserve/fee/hold;
+- approved payout requests reserve funds but do not move PayChangu money yet.
+
+### F. Organizer access grace period
 Current system deliberately lets Admin choose the exact expiry.
 
 Need to decide later whether EYA should suggest a default such as:
@@ -364,18 +508,18 @@ Need to decide later whether EYA should suggest a default such as:
 - event end + 30 days;
 - another settlement/refund/support window.
 
-### F. Global leaked-password protection
+### G. Global leaked-password protection
 Supabase Auth leaked-password protection is currently disabled.
 
 This would improve password security for the whole EYA app, not just organizers, so it should be a deliberate product/security decision before enabling globally.
 Reference: https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
 
-### G. Exact scheduled organizer account expiry
+### H. Exact scheduled organizer account expiry
 Current security is sufficient for access control because every organizer operation checks the database grant. Auth is banned immediately on revoke and on the first access check after natural expiry.
 
 `pg_cron` is available but not currently installed. Decide later whether we want a background scheduled job that flips expired temporary organizer Auth accounts to banned even when they never reconnect.
 
-### H. Offline-capable secure mobile customer ticket
+### I. Offline-capable secure mobile customer ticket
 Important before large events with congested Airtel/TNM networks.
 
 Need a design that remains scannable with poor attendee internet while still resisting stale screenshots/replay.
@@ -384,7 +528,9 @@ Need a design that remains scannable with poor attendee internet while still res
 
 Supabase security advisor still reports older non-ticket public tables without RLS and older functions with mutable search paths / broad SECURITY DEFINER exposure. Do not blindly toggle these in a ticketing pass; audit each existing feature and its policies first to avoid breaking production flows.
 
-`ticket_organizer_invites` and the live revision tables intentionally have RLS with no client policies because all direct `anon`/`authenticated` table privileges are revoked and access is through validated RPCs only.
+`ticket_organizer_invites`, live revision tables and event-finance tables intentionally have RLS with no client policies because all direct `anon`/`authenticated` table privileges are revoked and access is through validated RPCs only.
+Supabase linter reference for intentional RLS-with-no-policy notices: https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+Authenticated SECURITY DEFINER entry-point warning reference: https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable
 
 ## BUILD RULES DURING CHARGING / NO-PHONE PERIOD
 
