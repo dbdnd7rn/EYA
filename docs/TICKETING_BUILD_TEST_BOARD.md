@@ -164,11 +164,6 @@ Expected:
 - The approved event becomes customer-visible only after approval.
 - The payment reservation gate accepts only organizer events whose current event + ticket terms still match the approved version.
 
-Later integrity test when we have a safe test event:
-- try changing an approved ticket price/capacity from a legacy Admin editor: must be blocked;
-- try changing approved event venue/date/details: must be blocked;
-- normal ticket sold/reserved counters must continue changing as purchases happen.
-
 ### 8. Immediate organizer revocation + Auth ban
 Status: READY AFTER CLAIM
 
@@ -203,7 +198,7 @@ Expected:
 - EYA creates a new active grant row.
 - Auth ban is cleared.
 - Same temporary organizer identity can sign in again.
-- Organizer regains access to the same organizer-owned event history.
+- Organizer regains access to the same organizer-owned event history even though the new grant has a different grant ID.
 
 ### 10. Natural expiry
 Status: READY LATER WITH SHORT TEST WINDOW
@@ -216,7 +211,51 @@ Expected after expiry:
 - temporary organizer identity is Auth-banned on that check;
 - Admin can renew an expired non-revoked grant and unban the identity.
 
-### 11. Ticket transfer Phase 1
+### 11. Published event V1 -> V2 revision workflow
+Status: READY AFTER ONE ORGANIZER EVENT IS PUBLISHED
+
+Organizer visit:
+- `/(organizer)/dashboard`
+- Published event -> `Propose changes`
+
+Test:
+1. Note the live customer version, venue, and ticket price, for example V1 / MWK 25,000.
+2. Tap `Propose changes`.
+3. Confirm the revision editor says V1 stays live and the new draft is proposed V2.
+4. Change a material event field such as venue.
+5. Change a ticket price, capacity, sale window, or availability.
+6. Add another ticket type if useful.
+7. Save proposed V2.
+8. Submit V2 to EYA Admin.
+9. BEFORE Admin approval, open the event from a normal customer account.
+
+Critical expected result before approval:
+- customer still sees V1 venue/details;
+- customer still sees V1 ticket price/capacity/availability;
+- checkout/reservation still uses V1 approved terms;
+- organizer dashboard shows a revision is under review.
+
+Admin visit:
+- Admin -> Event Reviews -> Live event revisions
+- Direct route: `/admin/event-revisions`
+
+Admin test:
+1. Confirm the review screen shows `LIVE` versus `PROPOSED` values.
+2. Confirm ticket price/capacity/sale-window changes are visible before approval.
+3. First use `Request changes` with a note and confirm Organizer sees the note in the revision editor.
+4. Organizer fixes and resubmits V2.
+5. Admin taps `Approve V2`.
+6. Refresh the customer event.
+
+Expected after approval:
+- V2 atomically replaces V1;
+- approval version increments (for example V1 -> V2);
+- customer now sees the approved V2 event/ticket terms;
+- payment reservation uses V2 only after the approval succeeds;
+- old V1 approval remains in immutable approval history;
+- direct live price/venue mutation outside the revision workflow remains blocked.
+
+### 12. Ticket transfer Phase 1
 Status: READY AFTER STARTUP
 
 Visit:
@@ -228,7 +267,7 @@ Expected:
 - sender live credential is invalidated;
 - recipient can mint a new live credential.
 
-### 12. Guest/offline ticket Phase 2
+### 13. Guest/offline ticket Phase 2
 Status: PRODUCT DIRECTION UNDER REVIEW
 
 Current technical implementation exists, but browser live guest admission is not the intended final product direction. External ticket sharing should move toward app-first claim/install behavior.
@@ -263,8 +302,22 @@ Current technical implementation exists, but browser live guest admission is not
   - reservation counters remained operational;
   - approved checkout reservation succeeded;
   - transaction rolled back with no fake event/order/approval left behind.
-- Existing production catalog remains compatible: all current published events are Admin-created legacy catalog events with no organizer attached.
+- Existing production catalog remains compatible: current published catalog events are Admin-created events with no organizer attached.
 - Internal approval/hash/trigger helpers are not executable by anon/authenticated clients.
+- Published-event live revision rollback test passed:
+  - V1 approved and live;
+  - organizer created private V2;
+  - V2 venue/price changes did not change live V1 while pending;
+  - Admin approval atomically applied V2;
+  - approval version advanced from 1 to 2;
+  - new approval hash matched the applied live event + tiers;
+  - direct post-approval ticket mutation remained blocked;
+  - transaction rolled back cleanly.
+- Revision tables have no direct anon/authenticated SELECT/INSERT/UPDATE access.
+- Anonymous users cannot execute revision RPCs.
+- Internal revision-apply context helper is service-only.
+- Signed-in non-Admin was explicitly blocked from Admin revision list/review RPCs.
+- Organizer access after re-enable now follows the trusted temporary organizer identity + current active grant, while original event grant ID remains preserved for audit.
 
 ## NEEDS PRODUCT DECISION TOGETHER
 
@@ -285,22 +338,21 @@ Recommended:
 - organizer/Admin-configurable exceptional bearer fallback with clear first-scan-wins warning.
 
 ### C. Ticket tier experience
-Backend supports multiple tiers; organizer UI currently starts with one primary tier.
+Backend and live revision editor support multiple tiers.
 
-Need to decide UX for:
-- General / VIP / Early Bird / Group / Phase tiers;
-- tier sale start/end;
+Need later polish/decision for:
+- default templates such as General / VIP / Early Bird / Group / Phase tiers;
 - max tickets per order;
 - optional access-code/private tiers.
 
 ### D. Published-event revision workflow
-Initial organizer approval is now immutable and safe.
+RESOLVED.
 
-Next design decision:
-- when a published organizer wants a material change (price, capacity, venue, date, ticket type, sale window), should the currently approved public version remain live while a separate revision waits for Admin approval?
-
-Recommended:
-- YES. Keep the approved live version selling until Admin approves the proposed revision, unless Admin/organizer deliberately pauses sales.
+Rule:
+- the currently approved public version stays live and purchasable while a separate revision waits for Admin review;
+- saving/submitting a revision never changes customer-visible or checkout terms;
+- only Admin approval atomically applies the revision and creates the next immutable approval version;
+- organizer/Admin may separately pause the live event when needed.
 
 ### E. Organizer access grace period
 Current system deliberately lets Admin choose the exact expiry.
@@ -330,12 +382,12 @@ Need a design that remains scannable with poor attendee internet while still res
 
 Supabase security advisor still reports older non-ticket public tables without RLS and older functions with mutable search paths / broad SECURITY DEFINER exposure. Do not blindly toggle these in a ticketing pass; audit each existing feature and its policies first to avoid breaking production flows.
 
-`ticket_organizer_invites` intentionally has RLS with no client policies because all direct `anon`/`authenticated` table privileges are revoked and only service role accesses it directly.
+`ticket_organizer_invites` and the live revision tables intentionally have RLS with no client policies because all direct `anon`/`authenticated` table privileges are revoked and access is through validated RPCs only.
 
 ## BUILD RULES DURING CHARGING / NO-PHONE PERIOD
 
 1. Keep building server/data/client pieces that can be statically inspected or rollback-tested.
-2. Do not declare a mobile feature passed until tested on the phone.
+2. Do not declare a mobile feature passed until it is tested on the phone.
 3. Add every new phone-dependent checkpoint here.
 4. Bring meaningful product/security decisions to the user before locking them in.
 5. Avoid unrelated VAC/payment changes while ticketing work continues.
