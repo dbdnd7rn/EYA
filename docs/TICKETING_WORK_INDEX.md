@@ -46,12 +46,20 @@ Use these documents together:
    - scanner authorization/privacy rules
    - migration-safe implementation order
 
+7. [`EYA_SERVICE_PAYMENT_CUSTODY_MODEL.md`](./EYA_SERVICE_PAYMENT_CUSTODY_MODEL.md)
+   - tickets remain the controlled-collection exception
+   - Food, Marketplace and Rooms are under product review and must not gain new EYA money-custody flows
+   - third-party merchant/landlord proceeds should not create manual EYA settlement workload
+   - EYA-owned fees remain separate from third-party proceeds
+   - removal/non-custodial fallback rules and ticket-payment isolation
+
 Rules:
 - The Master Architecture & Delivery Plan defines whole-system boundaries and priority order.
 - If a ticketing product/security/finance decision changes, update the Architecture Ledger.
 - If the account/workspace identity model changes, update the Account & Workspace Identity Model.
 - If implementation changes what must be tested, update the Build & Test Board.
 - The Gate Staff & Scanner Model defines the event-scoped scanner direction until it is folded into the main Architecture Ledger.
+- The Service Payment & Custody Model defines why Ticket Management may use controlled settlement while other third-party service proceeds should not create a general EYA custody model.
 - Security blockers in the Security Audit take priority over new finance or payout behavior.
 - Do not use the test board as the source of truth for unresolved product decisions.
 - Do not enable real organizer payout execution until every blocker in the Architecture Ledger and Master Plan is resolved.
