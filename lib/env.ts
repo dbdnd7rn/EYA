@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 
 const configuredAuthRedirectUrl = (process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL ?? "").trim();
+const EYA_PRODUCTION_API_URL = "https://eya-vac.vercel.app";
 
 function firstNonEmpty(...values: Array<string | undefined>) {
   for (const value of values) {
@@ -28,13 +29,14 @@ function resolveAuthRedirectUrl() {
 
 const requestedDevAuthMode = (process.env.EXPO_PUBLIC_DEV_AUTH_MODE ?? "false").toLowerCase() === "true";
 
-// Canonical public EYA application backend URL. This is the Vercel target.
+// Canonical public EYA application backend URL. The verified production target
+// is Vercel. Old PAYCHANGU_BACKEND variables are intentionally NOT accepted
+// here anymore so stale local env files cannot route application authority back
+// to the legacy Render payment/backend service.
 const configuredEyaApiUrl = firstNonEmpty(
   process.env.EXPO_PUBLIC_EYA_API_URL,
   process.env.NEXT_PUBLIC_EYA_API_URL,
-  // Temporary compatibility fallback while old builds are being migrated.
-  process.env.EXPO_PUBLIC_PAYCHANGU_BACKEND,
-  process.env.NEXT_PUBLIC_PAYCHANGU_BACKEND,
+  EYA_PRODUCTION_API_URL,
 );
 
 // Temporary bridge for the existing generic commerce payment caller only. This
