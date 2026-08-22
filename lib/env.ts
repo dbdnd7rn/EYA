@@ -11,7 +11,7 @@ function resolveAuthRedirectUrl() {
   // Native OAuth must return to the app. Never let a web/localhost URL
   // override Expo Go or the installed EYA custom scheme.
   if (/^eya:\/\//i.test(configuredAuthRedirectUrl)) return configuredAuthRedirectUrl;
-  if (/^exp:\/\//i.test(configuredAuthRedirectUrl) && !/^exp:\/\/(localhost|127\.0\.1)(?::\d+)?/i.test(configuredAuthRedirectUrl)) {
+  if (/^exp:\/\//i.test(configuredAuthRedirectUrl) && !/^exp:\/\/(localhost|127\.0\.0\.1)(?::\d+)?/i.test(configuredAuthRedirectUrl)) {
     return configuredAuthRedirectUrl;
   }
 
