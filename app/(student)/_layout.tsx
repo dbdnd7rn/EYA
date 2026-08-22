@@ -1,10 +1,10 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import StudentGuard from "@/components/StudentGuard";
+import UserGuard from "@/components/UserGuard";
 import { PreferredLocationProvider } from "@/providers/PreferredLocationProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
-function StudentStack() {
+function UserStack() {
   const { mode } = useStudentTheme();
 
   return (
@@ -21,12 +21,12 @@ function StudentStack() {
   );
 }
 
-export default function StudentLayout() {
+export default function UserLayout() {
   return (
-    <StudentGuard>
+    <UserGuard>
       <PreferredLocationProvider>
-        <StudentStack />
+        <UserStack />
       </PreferredLocationProvider>
-    </StudentGuard>
+    </UserGuard>
   );
 }
