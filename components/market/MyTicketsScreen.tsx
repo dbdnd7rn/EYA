@@ -58,8 +58,13 @@ const tabs: { key: TicketStatus; label: string; Icon: IconComponent }[] = [
   { key: "cancelled", label: "Cancelled", Icon: XCircle },
 ];
 
+function stripStaticAdmissionArtifact(ticket: IssuedTicket): IssuedTicket {
+  const { qr_data_url: _legacyQr, ...safeTicket } = ticket;
+  return safeTicket;
+}
+
 function mergeCachedTicketDetails(cachedTickets: IssuedTicket[], liveTickets: IssuedTicket[]) {
-  if (!cachedTickets.length || !liveTickets.length) return liveTickets;
+  if (!cachedTickets.length || !liveTickets.length) return liveTickets.map(stripStaticAdmissionArtifact);
   const cachedByKey = new Map<string, IssuedTicket>();
   cachedTickets.forEach((ticket) => {
     if (ticket.id) cachedByKey.set(ticket.id, ticket);
@@ -68,15 +73,14 @@ function mergeCachedTicketDetails(cachedTickets: IssuedTicket[], liveTickets: Is
 
   return liveTickets.map((ticket) => {
     const cached = cachedByKey.get(ticket.id) ?? cachedByKey.get(ticket.ticket_code);
-    if (!cached) return ticket;
-    return {
+    if (!cached) return stripStaticAdmissionArtifact(ticket);
+    return stripStaticAdmissionArtifact({
       ...cached,
       ...ticket,
       event: ticket.event ?? cached.event,
       tier: ticket.tier ?? cached.tier,
       order: ticket.order ?? cached.order,
-      qr_data_url: ticket.qr_data_url ?? cached.qr_data_url,
-    };
+    });
   });
 }
 
@@ -99,7 +103,7 @@ export default function MyTicketsScreen() {
       let cachedTickets: IssuedTicket[] = [];
 
       try {
-        cachedTickets = await getCachedMyTickets(user?.id);
+        cachedTickets = (await getCachedMyTickets(user?.id)).map(stripStaticAdmissionArtifact);
         if (!active) return;
         setTickets(cachedTickets);
         setLoading(false);
@@ -146,7 +150,7 @@ export default function MyTicketsScreen() {
     setSyncing(true);
     setError(null);
     try {
-      const cachedTickets = await getCachedMyTickets(user?.id);
+      const cachedTickets = (await getCachedMyTickets(user?.id)).map(stripStaticAdmissionArtifact);
       const liveTickets = await listMyTickets(session.access_token);
       const nextTickets = mergeCachedTicketDetails(cachedTickets, liveTickets);
       setTickets(nextTickets);
@@ -256,7 +260,7 @@ export default function MyTicketsScreen() {
             </View>
           ) : null}
 
-          {loading ? <StateCard loading title="Loading your ticket wallet..." /> : null}
+          {loading ? <StateCard loading title="Loading your tickets..." /> : null}
 
           <View style={styles.list}>
             {visibleTickets.map((ticket) => (
@@ -427,7 +431,7 @@ function SafetyNote() {
         <ShieldCheck size={24} color={ACCENT} strokeWidth={2.3} />
       </View>
       <View style={styles.safetyCopy}>
-        <Text style={styles.safetyTitle}>Your ticket wallet is private</Text>
+        <Text style={styles.safetyTitle}>Your tickets are private</Text>
         <Text style={styles.safetyText}>Keep ticket IDs and entry credentials private. Open the ticket inside EYA when you need to present it.</Text>
       </View>
     </View>
