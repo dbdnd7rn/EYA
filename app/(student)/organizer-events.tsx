@@ -142,6 +142,7 @@ function EventCard({ event, onChanged }: { event: OrganizerTicketEventSummary; o
   const tone = statusTone(event.status);
   const soldPercent = event.capacity_total > 0 ? Math.min(100, Math.round((event.tickets_sold / event.capacity_total) * 100)) : 0;
   const canEditDraft = event.status === "draft" || event.status === "changes_requested";
+  const canOpenFinance = event.status === "published" || event.status === "paused" || event.status === "archived";
 
   const openRevision = async () => {
     if (event.open_revision_id) {
@@ -177,6 +178,14 @@ function EventCard({ event, onChanged }: { event: OrganizerTicketEventSummary; o
         <View><Text style={styles.metricValue}>{event.capacity_remaining.toLocaleString()}</Text><Text style={styles.metricLabel}>remaining</Text></View>
       </View>
       <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${soldPercent}%` }]} /></View>
+
+      {canOpenFinance ? (
+        <Pressable style={styles.financeBtn} onPress={() => router.push({ pathname: "/(organizer)/event-finance", params: { eventId: event.id } } as any)}>
+          <CircleDollarSign size={16} color="#087443" />
+          <Text style={styles.financeText}>Finance & payouts</Text>
+        </Pressable>
+      ) : null}
+
       <View style={styles.eventFoot}>
         <Text style={styles.footText}>{soldPercent}% of capacity sold</Text>
         {canEditDraft ? (
@@ -205,5 +214,5 @@ const styles = StyleSheet.create({
   list: { gap: 12 }, eventCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 24, padding: 16, gap: 13 }, eventHead: { flexDirection: "row", gap: 10, alignItems: "flex-start" }, eventTitle: { color: TEXT, fontSize: 18, lineHeight: 22, fontWeight: "900" }, eventMeta: { color: MUTED, fontSize: 12, lineHeight: 17, fontWeight: "700", marginTop: 4 }, statusBadge: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, maxWidth: 132 }, statusText: { fontSize: 10, fontWeight: "900", textAlign: "center" }, versionText: { color: "#087443", fontSize: 10, fontWeight: "900" },
   reviewNote: { backgroundColor: "#fff8eb", borderRadius: 16, padding: 12, gap: 4 }, reviewLabel: { color: "#8a5a00", fontSize: 9, fontWeight: "900", letterSpacing: 0.8 }, reviewText: { color: "#6b4b16", fontSize: 12, lineHeight: 17, fontWeight: "700" },
   revisionBanner: { backgroundColor: "#fff7df", borderRadius: 16, padding: 12, flexDirection: "row", gap: 9, alignItems: "flex-start" }, revisionTitle: { color: "#735400", fontSize: 11, fontWeight: "900" }, revisionCopy: { color: "#806c37", fontSize: 10, lineHeight: 15, fontWeight: "700", marginTop: 2 },
-  eventMetrics: { flexDirection: "row", justifyContent: "space-between", gap: 10 }, metricValue: { color: TEXT, fontSize: 14, fontWeight: "900" }, metricLabel: { color: MUTED, fontSize: 10, fontWeight: "700", marginTop: 2 }, progressTrack: { height: 7, borderRadius: 999, backgroundColor: "#eef1f7", overflow: "hidden" }, progressFill: { height: "100%", backgroundColor: ACCENT, borderRadius: 999 }, eventFoot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }, footText: { color: MUTED, fontSize: 11, fontWeight: "800" }, editBtn: { minHeight: 36, borderRadius: 18, backgroundColor: "#eef1ff", paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 5 }, pendingRevisionBtn: { backgroundColor: "#f5f6fa" }, editText: { color: ACCENT, fontSize: 10, fontWeight: "900" },
+  eventMetrics: { flexDirection: "row", justifyContent: "space-between", gap: 10 }, metricValue: { color: TEXT, fontSize: 14, fontWeight: "900" }, metricLabel: { color: MUTED, fontSize: 10, fontWeight: "700", marginTop: 2 }, progressTrack: { height: 7, borderRadius: 999, backgroundColor: "#eef1f7", overflow: "hidden" }, progressFill: { height: "100%", backgroundColor: ACCENT, borderRadius: 999 }, financeBtn: { minHeight: 40, borderRadius: 18, backgroundColor: "#e8f7ee", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }, financeText: { color: "#087443", fontSize: 11, fontWeight: "900" }, eventFoot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }, footText: { color: MUTED, fontSize: 11, fontWeight: "800" }, editBtn: { minHeight: 36, borderRadius: 18, backgroundColor: "#eef1ff", paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 5 }, pendingRevisionBtn: { backgroundColor: "#f5f6fa" }, editText: { color: ACCENT, fontSize: 10, fontWeight: "900" },
 });
