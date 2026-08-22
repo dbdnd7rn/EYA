@@ -559,79 +559,15 @@ async function listAdminTicketOrdersViaSupabase(input: { status?: string | null;
   })) satisfies AdminTicketOrderSummary[];
 }
 
-async function checkInAdminTicketViaSupabase(input: {
+async function checkInAdminTicketViaSupabase(_input: {
   ticketCode: string;
   eventId?: string | null;
   deviceLabel?: string | null;
   userId: string;
 }) {
-  const code = input.ticketCode.trim().toUpperCase();
-  if (!code) throw new Error("Ticket code is required.");
-
-  const { data: ticket, error: ticketError } = await supabase
-    .from("issued_tickets")
-    .select("id,event_id,order_id,tier_id,user_id,ticket_code,status,checked_in_at")
-    .eq("ticket_code", code)
-    .maybeSingle();
-  if (ticketError) throwAdminTicketingError(ticketError, "check-in");
-  if (!ticket) throw new Error("Ticket not found.");
-  if (input.eventId && ticket.event_id !== input.eventId) throw new Error("Ticket is for another event.");
-  if (ticket.status !== "active") throw new Error(`Ticket is ${ticket.status}.`);
-  if (ticket.checked_in_at) throw new Error("Ticket has already been checked in.");
-
-  const now = new Date().toISOString();
-  const { data: updatedRows, error: updateError } = await supabase
-    .from("issued_tickets")
-    .update({
-      status: "used",
-      checked_in_at: now,
-      checked_in_by: input.userId,
-      updated_at: now,
-    })
-    .eq("id", ticket.id)
-    .eq("status", "active")
-    .is("checked_in_at", null)
-    .select("id,event_id,order_id,tier_id,user_id,ticket_code,status,checked_in_at");
-  if (updateError) throwAdminTicketingError(updateError, "check-in");
-
-  const updated = Array.isArray(updatedRows) ? updatedRows[0] : null;
-  if (!updated) throw new Error("Ticket has already been checked in.");
-
-  const { data: checkin, error: checkinError } = await supabase
-    .from("ticket_checkins")
-    .insert({
-      issued_ticket_id: ticket.id,
-      event_id: ticket.event_id,
-      checked_in_by: input.userId,
-      method: "qr",
-      device_label: input.deviceLabel || null,
-    })
-    .select("*")
-    .single();
-  if (checkinError) throwAdminTicketingError(checkinError, "check-in");
-
-  const [eventRes, tierRes, orderRes, userRes] = await Promise.all([
-    supabase.from("ticket_events").select("id,title,date_label,venue,city").eq("id", updated.event_id).maybeSingle(),
-    supabase.from("ticket_tiers").select("id,name,price_mwk").eq("id", updated.tier_id).maybeSingle(),
-    supabase.from("ticket_orders").select("id,total_mwk,quantity,payment_status,paid_at").eq("id", updated.order_id).maybeSingle(),
-    supabase.from("profiles").select("id,full_name,email,phone").eq("id", updated.user_id).maybeSingle(),
-  ]);
-  if (eventRes.error) throwAdminTicketingError(eventRes.error, "check-in");
-  if (tierRes.error) throwAdminTicketingError(tierRes.error, "check-in");
-  if (orderRes.error) throwAdminTicketingError(orderRes.error, "check-in");
-  if (userRes.error) throwAdminTicketingError(userRes.error, "check-in");
-
-  return {
-    status: "success",
-    ticket: {
-      ...updated,
-      event: eventRes.data ?? null,
-      tier: tierRes.data ?? null,
-      order: orderRes.data ?? null,
-      user: userRes.data ?? null,
-    },
-    checkin,
-  } satisfies AdminTicketCheckInResult;
+  throw new Error(
+    "Legacy permanent ticket-code check-in is disabled. Use a current LIVE-, GUEST-, or OFF- entry credential.",
+  );
 }
 
 async function listBroadcastRecipientIds(audienceRole: AdminBroadcastAudience) {
@@ -928,7 +864,21 @@ export async function checkInAdminTicket(input: {
   userId: string;
   accessToken?: string | null;
 }) {
-  return checkInAdminTicketViaSupabase(input);
+  const rawCredential = input.ticketCode.trim().toUpperCase();
+  const method = rawCredential.startsWith("EYA-") ? "qr" : "manual";
+  const { checkInLiveTicketCredential, normalizeTicketEntryCredential } = await import("@/lib/ticketGateApi");
+  const credential = normalizeTicketEntryCredential(rawCredential, method);
+  if (!credential) {
+    throw new Error(
+      "Permanent ticket references are not admission credentials. Use the holder's current live, guest, or offline entry pass.",
+    );
+  }
+  return checkInLiveTicketCredential({
+    credential,
+    method,
+    eventId: input.eventId ?? null,
+    deviceLabel: input.deviceLabel ?? null,
+  });
 }
 
 export async function listAdminTicketEvents(input: {
