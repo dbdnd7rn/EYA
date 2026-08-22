@@ -287,17 +287,16 @@ export type CreateAdminHousingListingInput = {
 };
 
 function backendUrl(path: string) {
-  if (!ENV.PAYCHANGU_BACKEND) {
-    throw new Error("PayChangu backend URL is not configured.");
+  if (!ENV.EYA_API_URL) {
+    throw new Error("EYA API URL is not configured.");
   }
-  return `${ENV.PAYCHANGU_BACKEND.replace(/\/+$/, "")}${path}`;
+  return `${ENV.EYA_API_URL.replace(/\/+$/, "")}${path}`;
 }
 
 function adminHeaders(input: { userId: string; accessToken?: string | null; json?: boolean }) {
   return {
     ...(input.json ? { "Content-Type": "application/json" } : {}),
     ...(input.accessToken ? { Authorization: `Bearer ${input.accessToken}` } : {}),
-    "x-admin-user-id": input.userId,
   };
 }
 
