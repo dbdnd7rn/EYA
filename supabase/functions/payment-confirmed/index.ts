@@ -75,15 +75,21 @@ async function hmacSha256Hex(secret: string, value: string): Promise<string> {
   return bytesToHex(new Uint8Array(signature));
 }
 
-async function authenticateVacCallback(request: Request, rawBody: string): Promise<void> {
+type VacCallbackAuth = {
+  timestamp: number;
+  nonce: string;
+};
+
+async function authenticateVacCallback(request: Request, rawBody: string): Promise<VacCallbackAuth> {
   const appId = (request.headers.get("x-vac-app-id") || "").trim();
   const timestampRaw = (request.headers.get("x-vac-timestamp") || "").trim();
+  const nonce = (request.headers.get("x-vac-nonce") || "").trim().toLowerCase();
   const suppliedSignature = (request.headers.get("x-vac-signature") || "")
     .trim()
     .toLowerCase()
     .replace(/^sha256=/, "");
 
-  if (appId !== "eya" || !timestampRaw || !suppliedSignature) {
+  if (appId !== "eya" || !timestampRaw || !nonce || !suppliedSignature) {
     throw new Error("Missing or invalid VAC callback authentication headers.");
   }
 
@@ -93,6 +99,10 @@ async function authenticateVacCallback(request: Request, rawBody: string): Promi
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (Math.abs(nowSeconds - timestamp) > MAX_CLOCK_SKEW_SECONDS) {
     throw new Error("VAC callback request has expired.");
+  }
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(nonce)) {
+    throw new Error("Invalid VAC callback nonce.");
   }
 
   if (!/^[0-9a-f]{64}$/.test(suppliedSignature)) {
@@ -106,6 +116,7 @@ async function authenticateVacCallback(request: Request, rawBody: string): Promi
 
   const canonical = [
     String(timestamp),
+    nonce,
     request.method.toUpperCase(),
     VAC_CALLBACK_SIGNING_PATH,
     rawBody,
@@ -115,6 +126,8 @@ async function authenticateVacCallback(request: Request, rawBody: string): Promi
   if (!constantTimeEqual(expectedSignature, suppliedSignature)) {
     throw new Error("Invalid VAC callback signature.");
   }
+
+  return { timestamp, nonce };
 }
 
 export default {
@@ -124,12 +137,28 @@ export default {
     }
 
     try {
+      const declaredLength = Number(request.headers.get("content-length") || "0");
+      if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+        return json({ status: "error", message: "Request body is too large." }, 413);
+      }
+
       const rawBody = await request.text();
       if (encoder.encode(rawBody).byteLength > MAX_BODY_BYTES) {
         return json({ status: "error", message: "Request body is too large." }, 413);
       }
 
-      await authenticateVacCallback(request, rawBody);
+      const callbackAuth = await authenticateVacCallback(request, rawBody);
+      const { error: nonceError } = await ctx.supabaseAdmin.rpc("claim_vac_callback_nonce", {
+        p_nonce: callbackAuth.nonce,
+        p_expires_at: new Date(Date.now() + (MAX_CLOCK_SKEW_SECONDS + 60) * 1000).toISOString(),
+      });
+      if (nonceError) {
+        if (/already been used/i.test(nonceError.message || "")) {
+          return json({ status: "error", message: "Duplicate VAC callback request." }, 409);
+        }
+        console.error("[payment-confirmed] nonce claim failed", { code: nonceError.code });
+        return json({ status: "error", message: "EYA could not validate the payment callback." }, 500);
+      }
 
       let payload: unknown;
       try {
@@ -215,7 +244,7 @@ export default {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected payment callback error.";
-      const unauthorized = /authentication|signature|expired|secret is not configured|idempotency key/i.test(message);
+      const unauthorized = /authentication|signature|expired|secret is not configured|invalid VAC callback nonce/i.test(message);
       const invalidRequest = /required|too long|must be|unsupported|invalid payment|verified_at/i.test(message);
       const status = unauthorized ? 401 : invalidRequest ? 400 : 500;
 
