@@ -9,6 +9,8 @@ import { ENV, isConfiguredAdminEmail } from "@/lib/env";
 import { ensureProfileRoleFromAuthUser } from "@/lib/authProfile";
 import { storeActiveWorkspace } from "@/lib/activeWorkspace";
 import { getFallbackWorkspaceRole, getWorkspaceHomeRoute, getWorkspaceStatuses } from "@/lib/workspaceAccess";
+import { getMyTicketOrganizerAccess } from "@/lib/ticketOrganizerAccess";
+import { isTemporaryOrganizerUser } from "@/lib/temporaryOrganizerIdentity";
 import EyaWordmark from "@/components/brand/EyaWordmark";
 
 const REDIRECT_WATCHDOG_MS = 7000;
@@ -30,7 +32,7 @@ async function withRedirectTimeout<T>(promise: Promise<T>, ms = REDIRECT_STEP_TI
 
 export default function RedirectPage() {
   const router = useRouter();
-  const { user, role, activeRole, loading, setActiveRole, syncSession } = useAuth();
+  const { user, role, activeRole, loading, setActiveRole, syncSession, signOut } = useAuth();
   const routingStarted = useRef(false);
 
   useEffect(() => {
@@ -52,9 +54,11 @@ export default function RedirectPage() {
 
     const watchdog = setTimeout(() => {
       if (!active || routed) return;
-      // Startup must never leave a signed-in person trapped on this spinner.
-      // Route to the safest workspace immediately; workspace state can recover
-      // after the app is usable again.
+      if (isTemporaryOrganizerUser(user)) {
+        void signOut().catch(() => undefined);
+        replaceOnce("/organizer-access-ended");
+        return;
+      }
       void setActiveRole("student").catch(() => undefined);
       void (user?.id ? storeActiveWorkspace(user.id, "student").catch(() => undefined) : Promise.resolve());
       replaceOnce(getWorkspaceHomeRoute("student"));
@@ -75,8 +79,20 @@ export default function RedirectPage() {
         return;
       }
 
-      // When the provider had to recover the session, use the stable User
-      // workspace first instead of sending the person into a stale saved role.
+      // Temporary organizer identities never enter normal Roles & Workspaces.
+      // The trusted app_metadata marker is set only by the invite claim service.
+      if (isTemporaryOrganizerUser(resolvedUser)) {
+        const access = await withRedirectTimeout(getMyTicketOrganizerAccess()).catch(() => null);
+        if (!active || routed) return;
+        if (access) {
+          replaceOnce("/(organizer)/dashboard");
+          return;
+        }
+        await withRedirectTimeout(signOut(), 1800).catch(() => undefined);
+        replaceOnce("/organizer-access-ended");
+        return;
+      }
+
       if (recoveredSession) {
         await withRedirectTimeout(storeActiveWorkspace(resolvedUser.id, "student"), 1800).catch(() => undefined);
         await withRedirectTimeout(setActiveRole("student"), 1800).catch(() => undefined);
@@ -144,6 +160,11 @@ export default function RedirectPage() {
     };
 
     void go().catch(() => {
+      if (isTemporaryOrganizerUser(user)) {
+        void signOut().catch(() => undefined);
+        replaceOnce("/organizer-access-ended");
+        return;
+      }
       void routeToUserHome();
     });
 
@@ -151,7 +172,7 @@ export default function RedirectPage() {
       active = false;
       clearTimeout(watchdog);
     };
-  }, [activeRole, loading, role, router, setActiveRole, syncSession, user]);
+  }, [activeRole, loading, role, router, setActiveRole, signOut, syncSession, user]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f6f7fb" }}>
