@@ -6,6 +6,7 @@ import { ArrowLeft, CalendarClock, CheckCircle2, Clock3, Send, ShieldCheck, User
 import {
   extendAdminTicketOrganizerAccess,
   listAdminTicketOrganizerAccess,
+  regrantAdminTicketOrganizerAccess,
   revokeAdminTicketOrganizerAccess,
   type AdminTicketOrganizerAccess,
 } from "@/lib/ticketOrganizerAccess";
@@ -148,7 +149,7 @@ export default function AdminOrganizerAccessScreen() {
     ]);
   };
 
-  const renew = async (row: AdminTicketOrganizerAccess) => {
+  const renewOrReenable = async (row: AdminTicketOrganizerAccess) => {
     const expiry = parseMalawiLocalDateTime(renewExpiry[row.id] || "");
     if (!expiry) {
       Alert.alert("New expiry required", "Enter the new expiry using YYYY-MM-DD HH:mm.");
@@ -156,18 +157,22 @@ export default function AdminOrganizerAccessScreen() {
     }
     try {
       setBusy(row.id);
-      await extendAdminTicketOrganizerAccess({ grantId: row.id, expiresAt: expiry });
+      if (row.status === "revoked") {
+        await regrantAdminTicketOrganizerAccess({ userId: row.user_id, expiresAt: expiry, note: "Re-enabled by EYA Admin" });
+      } else {
+        await extendAdminTicketOrganizerAccess({ grantId: row.id, expiresAt: expiry });
+      }
       setRenewExpiry((current) => ({ ...current, [row.id]: "" }));
       await load();
     } catch (e: any) {
-      Alert.alert("Could not renew access", e?.message || "Try again.");
+      Alert.alert(row.status === "revoked" ? "Could not re-enable access" : "Could not renew access", e?.message || "Try again.");
     } finally {
       setBusy(null);
     }
   };
 
   const revokeAccess = (row: AdminTicketOrganizerAccess) => {
-    Alert.alert("Revoke organizer access?", `${row.organization_name} will immediately lose Event Studio access. Pending events cannot be approved until access is restored.`, [
+    Alert.alert("Revoke organizer access?", `${row.organization_name} will immediately lose Event Studio access and the temporary login will be banned. Pending events cannot be approved until access is restored.`, [
       { text: "Cancel", style: "cancel" },
       { text: "Revoke", style: "destructive", onPress: async () => {
         try {
@@ -193,7 +198,7 @@ export default function AdminOrganizerAccessScreen() {
 
         <View style={styles.securityNote}>
           <ShieldCheck size={20} color="#087443" />
-          <Text style={styles.securityText}>Organizer accounts are invite-only and temporary. Normal EYA users do not receive organizer controls or self-application.</Text>
+          <Text style={styles.securityText}>Organizer accounts are invite-only and temporary. Normal EYA users do not receive organizer controls or self-application. Revoking access also bans the temporary organizer login.</Text>
         </View>
 
         <View style={styles.formCard}>
@@ -246,7 +251,6 @@ export default function AdminOrganizerAccessScreen() {
 
         {!loading && !error ? accessRows.map((row) => {
           const badge = accessTone(row.status);
-          const canRenew = row.status !== "revoked";
           return (
             <View key={row.id} style={styles.accessCard}>
               <View style={styles.accessHead}>
@@ -256,7 +260,10 @@ export default function AdminOrganizerAccessScreen() {
               <View style={styles.timeBox}><CalendarClock size={16} color={MUTED} /><View style={{ flex: 1 }}><Text style={styles.timeLabel}>WORKSPACE WINDOW</Text><Text style={styles.timeValue}>{localLabel(row.starts_at)} → {localLabel(row.expires_at)}</Text></View></View>
               {row.grant_note ? <Text style={styles.noteText}>Admin note: {row.grant_note}</Text> : null}
               {row.revoke_note ? <Text style={styles.revokeText}>Revoked: {row.revoke_note}</Text> : null}
-              {canRenew ? <View style={styles.renewRow}><TextInput value={renewExpiry[row.id] || ""} onChangeText={(value) => setRenewExpiry((current) => ({ ...current, [row.id]: value }))} placeholder="New expiry: YYYY-MM-DD HH:mm" placeholderTextColor="#9aa3b8" autoCapitalize="none" style={styles.renewInput} /><Pressable style={styles.renewBtn} disabled={busy === row.id} onPress={() => void renew(row)}>{busy === row.id ? <ActivityIndicator size="small" color={ACCENT} /> : <Text style={styles.renewText}>Renew</Text>}</Pressable></View> : null}
+              <View style={styles.renewRow}>
+                <TextInput value={renewExpiry[row.id] || ""} onChangeText={(value) => setRenewExpiry((current) => ({ ...current, [row.id]: value }))} placeholder={row.status === "revoked" ? "Re-enable until: YYYY-MM-DD HH:mm" : "New expiry: YYYY-MM-DD HH:mm"} placeholderTextColor="#9aa3b8" autoCapitalize="none" style={styles.renewInput} />
+                <Pressable style={styles.renewBtn} disabled={busy === row.id} onPress={() => void renewOrReenable(row)}>{busy === row.id ? <ActivityIndicator size="small" color={ACCENT} /> : <Text style={styles.renewText}>{row.status === "revoked" ? "Re-enable" : "Renew"}</Text>}</Pressable>
+              </View>
               {row.status === "active" ? <Pressable style={styles.revokeBtn} disabled={busy === row.id} onPress={() => revokeAccess(row)}><XCircle size={17} color="#a32929" /><Text style={styles.revokeBtnText}>Revoke immediately</Text></Pressable> : null}
             </View>
           );
@@ -285,5 +292,5 @@ const styles = StyleSheet.create({
   state: { minHeight: 150, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 22, alignItems: "center", justifyContent: "center", gap: 10, padding: 22 }, stateText: { color: MUTED, fontSize: 12, lineHeight: 18, fontWeight: "700", textAlign: "center" }, emptyTitle: { color: TEXT, fontSize: 18, fontWeight: "900" }, errorText: { color: "#a32929", fontWeight: "800", textAlign: "center" }, retryBtn: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 18, backgroundColor: "#eef1ff" }, retryText: { color: ACCENT, fontWeight: "900" },
   accessCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 22, padding: 15, gap: 11 }, accessHead: { flexDirection: "row", alignItems: "flex-start", gap: 10 }, orgName: { color: TEXT, fontSize: 17, fontWeight: "900" }, person: { color: "#4f5d7a", fontSize: 12, fontWeight: "800", marginTop: 3 }, small: { color: MUTED, fontSize: 11, fontWeight: "700", marginTop: 2 }, badge: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, badgeText: { fontSize: 10, fontWeight: "900" },
   timeBox: { flexDirection: "row", gap: 9, backgroundColor: "#f7f8fc", borderRadius: 15, padding: 11 }, timeLabel: { color: MUTED, fontSize: 8, fontWeight: "900", letterSpacing: 0.7 }, timeValue: { color: TEXT, fontSize: 11, lineHeight: 17, fontWeight: "800", marginTop: 2 }, noteText: { color: MUTED, fontSize: 11, lineHeight: 17, fontWeight: "700" }, revokeText: { color: "#a32929", fontSize: 11, fontWeight: "800" },
-  renewRow: { flexDirection: "row", gap: 8 }, renewInput: { flex: 1, minHeight: 44, borderRadius: 14, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 11, color: TEXT, fontSize: 11, fontWeight: "700" }, renewBtn: { minWidth: 72, borderRadius: 14, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" }, renewText: { color: ACCENT, fontSize: 11, fontWeight: "900" }, revokeBtn: { minHeight: 43, borderRadius: 17, backgroundColor: "#fff0f0", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }, revokeBtnText: { color: "#a32929", fontSize: 11, fontWeight: "900" },
+  renewRow: { flexDirection: "row", gap: 8 }, renewInput: { flex: 1, minHeight: 44, borderRadius: 14, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 11, color: TEXT, fontSize: 11, fontWeight: "700" }, renewBtn: { minWidth: 82, borderRadius: 14, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center", paddingHorizontal: 8 }, renewText: { color: ACCENT, fontSize: 11, fontWeight: "900" }, revokeBtn: { minHeight: 43, borderRadius: 17, backgroundColor: "#fff0f0", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }, revokeBtnText: { color: "#a32929", fontSize: 11, fontWeight: "900" },
 });
