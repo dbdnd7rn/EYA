@@ -80,6 +80,20 @@ export async function extendAdminTicketOrganizerAccess(input: {
   return data as { ok: true; grant_id: string; status: "active"; expires_at: string };
 }
 
+export async function regrantAdminTicketOrganizerAccess(input: {
+  userId: string;
+  expiresAt: string;
+  note?: string | null;
+}) {
+  const { data, error } = await supabase.rpc("admin_regrant_ticket_organizer_access", {
+    p_user_id: input.userId,
+    p_expires_at: input.expiresAt,
+    p_note: input.note?.trim() || null,
+  });
+  if (error) throw new Error(errorMessage(error, "Could not re-enable organizer access."));
+  return data as { ok: true; grant_id: string; user_id: string; organization_name: string; status: "active"; starts_at: string; expires_at: string };
+}
+
 export async function revokeAdminTicketOrganizerAccess(input: { grantId: string; note?: string | null }) {
   const { data, error } = await supabase.rpc("admin_revoke_ticket_organizer_access", {
     p_grant_id: input.grantId,
