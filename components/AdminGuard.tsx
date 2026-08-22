@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import { normalizeAppRole } from "@/lib/roleRouting";
-import { ENV, isConfiguredAdminEmail } from "@/lib/env";
+import { ENV } from "@/lib/env";
 
 export default function AdminGuard({ children }: { children: React.ReactNode }) {
   const { user, role, activeRole, loading: authLoading, refreshRole } = useAuth();
@@ -24,11 +24,6 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
           return;
         }
 
-        if (!ENV.DEV_AUTH_MODE && !isConfiguredAdminEmail(user.email)) {
-          router.replace("/");
-          return;
-        }
-
         if (!role) {
           await refreshRole(user.id);
         }
@@ -42,8 +37,15 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
           return;
         }
 
-        const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-        const currentRole = normalizeAppRole((data as any)?.role ?? role);
+        // Production Admin UI follows the server-backed profile role only.
+        // Public email lists and user-editable auth metadata are not authority.
+        const { data, error } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+        if (error) {
+          router.replace("/");
+          return;
+        }
+
+        const currentRole = normalizeAppRole((data as any)?.role);
         if (currentRole !== "admin") {
           router.replace("/");
           return;
