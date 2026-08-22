@@ -6,9 +6,12 @@ import { consumePendingGoogleAuthContext, persistAuthFeedback } from "@/lib/auth
 import { clearPendingGoogleAuthState, completeGoogleAuthFromUrl, getAuthRedirectParams } from "@/lib/googleAuth";
 
 /**
- * Handles auth redirects such as:
+ * Handles PKCE auth redirects such as:
  *  - eya://auth/callback?code=...&type=recovery
  *  - https://<host>/auth/callback?code=...&type=recovery
+ *
+ * Raw access/refresh tokens are intentionally rejected here. The externally
+ * routable deep link is allowed to complete only a locally initiated PKCE flow.
  */
 export default function AuthCallbackScreen() {
   const params = useLocalSearchParams<{ code?: string; type?: string; error?: string; error_description?: string }>();
@@ -33,10 +36,12 @@ export default function AuthCallbackScreen() {
         ),
       });
     const redirectParams = getAuthRedirectParams(fallbackUrl);
+    const hasRawSessionTokens = Boolean(
+      redirectParams.get("access_token") || redirectParams.get("refresh_token"),
+    );
     const hasAuthPayload = Boolean(
       redirectParams.get("code") ||
-        redirectParams.get("access_token") ||
-        redirectParams.get("refresh_token") ||
+        hasRawSessionTokens ||
         redirectParams.get("error") ||
         redirectParams.get("error_description"),
     );
@@ -50,6 +55,17 @@ export default function AuthCallbackScreen() {
       const context = await consumePendingGoogleAuthContext();
       const fallbackRoute = context?.screen === "signup" ? "/(auth)/signup" : "/(auth)/login";
       const fallbackParams = { role: context?.role ?? "student" };
+
+      if (hasRawSessionTokens && !redirectParams.get("code")) {
+        await clearPendingGoogleAuthState();
+        await persistAuthFeedback({
+          screen: context?.screen ?? "login",
+          role: context?.role ?? "student",
+          error: "Authentication callback was rejected. Please start sign-in again from EYA.",
+        });
+        router.replace({ pathname: fallbackRoute, params: fallbackParams });
+        return;
+      }
 
       if (authError) {
         await clearPendingGoogleAuthState();
