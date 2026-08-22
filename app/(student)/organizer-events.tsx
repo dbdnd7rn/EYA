@@ -35,10 +35,10 @@ function statusLabel(status: OrganizerTicketEventStatus) {
 }
 
 function revisionLabel(status: OrganizerTicketRevisionStatus | null) {
-  if (status === "draft") return "Revision draft";
-  if (status === "pending_review") return "Revision under review";
-  if (status === "changes_requested") return "Revision needs changes";
-  return "Live revision";
+  if (status === "draft") return "Proposed changes draft";
+  if (status === "pending_review") return "Proposed changes under review";
+  if (status === "changes_requested") return "Proposed changes need updates";
+  return "Proposed changes";
 }
 
 function statusTone(status: OrganizerTicketEventStatus) {
@@ -75,7 +75,7 @@ export default function OrganizerEventsScreen() {
       }
       setEvents(await listMyOrganizerEvents());
     } catch (e: any) {
-      setError(e?.message || "Could not load Organizer Workspace.");
+      setError(e?.message || "Could not load Ticket Management.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -98,25 +98,25 @@ export default function OrganizerEventsScreen() {
       <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={ACCENT} />}>
         <View style={styles.header}>
           <Pressable style={styles.iconBtn} onPress={() => router.back()}><ArrowLeft size={21} color={TEXT} /></Pressable>
-          <View style={{ flex: 1 }}><Text style={styles.kicker}>Organizer workspace</Text><Text style={styles.title}>Event Studio</Text></View>
+          <View style={{ flex: 1 }}><Text style={styles.kicker}>Ticket Management</Text><Text style={styles.title}>Event Studio</Text></View>
           {access ? <Pressable style={styles.addBtn} onPress={() => router.push("/(organizer)/event-create" as any)}><Plus size={19} color="#fff" /><Text style={styles.addText}>Create</Text></Pressable> : null}
         </View>
 
         {loading ? (
-          <View style={styles.stateCard}><ActivityIndicator color={ACCENT} /><Text style={styles.stateText}>Checking organizer access...</Text></View>
+          <View style={styles.stateCard}><ActivityIndicator color={ACCENT} /><Text style={styles.stateText}>Checking Ticket Management access...</Text></View>
         ) : error ? (
           <View style={styles.stateCard}><Text style={styles.errorText}>{error}</Text><Pressable style={styles.retryBtn} onPress={() => void load()}><Text style={styles.retryText}>Try again</Text></Pressable></View>
         ) : !access ? (
           <View style={styles.blockedCard}>
             <View style={styles.blockedIcon}><ShieldAlert size={31} color="#a35b00" /></View>
-            <Text style={styles.blockedTitle}>Organizer access unavailable</Text>
-            <Text style={styles.blockedText}>Event Studio is private and invite-only. EYA Admin must activate a temporary Organizer Workspace before this account can create or manage events.</Text>
+            <Text style={styles.blockedTitle}>Ticket Management unavailable</Text>
+            <Text style={styles.blockedText}>Event Studio is private. EYA Admin must grant Ticket Management to this EYA account before it can create or manage events.</Text>
             <Pressable style={styles.backHomeBtn} onPress={() => router.back()}><Text style={styles.backHomeText}>Return to EYA</Text></Pressable>
           </View>
         ) : (
           <>
-            <View style={styles.accessCard}><Text style={styles.accessLabel}>TEMPORARY ORGANIZER ACCESS</Text><Text style={styles.accessName}>{access.organization_name}</Text><Text style={styles.accessExpiry}>Access expires {expiryLabel(access.expires_at)}</Text></View>
-            <Text style={styles.intro}>Create events and submit them to EYA. Published event/ticket changes are proposed privately and do not affect customers until Admin approves the new version.</Text>
+            <View style={styles.accessCard}><Text style={styles.accessLabel}>TICKET MANAGEMENT ACCESS</Text><Text style={styles.accessName}>{access.organization_name}</Text><Text style={styles.accessExpiry}>Access expires {expiryLabel(access.expires_at)}</Text></View>
+            <Text style={styles.intro}>Create events and submit them to EYA. Changes to published events and ticket terms remain private until EYA Admin approves the proposed changes.</Text>
             <View style={styles.statsRow}>
               <StatCard icon={<Ticket size={19} color={ACCENT} />} label="Tickets sold" value={totals.sold.toLocaleString()} />
               <StatCard icon={<CircleDollarSign size={19} color={ACCENT} />} label="Gross sales" value={kwacha(totals.gross)} />
@@ -155,7 +155,7 @@ function EventCard({ event, onChanged }: { event: OrganizerTicketEventSummary; o
       onChanged();
       router.push({ pathname: "/(organizer)/event-revision", params: { revisionId: result.revision_id } } as any);
     } catch (e: any) {
-      Alert.alert("Could not start revision", e?.message || "Try again.");
+      Alert.alert("Could not start proposed changes", e?.message || "Try again.");
     } finally {
       setStarting(false);
     }
@@ -168,9 +168,9 @@ function EventCard({ event, onChanged }: { event: OrganizerTicketEventSummary; o
         <View style={[styles.statusBadge, { backgroundColor: tone.bg }]}><Text style={[styles.statusText, { color: tone.text }]}>{statusLabel(event.status)}</Text></View>
       </View>
 
-      {event.approved_version_number ? <Text style={styles.versionText}>Customer version V{event.approved_version_number}</Text> : null}
+      {event.approved_version_number ? <Text style={styles.versionText}>Current live event</Text> : null}
       {event.review_note ? <View style={styles.reviewNote}><Text style={styles.reviewLabel}>EYA REVIEW NOTE</Text><Text style={styles.reviewText}>{event.review_note}</Text></View> : null}
-      {event.open_revision_status ? <View style={styles.revisionBanner}><RefreshCw size={15} color="#735400" /><View style={{ flex: 1 }}><Text style={styles.revisionTitle}>{revisionLabel(event.open_revision_status)}</Text><Text style={styles.revisionCopy}>The live customer version remains unchanged until EYA Admin approves this revision.</Text></View></View> : null}
+      {event.open_revision_status ? <View style={styles.revisionBanner}><RefreshCw size={15} color="#735400" /><View style={{ flex: 1 }}><Text style={styles.revisionTitle}>{revisionLabel(event.open_revision_status)}</Text><Text style={styles.revisionCopy}>The current live event remains unchanged until EYA Admin approves the proposed changes.</Text></View></View> : null}
 
       <View style={styles.eventMetrics}>
         <View><Text style={styles.metricValue}>{event.tickets_sold.toLocaleString()}</Text><Text style={styles.metricLabel}>sold</Text></View>
@@ -182,7 +182,7 @@ function EventCard({ event, onChanged }: { event: OrganizerTicketEventSummary; o
       {canOpenFinance ? (
         <Pressable style={styles.financeBtn} onPress={() => router.push({ pathname: "/(organizer)/event-finance", params: { eventId: event.id } } as any)}>
           <CircleDollarSign size={16} color="#087443" />
-          <Text style={styles.financeText}>Finance & payouts</Text>
+          <Text style={styles.financeText}>Finance & settlement</Text>
         </Pressable>
       ) : null}
 
@@ -193,7 +193,7 @@ function EventCard({ event, onChanged }: { event: OrganizerTicketEventSummary; o
         ) : event.status === "published" ? (
           <Pressable style={[styles.editBtn, event.open_revision_status === "pending_review" && styles.pendingRevisionBtn]} disabled={starting} onPress={() => void openRevision()}>
             {starting ? <ActivityIndicator size="small" color={ACCENT} /> : <RefreshCw size={14} color={ACCENT} />}
-            <Text style={styles.editText}>{event.open_revision_status === "pending_review" ? "View revision" : event.open_revision_id ? "Continue revision" : "Propose changes"}</Text>
+            <Text style={styles.editText}>{event.open_revision_status === "pending_review" ? "View proposed changes" : event.open_revision_id ? "Continue proposed changes" : "Propose changes"}</Text>
           </Pressable>
         ) : null}
       </View>
