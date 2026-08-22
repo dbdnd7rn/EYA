@@ -62,6 +62,18 @@ export type AdminTicketEventPayoutRequest = {
   finance: Omit<TicketEventFinance, "requests">;
 };
 
+export type AdminTicketEventFinanceEvent = {
+  event_id: string;
+  event_title: string;
+  event_status: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  organizer_id: string;
+  organizer_name: string | null;
+  organizer_email: string | null;
+  finance: Omit<TicketEventFinance, "requests">;
+};
+
 function message(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "message" in error) {
     return String((error as { message?: unknown }).message || fallback);
@@ -143,6 +155,18 @@ export async function listAdminTicketEventPayoutRequests(): Promise<AdminTicketE
     approved_amount_mwk: row.approved_amount_mwk == null ? null : num(row.approved_amount_mwk),
     finance: normalizeFinance({ ...(row.finance ?? {}), requests: [] }),
   })) as AdminTicketEventPayoutRequest[];
+}
+
+export async function listAdminTicketEventFinanceEvents(): Promise<AdminTicketEventFinanceEvent[]> {
+  const { data, error } = await supabase.rpc("admin_list_ticket_event_finance_events");
+  if (error) throw new Error(message(error, "Could not load organizer event finance."));
+  if (!Array.isArray(data)) return [];
+  return data.map((row: any) => ({
+    ...row,
+    event_id: String(row.event_id),
+    organizer_id: String(row.organizer_id),
+    finance: normalizeFinance({ ...(row.finance ?? {}), requests: [] }),
+  })) as AdminTicketEventFinanceEvent[];
 }
 
 export async function adminSetTicketEventFinanceControls(input: {
