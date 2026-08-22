@@ -119,16 +119,30 @@ Steps:
 4. Submit to EYA Admin.
 
 Expected:
+- Create/save does NOT publish anything.
 - Draft remains private.
 - Submission becomes `pending_review`.
-- Event is NOT visible in customer Tickets before Admin approval.
+- Event is NOT visible or purchasable in customer Tickets before Admin approval.
 - Server rejects all create/edit/tier/submit operations if the grant is not active.
 
-### 7. Admin event review
+### 7. Admin approves the EVENT + TICKETS together
 Status: READY AFTER SUBMISSION
 
 Visit:
 - `/admin/event-reviews`
+
+Admin must review both event details and each submitted ticket type.
+
+Confirm the review card shows:
+- event title/category/date;
+- venue/city/description;
+- organizer identity;
+- each ticket name and description;
+- price;
+- capacity;
+- sold/reserved counts;
+- available/disabled state;
+- ticket sale start/end window.
 
 Request Changes test:
 1. Add an Admin review note.
@@ -137,13 +151,23 @@ Request Changes test:
 4. Confirm note is shown.
 5. Edit and resubmit.
 
-Approve test:
-1. Admin approves pending event while organizer access is active.
-2. Refresh Customer -> Tickets.
+Approve Event + Tickets test:
+1. Admin taps `Approve Event + Tickets` while organizer access is active.
+2. Confirm the dialog explains that event details and ticket price/capacity/availability/sale windows are being locked into an EYA approval version.
+3. Approve + Publish.
+4. Confirm success message includes the EYA approval version number.
+5. Refresh Customer -> Tickets.
 
 Expected:
 - Only Admin approval changes organizer-owned event to `published`.
-- Published event becomes customer-visible.
+- Approval creates an immutable approval-version snapshot and SHA-256 integrity hash.
+- The approved event becomes customer-visible only after approval.
+- The payment reservation gate accepts only organizer events whose current event + ticket terms still match the approved version.
+
+Later integrity test when we have a safe test event:
+- try changing an approved ticket price/capacity from a legacy Admin editor: must be blocked;
+- try changing approved event venue/date/details: must be blocked;
+- normal ticket sold/reserved counters must continue changing as purchases happen.
 
 ### 8. Immediate organizer revocation + Auth ban
 Status: READY AFTER CLAIM
@@ -226,12 +250,21 @@ Current technical implementation exists, but browser live guest admission is not
 - Invite claim/inspection RPCs are service-role-only.
 - Internal Auth ban helper is not executable by anon/authenticated clients.
 - Anonymous users cannot execute organizer Admin RPCs.
-- Organizer access grant helper now also requires trusted `temporary_organizer` auth metadata.
+- Organizer access grant helper requires trusted `temporary_organizer` auth metadata.
 - Legacy `admin_grant_ticket_organizer_access` authenticated path is disabled; ordinary EYA accounts cannot be converted into organizers through the old RPC.
 - Admin revoke immediately Auth-bans temporary organizer identity.
 - Expiry Auth-bans the identity on the next access check.
 - Renewal/re-enable clears the Auth ban.
 - Revoked organizer re-enable creates a fresh grant while retaining old grant history.
+- Organizer event + ticket approval integrity rollback test passed:
+  - Admin approval created an approval version/hash;
+  - approved ticket price mutation was blocked;
+  - approved venue mutation was blocked;
+  - reservation counters remained operational;
+  - approved checkout reservation succeeded;
+  - transaction rolled back with no fake event/order/approval left behind.
+- Existing production catalog remains compatible: all current published events are Admin-created legacy catalog events with no organizer attached.
+- Internal approval/hash/trigger helpers are not executable by anon/authenticated clients.
 
 ## NEEDS PRODUCT DECISION TOGETHER
 
@@ -260,7 +293,16 @@ Need to decide UX for:
 - max tickets per order;
 - optional access-code/private tiers.
 
-### D. Organizer access grace period
+### D. Published-event revision workflow
+Initial organizer approval is now immutable and safe.
+
+Next design decision:
+- when a published organizer wants a material change (price, capacity, venue, date, ticket type, sale window), should the currently approved public version remain live while a separate revision waits for Admin approval?
+
+Recommended:
+- YES. Keep the approved live version selling until Admin approves the proposed revision, unless Admin/organizer deliberately pauses sales.
+
+### E. Organizer access grace period
 Current system deliberately lets Admin choose the exact expiry.
 
 Need to decide later whether EYA should suggest a default such as:
@@ -268,18 +310,18 @@ Need to decide later whether EYA should suggest a default such as:
 - event end + 30 days;
 - another settlement/refund/support window.
 
-### E. Global leaked-password protection
+### F. Global leaked-password protection
 Supabase Auth leaked-password protection is currently disabled.
 
 This would improve password security for the whole EYA app, not just organizers, so it should be a deliberate product/security decision before enabling globally.
 Reference: https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
 
-### F. Exact scheduled organizer account expiry
+### G. Exact scheduled organizer account expiry
 Current security is sufficient for access control because every organizer operation checks the database grant. Auth is banned immediately on revoke and on the first access check after natural expiry.
 
 `pg_cron` is available but not currently installed. Decide later whether we want a background scheduled job that flips expired temporary organizer Auth accounts to banned even when they never reconnect.
 
-### G. Offline-capable secure mobile customer ticket
+### H. Offline-capable secure mobile customer ticket
 Important before large events with congested Airtel/TNM networks.
 
 Need a design that remains scannable with poor attendee internet while still resisting stale screenshots/replay.
