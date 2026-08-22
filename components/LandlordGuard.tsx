@@ -44,7 +44,7 @@ export default function LandlordGuard({ children }: { children: React.ReactNode 
 
         const approved = await hasWorkspaceAccess(user.id, "landlord");
         if (!approved) {
-          router.replace("/onboarding" as any);
+          router.replace("/onboarding?mode=apply&focus=landlord" as any);
           return;
         }
 
