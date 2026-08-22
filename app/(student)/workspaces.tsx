@@ -140,7 +140,7 @@ export default function WorkspacesScreen() {
                     <View style={styles.titleRow}>
                       <Text style={[styles.workspaceTitle, { color: theme.text }]}>{workspace.role === "student" ? "Personal / User" : workspace.label}</Text>
                       {selected ? (
-                        <View style={[styles.activePill, { backgroundColor: theme.accentSoft }]}> 
+                        <View style={[styles.activePill, { backgroundColor: theme.accentSoft }]}>
                           <Text style={[styles.activePillText, { color: theme.accent }]}>Current</Text>
                         </View>
                       ) : null}
@@ -156,7 +156,7 @@ export default function WorkspacesScreen() {
 
         <Pressable
           style={[styles.applyCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
-          onPress={() => router.push("/onboarding" as any)}
+          onPress={() => router.push({ pathname: "/onboarding", params: { mode: "apply" } } as any)}
         >
           <View style={{ flex: 1 }}>
             <Text style={[styles.applyTitle, { color: theme.text }]}>Apply for another workspace</Text>
