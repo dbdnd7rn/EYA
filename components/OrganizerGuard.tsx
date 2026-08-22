@@ -24,7 +24,7 @@ export default function OrganizerGuard({ children }: { children: React.ReactNode
     const run = async () => {
       if (loading) return;
       if (!user) {
-        router.replace("/(auth)/login");
+        router.replace("/organizer-login" as any);
         return;
       }
       if (!isTemporaryOrganizerUser(user)) {
@@ -42,6 +42,7 @@ export default function OrganizerGuard({ children }: { children: React.ReactNode
           return;
         }
       } catch {
+        await signOut().catch(() => undefined);
         if (alive) router.replace("/organizer-access-ended" as any);
       } finally {
         if (alive) setChecking(false);
