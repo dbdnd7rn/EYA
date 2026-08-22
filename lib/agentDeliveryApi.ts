@@ -80,7 +80,9 @@ export async function assignDeliveryToSelf(input: { orderId: string; userId: str
   const res = await fetch(backendUrl(`/api/deliveries/${encodeURIComponent(input.orderId)}/assign`), {
     method: "POST",
     headers: agentHeaders({ accessToken: input.accessToken, json: true }),
-    body: JSON.stringify({ driver_id: input.userId }),
+    // The backend derives the rider from the verified bearer session. Do not send
+    // a caller-controlled actor/driver identity for self-assignment.
+    body: JSON.stringify({}),
   });
   return parseJson<DeliveryActionResponse>(res);
 }
