@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "dev": "node --watch src/secure-entry.js",
+    "start": "node src/secure-entry.js"
   },
   "engines": {
     "node": ">=18"
