@@ -102,12 +102,17 @@ Current implemented foundation:
 - event creation copies the organization from the active Ticket Management grant
 - re-enable preserves the organization history
 
+Additional finance foundations now attached to the stable organization:
+- separate Finance / Settlement entitlements;
+- verified payout-destination data model with masked client reads;
+- immutable organization liability ledger supporting assessments, repayments, offsets and reversals.
+
 Still required before production finance is complete:
-- verified legal/contact identity
-- verified payout destinations
-- promoter-level refund/advance liability ledger
-- promoter-level payout history/offset rules
-- richer member/permission model if multiple people or multiple promoter organizations must be managed
+- verified legal/contact identity and KYC/evidence retention policy;
+- deploy and verify trusted encrypted payout-destination intake, key rotation and provider beneficiary verification;
+- automatically post/apply refund/advance liabilities and cross-event offsets into payout eligibility;
+- real payout execution/history/reconciliation at organization level;
+- richer member/permission model if multiple people or multiple promoter organizations must be managed.
 
 The normal EYA user remains the actor for audit fields such as created/submitted/requested-by, while the Promoter / Organization is the stable business/financial owner.
 
@@ -133,13 +138,15 @@ Implemented foundation:
 - finance access can be active, suspended or revoked;
 - Admin cannot revoke the final finance controller, or revoke while open payout/settlement work remains.
 
-Still required:
-- add verified payout destinations, liability ledger and provider-settlement authority.
-
-Workspace wiring now implemented:
+Workspace wiring implemented:
 - `Account -> Workspaces` independently loads Finance & Settlement entitlements;
 - Finance & Settlement remains visible when Ticket Management operations access expires;
 - organization events open through a normal-account finance route rather than the operations-only Organizer guard.
+
+Still required:
+- provider-settlement authority;
+- automatic organization-liability offset into event payout availability;
+- production deployment/verification of trusted encrypted payout-destination intake and beneficiary verification.
 
 ---
 
@@ -153,7 +160,7 @@ Status: `DECIDED + IMPLEMENTED`
 - Prior live credential is invalidated.
 - Recipient mints a new live credential.
 
-### Wallet ownership source
+### My Tickets ownership source
 Status: `DECIDED DIRECTION + NEEDS REVISION`
 
 - `issued_tickets.user_id` / Supabase issued-ticket ownership should be authoritative after transfer.
@@ -171,7 +178,9 @@ Preferred direction:
 Current browser guest-pass implementation is not the intended final primary flow.
 
 Open sub-decision:
-- accountless Guest Wallet inside EYA vs mandatory full EYA account.
+- accountless guest ticket container inside EYA vs mandatory full EYA account.
+
+This must not be confused with the suspended financial EYA Wallet system.
 
 ### Offline / printable fallback
 Status: `OPEN DECISION`
@@ -242,7 +251,7 @@ Before Early Payout is allowed, EYA should verify:
 - no organizer/promoter-level liability requiring offset
 - requested amount is within eligible amount
 
-Current implementation has event approval, event status, reserve/hold, and event-level available-balance checks, but not all of the items above.
+Current implementation has event approval, event status, reserve/hold, and event-level available-balance checks. An organization liability ledger foundation now exists, but automatic cross-event offset into payout availability is not yet wired.
 
 ### Settled-funds authority
 Status: `BLOCKER + NEEDS REVISION`
@@ -380,6 +389,7 @@ Immediately before money leaves EYA, the server must re-check:
 - settled provider balance still supports payout
 - protected reserve remains satisfied
 - organizer/promoter global liability is clear or correctly offset
+- verified payout destination is still valid/current
 - amount remains within safe payable balance
 
 Current manual `record payout paid` foundation largely trusts the earlier approved request and is not sufficient as the final production payout executor.
@@ -396,16 +406,29 @@ Status: `IMPLEMENTED FOUNDATION`
 Current finance snapshot can calculate advance liability when already-paid/approved advances exceed the event's currently supportable funds.
 
 ### Cross-event / promoter-level liability
-Status: `DECIDED DIRECTION + NOT BUILT`
+Status: `DECIDED + IMMUTABLE LIABILITY LEDGER FOUNDATION IMPLEMENTED; AUTOMATIC OFFSET PENDING`
 
 Example:
 - Promoter owes EYA MWK 2M from Event A.
 - Event B has MWK 5M otherwise payable.
 - EYA should not blindly pay the full MWK 5M.
 
-Need stable promoter-level ledger/hold/offset rules.
+Implemented foundation:
+- `ticket_organization_finance_ledger` is owned by the stable Promoter / Organization;
+- liability assessments are debits;
+- liability repayments and cross-event liability offsets are credits;
+- entries are append-only and updates/deletes are blocked;
+- mistakes require explicit reversal entries;
+- organization + idempotency-key uniqueness prevents duplicate posting;
+- posting is serialized per organization so concurrent credits cannot both spend the same outstanding liability;
+- only internally authorized Admin posting can mutate the liability ledger;
+- Finance-entitled users receive scoped read access rather than direct table mutation.
 
-The stable Promoter / Organization ID now exists, so this can be implemented without tying debt to a temporary user identity.
+Still required:
+- automatic liability assessments from refund/cancellation/advance reconciliation;
+- automatically subtract outstanding organization liability from safe payout eligibility;
+- post auditable offset entries when Event B funds are used to clear Event A liability;
+- ensure execution-time payout checks use the organization liability balance atomically.
 
 ---
 
@@ -413,40 +436,31 @@ The stable Promoter / Organization ID now exists, so this can be implemented wit
 
 Status: `VERIFIED DESTINATION FOUNDATION IMPLEMENTED`
 
-Need verified payout beneficiaries belonging to the stable promoter/organization, not an individual workspace permission.
+Verified payout beneficiaries belong to the stable Promoter / Organization, not an individual workspace permission.
 
-Possible methods:
+Supported foundation methods:
 - Airtel Money
 - TNM Mpamba
 - Malawi bank account
 
-Need fields/audit for:
-- beneficiary name
-- phone/account details stored securely
-- bank/network
-- verification status
-- added/changed by
-- Admin approval if required
-- change history
-- primary/default destination
-
-Sensitive financial details must not be exposed unnecessarily in organizer/admin UI logs.
-
 Implemented foundation:
 - destinations belong to the stable Promoter / Organization;
-- supported methods are Airtel Money, TNM Mpamba and Malawi bank account;
 - sensitive destination details are accepted only as trusted-backend ciphertext with an encryption-key version;
 - browser roles have no direct table access and receive only masked destination metadata through an entitlement-bound RPC;
 - destination fingerprints prevent duplicate records without exposing the account/phone value;
 - Admin verification/rejection/disable transitions are explicit and append masked before/after audit records;
-- only one verified destination may be marked primary per organization.
+- only one verified destination may be marked primary per organization;
+- payout requests can be bound to a verified organization destination in the data model;
+- Admin listing returns masked destination metadata rather than raw secret account values.
 
 Still required:
-- deploy/configure the implemented trusted-backend encrypted intake endpoint and document/test key rotation;
-- organizer destination form and Admin verification UI;
+- deploy/configure the trusted-backend encrypted intake endpoint and document/test key rotation;
+- organizer destination form and Admin verification UI regression testing;
 - KYC evidence storage/retention decision;
-- bind payout requests and later payout execution to a verified primary destination;
-- provider-side beneficiary verification and reconciliation.
+- provider-side beneficiary verification and payout reconciliation;
+- final payout executor must revalidate the destination immediately before sending money.
+
+Sensitive financial details must not be exposed unnecessarily in organizer/admin UI logs.
 
 ---
 
@@ -507,8 +521,9 @@ Implemented without changing payment integrations:
 - mutation trigger blocks updates/deletes and requires compensating reversals;
 - direct browser table access is denied;
 - active or suspended finance-entitlement holders may read their organization ledger through a scoped RPC;
-- only an internally authorized EYA Admin RPC may post entries.
-- organizer event finance now exposes a read-only reconciliation equation and event-tagged liability history while keeping the organization total visible;
+- only an internally authorized EYA Admin RPC may post entries;
+- posting is serialized by organization to prevent concurrent over-credit races;
+- organizer event finance can expose a read-only reconciliation equation and event-tagged liability history while keeping the organization total visible;
 - Admin and finance-entitlement holders have dedicated ledger interfaces; neither interface executes or verifies payments.
 
 Still required:
@@ -521,9 +536,9 @@ Still required:
 
 ## 13. Ticket Studio and event operations backlog
 
-Status: `PAUSED UNTIL ARCHITECTURE RECONCILIATION IS COMPLETE`
+Status: `PAUSED UNTIL SECURITY / FINANCE ARCHITECTURE BLOCKERS ARE CLEARED`
 
-Do not prioritize new Ticket Studio polish ahead of finance/refund architecture blockers.
+Do not prioritize new Ticket Studio polish ahead of security, migration-history, finance/refund architecture blockers.
 
 Later features include:
 - multiple flexible ticket types/templates
@@ -553,10 +568,19 @@ Status: `NOT BUILT`
 
 Do not require stadium gate staff to be full EYA Admin.
 
-### Broader legacy Supabase security backlog
-Status: `SEPARATE AUDIT REQUIRED`
+### Broader EYA security program
+Status: `ACTIVE`
 
-Older unrelated public tables/functions still have RLS/search-path/SECURITY DEFINER warnings. Audit feature-by-feature instead of blindly toggling policies during ticketing work.
+Security is tracked in `EYA_SECURITY_AUDIT.md` and the whole-system priority/boundary order is tracked in `EYA_MASTER_ARCHITECTURE_AND_DELIVERY_PLAN.md`.
+
+Do not treat Supabase RLS as the entire security review. The audit also covers both repositories, Edge Functions, Cloudflare, Render, auth/session hijacking, privilege escalation, IDOR/BOLA, injection, XSS/SSRF-style boundaries, replay, race conditions, uploads, dependencies, secrets, logging and abuse/DoS.
+
+### Supabase migration-history drift
+Status: `OPERATIONAL BLOCKER BEFORE NORMAL DB PUSH`
+
+The live migration history and some repository migration filenames are not fully aligned for part of the 2026-08-22 security/finance work.
+
+Until reconciled, do not run an ordinary blanket production `supabase db push` from this branch. Follow the migration-history reconciliation checkpoint in the Master Plan.
 
 ---
 
@@ -564,18 +588,16 @@ Older unrelated public tables/functions still have RLS/search-path/SECURITY DEFI
 
 All of these must be resolved before enabling PayChangu organizer payout execution:
 
-1. Complete promoter-level finance ownership/liability/payout-destination model. Stable organization ownership foundation is implemented, but the full finance layer is not.
-2. Complete the UI/RPC wiring for the now-separate finance-settlement entitlement foundation.
-3. Real settled/available-funds authority; customer-paid alone is insufficient.
-4. First-class refund lifecycle.
-5. PayChangu refund process confirmed for each supported payment rail.
-6. Automatic cancellation/finance freeze behavior.
-7. Execution-time payout revalidation.
-8. Promoter-level cross-event liability/offset.
-9. Verified payout destination model.
-10. EYA commercial fee model and provider-cost treatment agreed.
-11. Final-settlement grace/dispute-window policy agreed.
-12. Real payout executor must be idempotent and provider-reference audited.
+1. Real provider-settled / available-funds authority; customer-paid alone is insufficient.
+2. First-class refund lifecycle.
+3. PayChangu refund process confirmed for each supported payment rail.
+4. Automatic cancellation -> finance freeze/reconciliation behavior.
+5. Execution-time payout revalidation.
+6. Automatic Promoter / Organization liability offset into payout eligibility and auditable offset posting.
+7. Deploy/verify encrypted payout-destination intake, key rotation and provider beneficiary verification.
+8. EYA commercial fee model and provider/payout/refund cost treatment agreed.
+9. Final-settlement grace/dispute/refund-window policy agreed.
+10. Real payout executor must be idempotent, replay-resistant and provider-reference audited/reconciled.
 
 Until those are complete, Admin payout approval remains accounting/workflow preparation only — not production authority to move money.
 
@@ -588,6 +610,9 @@ Preserve:
 - verified workspace model for specialized roles/jobs
 - Admin-granted Ticket Management on the normal EYA account
 - stable Promoter / Organization ownership foundation
+- separate Finance / Settlement entitlement foundation
+- verified payout-destination foundation
+- immutable organization liability-ledger foundation
 - proven Airtel/TNM/Mpamba/bank/card collection rails
 - VAC backend amount authority and payment architecture
 - rotating personal ticket credentials
@@ -603,14 +628,17 @@ Do not rewrite payment rails merely to implement organizer finance.
 
 ## 17. Immediate next work order
 
-1. Finish user-facing revision wording (`Current live` / `Proposed changes`).
-2. Separate Ticket Management operations access from finance-settlement entitlement.
-3. Design immutable event/promoter financial ledger with settled-funds state.
+Whole-system priority is defined in `EYA_MASTER_ARCHITECTURE_AND_DELIVERY_PLAN.md`.
+
+Ticketing/finance order from the current checkpoint:
+1. Reconcile Supabase migration history before normal production db push.
+2. Continue the cross-repository security audit and close high-impact authorization/session/replay/input issues.
+3. Implement provider-settled / actually-available funds authority.
 4. Build ticket refund lifecycle and credential invalidation.
-5. Add cancellation/finance freeze rules.
-6. Add promoter-level liability/offset rules.
-7. Add verified payout destinations.
-8. Decide EYA fees/provider-cost ownership and final-settlement grace period.
-9. Only then implement PayChangu payout execution.
+5. Add automatic cancellation -> finance freeze/reconciliation.
+6. Wire organization liability balance into payout eligibility and auditable cross-event offsets.
+7. Decide EYA fees/provider-cost ownership and final-settlement grace period.
+8. Implement the real idempotent/replay-resistant PayChangu payout executor only after all blockers pass.
+9. Then return to Ticket Studio/product polish and remaining admission/sharing cleanup.
 
 No new organizer-finance feature should skip ahead of this order without explicitly updating this ledger first.
