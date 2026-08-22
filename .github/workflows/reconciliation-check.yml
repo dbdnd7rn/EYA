@@ -28,6 +28,7 @@ jobs:
       - name: Syntax check canonical backend
         run: |
           node --check index.js
+          node --check src/local-server.js
           node --check src/auth.js
           node --check src/commercePolicy.js
           node --check src/commerceData.js
