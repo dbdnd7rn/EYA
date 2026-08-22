@@ -20,12 +20,14 @@ Status meanings:
 ### Organizer access is private and Admin-issued
 Status: `DECIDED + IMPLEMENTED`
 
-- Normal students/customers must not see a public `Host event` or `Become an organizer` path.
-- Organizer access is created only by EYA Admin invitation.
-- Organizer login is separate from normal customer/student access.
-- Organizer access is temporary, revocable, and expirable.
+- Normal users must not see a public `Host event` or self-serve `Become an organizer` path.
+- Everyone signs in with their normal EYA account and retains normal Personal/User access.
+- Ticket organizer capability is an additional verified workspace permission called `Ticket Management`.
+- Ticket Management appears only when EYA Admin grants active organizer access.
+- Grant expiry or revocation removes Ticket Management only; it must not ban or disable the person's normal EYA account.
+- Organizer operations access may be temporary, revocable, and expirable.
 - Historical identity/audit/financial records must survive access expiry or revocation.
-- A normal EYA customer account must not be silently converted into an organizer account.
+- The retired separate `temporary_organizer` login/invite flow must not be used for new organizers.
 
 ### Organizer create/submit never means publish
 Status: `DECIDED + IMPLEMENTED`
@@ -73,44 +75,48 @@ Status: `DECIDED + IMPLEMENTED, LEGACY CLEANUP STILL REQUIRED`
 
 ## 2. Organizer identity and ownership
 
-### Temporary Organizer Workspace
+### One EYA account + Ticket Management workspace
 Status: `DECIDED + IMPLEMENTED`
 
-- Admin creates a one-time invitation.
-- Invitation creates a separate temporary organizer auth identity.
-- Trusted server metadata marks the temporary organizer class.
-- Organizer route isolation prevents falling into normal student/customer workspace.
-- Revoke bans organizer auth immediately.
-- Re-enable can restore the same organizer identity while preserving old grant history.
+- Organizer is not a separate account type.
+- Organizer signs in exactly like any other EYA user and lands in the normal Personal/User experience.
+- `Account -> Workspaces` shows Ticket Management only when an active Admin-issued organizer grant exists.
+- Server access is still enforced even if a route is opened manually; hiding/showing the button is not the security boundary.
+- Admin grants Ticket Management to an existing EYA account email and links that user to a stable Promoter / Organization.
+- Revoke/expiry removes organizer tools without banning the person's auth identity or removing customer features/purchases.
+- Legacy one-time temporary-organizer invitation creation/claim is disabled for new access.
+- Current first version preserves one active Ticket Management promoter organization per user at a time. Multi-promoter membership/switching is not yet a decided product feature.
 
 ### Promoter / Organization entity
-Status: `DECIDED DIRECTION + NOT BUILT`
+Status: `DECIDED + OWNERSHIP FOUNDATION IMPLEMENTED`
 
-Long-term ownership should not live primarily on a temporary login.
+Stable ownership must not live primarily on a person's temporary permission.
 
-Required model:
+Current implemented foundation:
 
 `Promoter / Organization`
-- stable organization identity
+- stable organization ID
+- organizer access grants carry `organization_id`
+- organizer events carry `organization_id`
+- event finance controls and payout requests carry `organization_id`
+- event creation copies the organization from the active Ticket Management grant
+- re-enable preserves the organization history
+
+Still required before production finance is complete:
 - verified legal/contact identity
-- owns events
-- owns event financial ledger
-- owns payout destinations
-- owns refund/advance liabilities
-- owns payout history
-- can have temporary organizer members/users
+- verified payout destinations
+- promoter-level refund/advance liability ledger
+- promoter-level payout history/offset rules
+- richer member/permission model if multiple people or multiple promoter organizations must be managed
 
-Temporary users may expire without changing who owns the event money or liabilities.
-
-Current gap:
-- organizer-owned events and finance are still primarily tied to temporary `auth.users` identities.
+The normal EYA user remains the actor for audit fields such as created/submitted/requested-by, while the Promoter / Organization is the stable business/financial owner.
 
 ### Operational access vs financial entitlement
 Status: `DECIDED DIRECTION + NOT BUILT`
 
 Separate these concepts:
 
-1. `Organizer Operations Access`
+1. `Ticket Management Operations Access`
    - create/edit/manage events
    - temporary and revocable
 
@@ -121,7 +127,8 @@ Separate these concepts:
    - survive Event Studio expiry until the financial relationship is closed
 
 Current conflict:
-- organizer finance RPCs currently depend on active temporary Organizer Workspace access.
+- organizer finance RPCs still depend on active Ticket Management operations access.
+- normal account identity is now safe, but settlement access still needs its own lifecycle so operations expiry does not erase legitimate finance visibility/entitlement.
 
 ---
 
@@ -387,7 +394,7 @@ Example:
 
 Need stable promoter-level ledger/hold/offset rules.
 
-This is another reason to introduce a Promoter / Organization entity before production payouts.
+The stable Promoter / Organization ID now exists, so this can be implemented without tying debt to a temporary user identity.
 
 ---
 
@@ -395,7 +402,7 @@ This is another reason to introduce a Promoter / Organization entity before prod
 
 Status: `NOT BUILT`
 
-Need verified payout beneficiaries belonging to the stable promoter/organization, not a temporary organizer login.
+Need verified payout beneficiaries belonging to the stable promoter/organization, not an individual workspace permission.
 
 Possible methods:
 - Airtel Money
@@ -514,7 +521,7 @@ Older unrelated public tables/functions still have RLS/search-path/SECURITY DEFI
 
 All of these must be resolved before enabling PayChangu organizer payout execution:
 
-1. Promoter / Organization stable ownership model.
+1. Complete promoter-level finance ownership/liability/payout-destination model. Stable organization ownership foundation is implemented, but the full finance layer is not.
 2. Separate operations access from finance-settlement entitlement.
 3. Real settled/available-funds authority; customer-paid alone is insufficient.
 4. First-class refund lifecycle.
@@ -534,11 +541,14 @@ Until those are complete, Admin payout approval remains accounting/workflow prep
 ## 16. Current implementation that should remain intact during reconciliation
 
 Preserve:
+- one EYA account with Personal/User access always available
+- verified workspace model for specialized roles/jobs
+- Admin-granted Ticket Management on the normal EYA account
+- stable Promoter / Organization ownership foundation
 - proven Airtel/TNM/Mpamba/bank/card collection rails
 - VAC backend amount authority and payment architecture
 - rotating personal ticket credentials
 - transfer ownership credential revocation
-- organizer invite-only temporary identity
 - Admin event + ticket approval
 - approval-integrity checkout protection
 - live-event proposed-change review workflow
@@ -550,15 +560,14 @@ Do not rewrite payment rails merely to implement organizer finance.
 
 ## 17. Immediate next work order
 
-1. Update user-facing revision wording (`Current live` / `Proposed changes`).
-2. Design and migrate stable Promoter / Organization ownership.
-3. Separate organizer operations access from finance entitlement.
-4. Design immutable event/promoter financial ledger with settled-funds state.
-5. Build ticket refund lifecycle and credential invalidation.
-6. Add cancellation/finance freeze rules.
-7. Add promoter-level liability/offset rules.
-8. Add verified payout destinations.
-9. Decide EYA fees/provider-cost ownership and final-settlement grace period.
-10. Only then implement PayChangu payout execution.
+1. Finish user-facing revision wording (`Current live` / `Proposed changes`).
+2. Separate Ticket Management operations access from finance-settlement entitlement.
+3. Design immutable event/promoter financial ledger with settled-funds state.
+4. Build ticket refund lifecycle and credential invalidation.
+5. Add cancellation/finance freeze rules.
+6. Add promoter-level liability/offset rules.
+7. Add verified payout destinations.
+8. Decide EYA fees/provider-cost ownership and final-settlement grace period.
+9. Only then implement PayChangu payout execution.
 
 No new organizer-finance feature should skip ahead of this order without explicitly updating this ledger first.
