@@ -2,14 +2,15 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, BriefcaseBusiness, ChevronRight, House, ShieldCheck, Store, Ticket, UserRound } from "lucide-react-native";
+import { ArrowLeft, Banknote, BriefcaseBusiness, ChevronRight, House, ShieldCheck, Store, Ticket, UserRound } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
 import { getMyTicketOrganizerAccess } from "@/lib/ticketOrganizerAccess";
+import { getMyTicketFinanceWorkspace } from "@/lib/ticketEventFinanceApi";
 import { getWorkspaceHomeRoute, getWorkspaceStatuses, type WorkspaceRole } from "@/lib/workspaceAccess";
 import { useAuth } from "@/providers/AuthProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
-type WorkspaceKey = WorkspaceRole | "ticket_organizer";
+type WorkspaceKey = WorkspaceRole | "ticket_organizer" | "ticket_finance";
 
 type ReadyWorkspace = {
   key: WorkspaceKey;
@@ -23,6 +24,7 @@ function workspaceIcon(key: WorkspaceKey) {
   if (key === "vendor") return Store;
   if (key === "agent") return BriefcaseBusiness;
   if (key === "ticket_organizer") return Ticket;
+  if (key === "ticket_finance") return Banknote;
   if (key === "admin") return ShieldCheck;
   return UserRound;
 }
@@ -33,6 +35,7 @@ function workspaceSubtitle(key: WorkspaceKey, fallback: string) {
   if (key === "landlord") return "Manage room listings, enquiries and property activity.";
   if (key === "agent") return "Manage delivery jobs, rider activity and earnings.";
   if (key === "ticket_organizer") return fallback;
+  if (key === "ticket_finance") return fallback;
   if (key === "admin") return "Manage EYA platform operations and approvals.";
   return fallback;
 }
@@ -51,9 +54,10 @@ export default function WorkspacesScreen() {
     const load = async () => {
       try {
         if (!user?.id) return;
-        const [statuses, organizerAccess] = await Promise.all([
+        const [statuses, organizerAccess, financeAccess] = await Promise.all([
           getWorkspaceStatuses(user.id, user.email),
           getMyTicketOrganizerAccess().catch(() => null),
+          getMyTicketFinanceWorkspace().catch(() => []),
         ]);
         if (!alive) return;
 
@@ -72,6 +76,16 @@ export default function WorkspacesScreen() {
             label: "Ticket Management",
             description: `Manage approved events and ticket operations for ${organizerAccess.organization_name}.`,
             homeRoute: "/(organizer)/dashboard",
+          });
+        }
+
+        if (financeAccess.length) {
+          const organizationNames = financeAccess.map((entry) => entry.organization_name).join(", ");
+          visible.push({
+            key: "ticket_finance",
+            label: "Finance & Settlement",
+            description: `View statements, liabilities and payout requests for ${organizationNames}.`,
+            homeRoute: "/(student)/finance-workspace",
           });
         }
 
@@ -97,7 +111,7 @@ export default function WorkspacesScreen() {
   }, [role, user?.email, user?.id]);
 
   const ordered = useMemo(() => {
-    const order: WorkspaceKey[] = ["student", "vendor", "landlord", "agent", "ticket_organizer", "admin"];
+    const order: WorkspaceKey[] = ["student", "vendor", "landlord", "agent", "ticket_organizer", "ticket_finance", "admin"];
     return [...ready].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
   }, [ready]);
 
@@ -105,7 +119,7 @@ export default function WorkspacesScreen() {
     if (switching) return;
     try {
       setSwitching(workspace.key);
-      if (workspace.key === "ticket_organizer") {
+      if (workspace.key === "ticket_organizer" || workspace.key === "ticket_finance") {
         router.push(workspace.homeRoute as any);
         return;
       }
@@ -144,7 +158,7 @@ export default function WorkspacesScreen() {
           <View style={styles.list}>
             {ordered.map((workspace) => {
               const Icon = workspaceIcon(workspace.key);
-              const selected = workspace.key !== "ticket_organizer" && (activeRole ?? "student") === workspace.key;
+              const selected = workspace.key !== "ticket_organizer" && workspace.key !== "ticket_finance" && (activeRole ?? "student") === workspace.key;
               const busy = switching === workspace.key;
               return (
                 <Pressable

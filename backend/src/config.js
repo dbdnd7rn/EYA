@@ -21,6 +21,8 @@ export const config = {
   supabaseServiceRoleKey: env("SUPABASE_SERVICE_ROLE_KEY"),
   supabaseNewAppSchema: env("SUPABASE_NEW_APP_SCHEMA") || "public",
   adminEmails: env("ADMIN_EMAILS"),
+  payoutDestinationEncryptionKey: env("PAYOUT_DESTINATION_ENCRYPTION_KEY_B64"),
+  payoutDestinationEncryptionKeyVersion: env("PAYOUT_DESTINATION_ENCRYPTION_KEY_VERSION") || "v1",
   checkoutSuccessUrl: env("PAYCHANGU_CALLBACK_URL") || env("CHECKOUT_SUCCESS_URL"),
   checkoutCancelUrl: env("PAYCHANGU_RETURN_URL") || env("CHECKOUT_CANCEL_URL"),
   appScheme: env("APP_SCHEME"),

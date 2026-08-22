@@ -98,26 +98,18 @@ export default function SignupScreen() {
       if (data.session) {
         const uid = data.session.user?.id;
         if (uid) {
-          const normalizedEmail = (data.session.user?.email ?? email.trim()).trim().toLowerCase();
           const profilePayload = {
-            id: uid,
-            email: normalizedEmail,
             full_name: fullName,
             first_name: firstName.trim(),
             last_name: lastName.trim(),
             phone: phone.trim() || null,
-            role: "student",
             onboarded: true,
-            updated_at: new Date().toISOString(),
           };
 
-          const upsertRes = await supabase.from("profiles").upsert(profilePayload as any, { onConflict: "id" });
-          if (upsertRes.error) {
-            const updateRes = await supabase.from("profiles").update(profilePayload as any).eq("id", uid);
-            if (updateRes.error) {
-              setErrorMsg(`Account created but role setup failed: ${updateRes.error.message}. Please retry login.`);
-              return;
-            }
+          const updateRes = await supabase.from("profiles").update(profilePayload as any).eq("id", uid);
+          if (updateRes.error) {
+            setErrorMsg(`Account created but profile setup failed: ${updateRes.error.message}. Please retry login.`);
+            return;
           }
         }
 

@@ -184,24 +184,17 @@ function buildStudentProfilePayload(user: User) {
     firstDefinedString(user.email?.split("@")[0]);
 
   return {
-    id: user.id,
-    email: toNullableString(user.email)?.toLowerCase() ?? null,
     full_name: fullName,
     first_name: firstName,
     last_name: lastName,
     surname: firstDefinedString(meta.surname, lastName),
     phone: firstDefinedString(meta.phone, meta.phone_number),
-    role: "student",
     onboarded: true,
-    updated_at: new Date().toISOString(),
   };
 }
 
 async function ensureStudentProfile(user: User) {
   const payload = buildStudentProfilePayload(user);
-  const upsertRes = await supabase.from("profiles").upsert(payload as never, { onConflict: "id" });
-  if (!upsertRes.error) return;
-
   const updateRes = await supabase.from("profiles").update(payload as never).eq("id", user.id);
   if (updateRes.error) {
     throw new Error("Google sign-up completed, but the student profile could not be created. Please retry.");

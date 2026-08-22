@@ -3,6 +3,7 @@ import express from "express";
 import { URL, URLSearchParams } from "node:url";
 import { config, getCancelUrl, getSuccessUrl, isConfiguredAdminEmail, requireCoreConfig } from "./config.js";
 import QRCode from "qrcode";
+import { encryptPayoutDestination, parsePayoutDestinationInput } from "./payoutDestinations.js";
 import { createCampusMarketCashCheckout, createCampusMarketWalletCheckout, finalizePaymentByReference, findPaymentByAnyReference, findPaymentByReference, getOrderHandoffByOrderId, getPaymentByRelatedOrderId, markHandoffVerified, recordPaymentInitiation } from "./fulfillment.js";
 import {
   buildCheckoutPayload,
@@ -51,6 +52,16 @@ app.get("/", (_req, res) => {
     status: "ok",
     service: "paychangu-backend",
     health: "/health",
+  });
+});
+
+// Wallet and wallet-backed payments are suspended. Keep this server-side guard
+// ahead of every legacy wallet handler so stale clients cannot reach them.
+app.use("/api/wallet", (_req, res) => {
+  res.status(410).json({
+    status: "error",
+    error: "Wallet services are suspended.",
+    message: "Wallet services are suspended.",
   });
 });
 
@@ -121,10 +132,21 @@ function actorIdFromHeaders(req) {
   return typeof direct === "string" && direct.trim() ? direct.trim() : null;
 }
 
+async function requireAuthenticatedActor(req) {
+  const { user, profile } = await requireAuthenticatedUser(req);
+  const claimedUserId = actorIdFromHeaders(req);
+  if (claimedUserId && claimedUserId !== user.id) {
+    throw new Error("Actor identity does not match the authenticated session.");
+  }
+  return { actorId: user.id, user, profile };
+}
+
 async function requireAdmin(req) {
-  const userId = req.header("x-admin-user-id") || actorIdFromHeaders(req);
-  if (!userId) throw new Error("Missing admin identity header.");
-  const profile = await getProfileById(String(userId));
+  const { user, profile } = await requireAuthenticatedUser(req);
+  const claimedUserId = req.header("x-admin-user-id") || actorIdFromHeaders(req);
+  if (claimedUserId && String(claimedUserId) !== user.id) {
+    throw new Error("Admin identity does not match the authenticated session.");
+  }
   if (!profile || profile.role !== "admin") throw new Error("Admin access required.");
   if (!isConfiguredAdminEmail(profile.email)) throw new Error("This account is not allowed to use admin controls.");
   return profile;
@@ -335,7 +357,7 @@ async function getOrderDetailPayload(orderId) {
     supabaseNewApp.from("order_items").select("id,item_id,item_name_snapshot,quantity,unit_price_mwk,line_total_mwk,created_at").eq("order_id", orderId).order("created_at", { ascending: true }),
     getDeliveryByOrderId(orderId),
     supabaseNewApp.from("order_handoffs").select("order_reference,verification_method,verified_at,verified_by").eq("order_id", orderId).maybeSingle(),
-    supabase.from("payments").select("id,reference,status,amount_mwk,paid_at,verified_at").eq("related_order_id", orderId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("payments").select("id,reference,status,provider,method,purpose,amount_mwk,paid_at,verified_at").eq("related_order_id", orderId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     getVendorById(order.vendor_id),
     supabase.from("profiles").select("id,full_name,phone").eq("id", order.customer_id).maybeSingle(),
   ]);
@@ -362,11 +384,16 @@ function ensurePaidOrder(order, payment) {
   return paymentStatus === "paid" && orderPaymentStatus === "paid";
 }
 
-async function assertDeliveryActor(req, orderId) {
-  const actorId = actorIdFromHeaders(req);
-  if (!actorId) throw new Error("Missing actor identity header.");
+function ensureDeliveryEligibleOrder(order, payment) {
+  if (ensurePaidOrder(order, payment)) return true;
+  return String(order?.payment_status || "").toLowerCase() === "pending"
+    && String(payment?.status || "").toLowerCase() === "pending"
+    && String(payment?.provider || "").toLowerCase() === "cash";
+}
 
-  const [profile, detail] = await Promise.all([getProfileById(actorId), getOrderDetailPayload(orderId)]);
+async function assertDeliveryActor(req, orderId) {
+  const { actorId, profile } = await requireAuthenticatedActor(req);
+  const detail = await getOrderDetailPayload(orderId);
   if (!detail) throw new Error("Order not found.");
 
   const isAdmin = profile?.role === "admin";
@@ -484,7 +511,7 @@ function canSelfAssignDelivery(profile, detail, actorId, driverId) {
     && driverId
     && actorId === driverId
     && detail?.order
-    && String(detail.order.payment_status || "").toLowerCase() === "paid"
+    && ensureDeliveryEligibleOrder(detail.order, detail.payment)
     && !detail.delivery?.driver_id
     && String(detail.delivery?.status || "").toLowerCase() === "searching"
   );
@@ -663,6 +690,42 @@ app.get("/api/tickets/events", async (req, res) => {
     return res.json({ status: "success", events });
   } catch (error) {
     return sendError(res, 500, error instanceof Error ? error.message : "Could not load ticket events.");
+  }
+});
+
+app.post("/api/ticket-finance/payout-destinations", async (req, res) => {
+  try {
+    const { user } = await requireAuthenticatedUser(req);
+    if (!config.payoutDestinationEncryptionKey) {
+      return sendError(res, 503, "Payout destination intake is not configured.");
+    }
+
+    const input = parsePayoutDestinationInput(req.body);
+    const encrypted = encryptPayoutDestination(
+      input,
+      config.payoutDestinationEncryptionKey,
+      config.payoutDestinationEncryptionKeyVersion,
+    );
+    const { data, error } = await supabaseNewApp.rpc("register_ticket_organization_payout_destination", {
+      p_organization_id: input.organizationId,
+      p_actor_id: user.id,
+      p_method: input.method,
+      p_beneficiary_name: input.beneficiaryName,
+      p_bank_or_network: input.bankOrNetwork,
+      p_masked_destination: input.maskedDestination,
+      p_destination_fingerprint: encrypted.fingerprint,
+      p_details_ciphertext: encrypted.ciphertext,
+      p_encryption_key_version: encrypted.keyVersion,
+    });
+    if (error) {
+      const duplicate = String(error.message || "").toLowerCase().includes("duplicate key");
+      return sendError(res, duplicate ? 409 : 403, duplicate ? "This payout destination is already registered." : error.message);
+    }
+    res.status(201).json({ status: "success", destination: data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not register payout destination.";
+    const authFailure = /bearer token|invalid session|jwt|user not found/i.test(message);
+    sendError(res, authFailure ? 401 : 400, message);
   }
 });
 
@@ -1166,7 +1229,7 @@ app.post("/api/checkout/cash", async (req, res) => {
 
     return res.json({
       status: "success",
-      payment_status: "paid",
+      payment_status: "pending",
       method: "cash",
       order_id: result.orderId,
       payment_id: result.payment.id,
@@ -1294,39 +1357,12 @@ app.post("/api/paychangu/reconcile", async (req, res) => {
     let payment = await findPaymentByAnyReference(reference);
     let verifyData;
 
-    if (!payment) {
-      if (purposeHint !== "wallet_topup") {
-        return sendError(res, 404, `Payment not found for reference ${reference}.`);
-      }
-      const verified = await verifyDirectChargeWithoutRecord(reference, methodHint);
-      verifyData = verified.data;
-      const inferredMethod = inferMethodFromVerifyPayload(verifyData, verified.method);
-      const amount = extractVerifyAmount(verifyData);
-      if (!amount) {
-        return sendError(res, 422, "Verified payment did not include a usable amount.");
-      }
+    if (purposeHint === "wallet_topup" || String(payment?.metadata?.purpose || "").trim() === "wallet_topup") {
+      return sendError(res, 410, "Wallet services are suspended. Contact support for historical payment reconciliation.");
+    }
 
-      payment = await recordPaymentInitiation({
-        input: {
-          amount,
-          currency: extractVerifyCurrency(verifyData),
-          email: user.email || null,
-          first_name: user.user_metadata?.first_name || null,
-          last_name: user.user_metadata?.last_name || null,
-          tx_ref: reference,
-          title: "EYA wallet top-up",
-          description: `Recovered wallet top-up ${reference}`,
-          project: "eya",
-          meta: {
-            purpose: "wallet_topup",
-            user_id: user.id,
-            payment_method: inferredMethod,
-          },
-        },
-        checkoutUrl: null,
-        providerPayload: verifyData,
-        txRef: reference,
-      });
+    if (!payment) {
+      return sendError(res, 404, `Payment not found for reference ${reference}.`);
     }
 
     const ownsPayment = payment.user_id === user.id;
@@ -1339,12 +1375,6 @@ app.post("/api/paychangu/reconcile", async (req, res) => {
     verifyData = verifyData || await verifyPaymentForRecord(verifyKey, payment);
     const finalized = await finalizePaymentByReference(verifyKey, verifyData);
 
-    let walletBalanceMwk = null;
-    if (String(finalized.payment?.metadata?.purpose || payment?.metadata?.purpose || "").trim() === "wallet_topup") {
-      const account = await syncWalletAccountFromActivities(user.id);
-      walletBalanceMwk = Number(account?.balance_mwk || 0);
-    }
-
     return res.json({
       status: "success",
       message: "Payment reconciliation completed.",
@@ -1353,7 +1383,6 @@ app.post("/api/paychangu/reconcile", async (req, res) => {
       reference: finalized.payment.reference,
       tx_ref: finalized.payment.tx_ref,
       related_order_id: finalized.payment.related_order_id || null,
-      wallet_balance_mwk: walletBalanceMwk,
       fulfilled: finalized.finalized,
       verify: verifyData,
     });
@@ -1417,7 +1446,7 @@ app.get("/api/orders/:orderId/handoff", async (req, res) => {
     }
 
     const payment = await getPaymentByRelatedOrderId(orderId);
-    if (!payment) return sendError(res, 404, "Paid order not found.");
+    if (!payment) return sendError(res, 404, "Order payment not found.");
 
     const metadata = asObject(payment.metadata);
     const handoffRow = await getOrderHandoffByOrderId(orderId);
@@ -1425,8 +1454,8 @@ app.get("/api/orders/:orderId/handoff", async (req, res) => {
     const orderDraft = asObject(metadata.order);
 
     const order = detail.order;
-    if (!ensurePaidOrder(order, payment)) {
-      return sendError(res, 409, "Invoice and handoff pass are available only after backend payment confirmation.");
+    if (!ensureDeliveryEligibleOrder(order, payment)) {
+      return sendError(res, 409, "This order is not eligible for delivery handoff.");
     }
 
     let rider = null;
@@ -2366,9 +2395,7 @@ app.post("/api/admin/broadcast", async (req, res) => {
 
 app.get("/api/deliveries/unassigned", async (req, res) => {
   try {
-    const actorId = actorIdFromHeaders(req);
-    if (!actorId) return sendError(res, 401, "Missing actor identity header.");
-    const profile = await getProfileById(actorId);
+    const { profile } = await requireAuthenticatedActor(req);
     if (!profile || (profile.role !== "admin" && profile.role !== "agent")) {
       return sendError(res, 403, "Dispatch access required.");
     }
@@ -2383,22 +2410,21 @@ app.get("/api/deliveries/unassigned", async (req, res) => {
 app.post("/api/deliveries/:orderId/assign", async (req, res) => {
   try {
     const orderId = String(req.params.orderId || "").trim();
-    const actorId = actorIdFromHeaders(req);
-    if (!actorId) return sendError(res, 401, "Missing actor identity header.");
+    const { actorId, profile } = await requireAuthenticatedActor(req);
     const requestedDriverId = typeof req.body?.driver_id === "string" ? req.body.driver_id.trim() : "";
     const driverId = requestedDriverId || actorId || "";
     if (!orderId) return sendError(res, 400, "Order id is required.");
     if (!driverId) return sendError(res, 400, "driver_id is required.");
 
-    const [profile, detail] = await Promise.all([getProfileById(actorId), getOrderDetailPayload(orderId)]);
+    const detail = await getOrderDetailPayload(orderId);
     if (!detail) return sendError(res, 404, "Order not found.");
 
     const driver = await getProfileById(driverId);
     if (!driver || (driver.role !== "agent" && driver.role !== "admin")) {
       return sendError(res, 400, "Driver account not found or not eligible.");
     }
-    if (String(detail.order.payment_status || "").toLowerCase() !== "paid") {
-      return sendError(res, 409, "Driver assignment is allowed only after backend payment confirmation.");
+    if (!ensureDeliveryEligibleOrder(detail.order, detail.payment)) {
+      return sendError(res, 409, "Driver assignment requires confirmed payment or an authorized cash-on-delivery order.");
     }
 
     const isAdmin = profile?.role === "admin";

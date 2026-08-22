@@ -50,7 +50,7 @@ export async function checkoutWithCash(
 
   return data as {
     status: string;
-    payment_status: "paid";
+    payment_status: "pending";
     method: "cash";
     order_id: string;
     payment_id: string;

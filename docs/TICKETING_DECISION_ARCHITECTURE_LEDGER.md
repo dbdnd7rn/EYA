@@ -112,7 +112,7 @@ Still required before production finance is complete:
 The normal EYA user remains the actor for audit fields such as created/submitted/requested-by, while the Promoter / Organization is the stable business/financial owner.
 
 ### Operational access vs financial entitlement
-Status: `DECIDED DIRECTION + NOT BUILT`
+Status: `DECIDED + ENTITLEMENT FOUNDATION IMPLEMENTED`
 
 Separate these concepts:
 
@@ -126,9 +126,20 @@ Separate these concepts:
    - receive final settlement
    - survive Event Studio expiry until the financial relationship is closed
 
-Current conflict:
-- organizer finance RPCs still depend on active Ticket Management operations access.
-- normal account identity is now safe, but settlement access still needs its own lifecycle so operations expiry does not erase legitimate finance visibility/entitlement.
+Implemented foundation:
+- `ticket_organization_finance_entitlements` binds finance authority to the stable organization and user account separately from Ticket Management access;
+- the first Ticket Management account for a new organization becomes its initial Finance Owner;
+- later operations users do not automatically inherit finance authority;
+- finance access can be active, suspended or revoked;
+- Admin cannot revoke the final finance controller, or revoke while open payout/settlement work remains.
+
+Still required:
+- add verified payout destinations, liability ledger and provider-settlement authority.
+
+Workspace wiring now implemented:
+- `Account -> Workspaces` independently loads Finance & Settlement entitlements;
+- Finance & Settlement remains visible when Ticket Management operations access expires;
+- organization events open through a normal-account finance route rather than the operations-only Organizer guard.
 
 ---
 
@@ -400,7 +411,7 @@ The stable Promoter / Organization ID now exists, so this can be implemented wit
 
 ## 10. Payout destinations
 
-Status: `NOT BUILT`
+Status: `VERIFIED DESTINATION FOUNDATION IMPLEMENTED`
 
 Need verified payout beneficiaries belonging to the stable promoter/organization, not an individual workspace permission.
 
@@ -420,6 +431,22 @@ Need fields/audit for:
 - primary/default destination
 
 Sensitive financial details must not be exposed unnecessarily in organizer/admin UI logs.
+
+Implemented foundation:
+- destinations belong to the stable Promoter / Organization;
+- supported methods are Airtel Money, TNM Mpamba and Malawi bank account;
+- sensitive destination details are accepted only as trusted-backend ciphertext with an encryption-key version;
+- browser roles have no direct table access and receive only masked destination metadata through an entitlement-bound RPC;
+- destination fingerprints prevent duplicate records without exposing the account/phone value;
+- Admin verification/rejection/disable transitions are explicit and append masked before/after audit records;
+- only one verified destination may be marked primary per organization.
+
+Still required:
+- deploy/configure the implemented trusted-backend encrypted intake endpoint and document/test key rotation;
+- organizer destination form and Admin verification UI;
+- KYC evidence storage/retention decision;
+- bind payout requests and later payout execution to a verified primary destination;
+- provider-side beneficiary verification and reconciliation.
 
 ---
 
@@ -522,7 +549,7 @@ Older unrelated public tables/functions still have RLS/search-path/SECURITY DEFI
 All of these must be resolved before enabling PayChangu organizer payout execution:
 
 1. Complete promoter-level finance ownership/liability/payout-destination model. Stable organization ownership foundation is implemented, but the full finance layer is not.
-2. Separate operations access from finance-settlement entitlement.
+2. Complete the UI/RPC wiring for the now-separate finance-settlement entitlement foundation.
 3. Real settled/available-funds authority; customer-paid alone is insufficient.
 4. First-class refund lifecycle.
 5. PayChangu refund process confirmed for each supported payment rail.

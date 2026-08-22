@@ -32,11 +32,6 @@ type OrderMini = {
   updated_at: string;
 };
 
-type WalletActivityMini = {
-  id: string;
-  created_at: string;
-};
-
 type MessageMini = {
   enquiry_id: string;
   sender_id: string | null;
@@ -134,9 +129,8 @@ export function StudentBadgeProvider({ children }: { children: React.ReactNode }
     }
 
     try {
-      const [orderRes, walletRes, messageRes, vendorMessageRes] = await Promise.all([
+      const [orderRes, messageRes, vendorMessageRes] = await Promise.all([
         supabaseNewApp.from("orders").select("id,status,updated_at").eq("customer_id", user.id).order("updated_at", { ascending: false }).limit(120),
-        supabase.from("wallet_activities").select("id,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(120),
         supabase
           .from("messages")
           .select("enquiry_id,sender_id,receiver_id,created_at")
@@ -152,7 +146,6 @@ export function StudentBadgeProvider({ children }: { children: React.ReactNode }
       ]);
 
       const orders = ((orderRes.data ?? []) as OrderMini[]).filter((row) => isActiveOrder(row.status));
-      const walletRows = (walletRes.data ?? []) as WalletActivityMini[];
       const messages = (messageRes.data ?? []) as MessageMini[];
       const vendorMessages = ((vendorMessageRes.data ?? []) as { conversation_id: string; sender_id: string | null; receiver_id: string | null; created_at: string }[]);
 
@@ -171,7 +164,7 @@ export function StudentBadgeProvider({ children }: { children: React.ReactNode }
 
       setCounts({
         orders: orders.filter((row) => toEpoch(row.updated_at) > toEpoch(seen.ordersAt)).length,
-        wallet: walletRows.filter((row) => toEpoch(row.created_at) > toEpoch(seen.walletAt)).length,
+        wallet: 0,
         messages: unreadHostelCount + unreadVendorCount,
       });
     } catch (e) {
@@ -234,13 +227,6 @@ export function StudentBadgeProvider({ children }: { children: React.ReactNode }
       })
       .subscribe();
 
-    const walletChannel = supabase
-      .channel(`student-badges-wallet-${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "wallet_activities", filter: `user_id=eq.${user.id}` }, () => {
-        void refresh();
-      })
-      .subscribe();
-
     const messageChannel = supabase
       .channel(`student-badges-messages-${user.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `receiver_id=eq.${user.id}` }, () => {
@@ -261,7 +247,6 @@ export function StudentBadgeProvider({ children }: { children: React.ReactNode }
     return () => {
       supabaseNewApp.removeChannel(ordersChannel);
       supabaseNewApp.removeChannel(vendorMessageChannel);
-      supabase.removeChannel(walletChannel);
       supabase.removeChannel(messageChannel);
     };
   }, [user?.id, seen.ordersAt, seen.walletAt, seen.messagesAt]);

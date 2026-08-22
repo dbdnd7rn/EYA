@@ -9,4 +9,6 @@ Required Supabase Edge Function secrets:
 
 The function authenticates the caller, reserves ticket inventory with the service role, creates an HMAC-signed VAC payment intent, attaches the merchant reference to the ticket order, and returns the PayChangu hosted checkout URL.
 
+Each signed Worker command includes a cryptographically random `x-vac-nonce` in the HMAC canonical request. The Worker claims the nonce atomically in D1 and rejects replays.
+
 Do not expose either secret to the Expo application.

@@ -89,7 +89,8 @@ async function createVacCheckout(payload: Record<string, unknown>): Promise<Reco
   if (workerUrl.protocol !== "https:") throw new Error("VAC payments URL must use HTTPS.");
   const rawBody = JSON.stringify(payload);
   const timestamp = Math.floor(Date.now() / 1000);
-  const canonical = [String(timestamp), "POST", WORKER_PATH, rawBody].join(".");
+  const nonce = crypto.randomUUID();
+  const canonical = [String(timestamp), nonce, "POST", WORKER_PATH, rawBody].join(".");
   const signature = await hmacSha256Hex(secret, canonical);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -103,6 +104,7 @@ async function createVacCheckout(payload: Record<string, unknown>): Promise<Reco
         "Content-Type": "application/json",
         "x-vac-app-id": "eya",
         "x-vac-timestamp": String(timestamp),
+        "x-vac-nonce": nonce,
         "x-vac-signature": signature,
       },
       body: rawBody,

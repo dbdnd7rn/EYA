@@ -1,4 +1,6 @@
 import { supabase } from "@/lib/supabase";
+import { getSupabaseAccessToken } from "@/lib/supabase";
+import { ENV } from "@/lib/env";
 
 export type TicketEventPayoutRequestType = "early_payout" | "final_settlement";
 export type TicketEventPayoutStatus = "pending" | "approved" | "declined" | "cancelled" | "paid";
@@ -39,7 +41,32 @@ export type TicketEventFinance = {
   organizer_advance_liability_mwk: number;
   available_for_payout_mwk: number;
   final_settlement_ready: boolean;
+  finance_entitlement_status: "active" | "suspended";
   requests: TicketEventPayoutRequest[];
+};
+
+export type TicketFinanceWorkspace = {
+  entitlement_id: string;
+  organization_id: string;
+  organization_name: string;
+  role: "finance_owner" | "finance_manager";
+  status: "active" | "suspended";
+  events: Omit<TicketEventFinance, "requests">[];
+};
+
+export type TicketPayoutDestination = {
+  id: string;
+  organization_id: string;
+  organization_name?: string;
+  method: "airtel_money" | "mpamba" | "bank";
+  beneficiary_name: string;
+  bank_or_network: string;
+  masked_destination: string;
+  status: "pending_verification" | "verified" | "rejected" | "disabled";
+  is_primary: boolean;
+  verified_at: string | null;
+  review_note: string | null;
+  created_at: string;
 };
 
 export type AdminTicketEventPayoutRequest = {
@@ -120,6 +147,78 @@ export async function getMyTicketEventFinance(eventId: string): Promise<TicketEv
   const { data, error } = await supabase.rpc("get_my_ticket_event_finance", { p_event_id: eventId });
   if (error) throw new Error(message(error, "Could not load event finance."));
   return normalizeFinance(data);
+}
+
+export async function getMyTicketFinanceWorkspace(): Promise<TicketFinanceWorkspace[]> {
+  const { data, error } = await supabase.rpc("get_my_ticket_finance_workspace");
+  if (error) throw new Error(message(error, "Could not load Finance & Settlement."));
+  if (!Array.isArray(data)) return [];
+  return data.map((workspace: any) => ({
+    ...workspace,
+    entitlement_id: String(workspace.entitlement_id),
+    organization_id: String(workspace.organization_id),
+    organization_name: String(workspace.organization_name || "Organization"),
+    events: Array.isArray(workspace.events)
+      ? workspace.events.map((finance: any) => normalizeFinance({ ...finance, requests: [] }))
+      : [],
+  })) as TicketFinanceWorkspace[];
+}
+
+export async function getMyTicketPayoutDestinations(organizationId: string): Promise<TicketPayoutDestination[]> {
+  const { data, error } = await supabase.rpc("get_my_ticket_organization_payout_destinations", { p_organization_id: organizationId });
+  if (error) throw new Error(message(error, "Could not load payout destinations."));
+  return Array.isArray(data) ? data as TicketPayoutDestination[] : [];
+}
+
+export async function registerMyTicketPayoutDestination(input: {
+  organizationId: string;
+  method: "airtel_money" | "mpamba" | "bank";
+  beneficiaryName: string;
+  phoneNumber?: string;
+  accountNumber?: string;
+  bankName?: string;
+}) {
+  const base = ENV.PAYCHANGU_BACKEND.replace(/\/+$/, "");
+  if (!base) throw new Error("Backend URL is not configured.");
+  const accessToken = await getSupabaseAccessToken();
+  if (!accessToken) throw new Error("Please sign in again.");
+  const response = await fetch(`${base}/api/ticket-finance/payout-destinations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({
+      organization_id: input.organizationId,
+      method: input.method,
+      beneficiary_name: input.beneficiaryName,
+      phone_number: input.phoneNumber,
+      account_number: input.accountNumber,
+      bank_name: input.bankName,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.message || data?.error || "Could not register payout destination.");
+  return data.destination as { ok: true; destination_id: string; status: "pending_verification" };
+}
+
+export async function listAdminTicketPayoutDestinations(): Promise<TicketPayoutDestination[]> {
+  const { data, error } = await supabase.rpc("admin_list_ticket_organization_payout_destinations");
+  if (error) throw new Error(message(error, "Could not load payout destinations."));
+  return Array.isArray(data) ? data as TicketPayoutDestination[] : [];
+}
+
+export async function adminReviewTicketPayoutDestination(input: {
+  destinationId: string;
+  action: "verify" | "reject" | "disable";
+  makePrimary?: boolean;
+  note?: string | null;
+}) {
+  const { data, error } = await supabase.rpc("admin_review_ticket_organization_payout_destination", {
+    p_destination_id: input.destinationId,
+    p_action: input.action,
+    p_make_primary: input.makePrimary ?? false,
+    p_note: input.note?.trim() || null,
+  });
+  if (error) throw new Error(message(error, "Could not review payout destination."));
+  return data;
 }
 
 export async function requestMyTicketEventPayout(input: {

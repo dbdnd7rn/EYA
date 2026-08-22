@@ -154,12 +154,10 @@ export async function listOrdersForVendorOwner(ownerId: string): Promise<OrderRo
 }
 
 export async function updateOrderStatus(orderId: string, status: OrderStatus): Promise<OrderRow> {
-  const { data, error } = await supabaseNewApp
-    .from("orders")
-    .update({ status })
-    .eq("id", orderId)
-    .select("id, customer_id, vendor_id, channel, status, delivery_mode, pickup_notes, dropoff_notes, pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, subtotal_mwk, delivery_fee_mwk, service_fee_mwk, total_mwk, payment_status, created_at, updated_at")
-    .single();
+  const { data, error } = await supabaseNewApp.rpc("vendor_transition_order_status", {
+    p_order_id: orderId,
+    p_status: status,
+  });
   throwIfError(error);
   const order = data as OrderRow;
 

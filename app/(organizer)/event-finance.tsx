@@ -35,7 +35,7 @@ function statusLabel(request: TicketEventPayoutRequest) {
 
 export default function OrganizerEventFinanceScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ eventId?: string }>();
+  const params = useLocalSearchParams<{ eventId?: string; accessStatus?: string }>();
   const eventId = String(params.eventId || "");
   const [finance, setFinance] = React.useState<TicketEventFinance | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -131,8 +131,9 @@ export default function OrganizerEventFinanceScreen() {
   };
 
   const openRequest = finance?.requests.some((row) => row.status === "pending" || row.status === "approved") ?? false;
-  const canEarly = Boolean(finance && finance.payouts_configured && finance.finance_status === "open" && !finance.event_finished && finance.available_for_payout_mwk > 0 && finance.organizer_advance_liability_mwk === 0 && !openRequest);
-  const canFinal = Boolean(finance && finance.final_settlement_ready && finance.available_for_payout_mwk > 0 && !openRequest);
+  const accessSuspended = params.accessStatus === "suspended" || finance?.finance_entitlement_status === "suspended";
+  const canEarly = Boolean(finance && !accessSuspended && finance.payouts_configured && finance.finance_status === "open" && !finance.event_finished && finance.available_for_payout_mwk > 0 && finance.organizer_advance_liability_mwk === 0 && !openRequest);
+  const canFinal = Boolean(finance && !accessSuspended && finance.final_settlement_ready && finance.available_for_payout_mwk > 0 && !openRequest);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -155,6 +156,8 @@ export default function OrganizerEventFinanceScreen() {
               <Text style={styles.eventTitle}>{finance.event_title}</Text>
               <Text style={styles.eventMeta}>{finance.event_finished ? "Event completed" : `Event ends ${dateLabel(finance.ends_at || finance.starts_at)}`}</Text>
             </View>
+
+            {accessSuspended ? <View style={styles.waitCard}><LockKeyhole size={20} color="#8a5a00" /><Text style={styles.waitText}>Finance access is suspended. Statements remain available, but new payout requests and cancellations are disabled.</Text></View> : null}
 
             <View style={styles.grid}>
               <Metric label="Ticket sales" value={kwacha(finance.gross_ticket_sales_mwk)} />
@@ -227,7 +230,7 @@ export default function OrganizerEventFinanceScreen() {
                   </View>
                   <View style={styles.statusRow}><Clock3 size={14} color={MUTED} /><Text style={styles.statusText}>{statusLabel(request)}</Text></View>
                   {request.review_note ? <Text style={styles.noteText}>{request.review_note}</Text> : null}
-                  {request.status === "pending" ? <Pressable style={styles.cancelBtn} disabled={busy} onPress={() => cancelRequest(request)}><XCircle size={15} color="#a32929" /><Text style={styles.cancelText}>Cancel request</Text></Pressable> : null}
+                  {request.status === "pending" && !accessSuspended ? <Pressable style={styles.cancelBtn} disabled={busy} onPress={() => cancelRequest(request)}><XCircle size={15} color="#a32929" /><Text style={styles.cancelText}>Cancel request</Text></Pressable> : null}
                 </View>
               ))}
             </View>

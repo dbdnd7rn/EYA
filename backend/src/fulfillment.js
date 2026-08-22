@@ -596,10 +596,10 @@ async function finalizePayment(payment, verifyPayload) {
   }
 
   if (payment.status === "paid" && purpose === "wallet_topup") {
-    if (!(await walletTopupAlreadyCredited(payment))) {
-      await creditWalletFromPayment(payment);
-    }
-    await appendPaymentEvent(payment.id, "verify", "paid", verifyPayload);
+    await appendPaymentEvent(payment.id, "wallet_suspended", "paid", {
+      ...asObject(verifyPayload),
+      wallet_credit_applied: false,
+    });
     return { payment, finalized: true };
   }
 
@@ -616,13 +616,18 @@ async function finalizePayment(payment, verifyPayload) {
 
   let relatedOrderId = payment.related_order_id;
 
-  if (purpose === "wallet_topup" && payment.status !== "paid") {
-    await creditWalletFromPayment(payment);
-  } else if (purpose === "campus_market_order" && !relatedOrderId) {
+  if (purpose === "campus_market_order" && !relatedOrderId) {
     relatedOrderId = await createCampusMarketOrderFromPayment(payment);
   }
 
   let nextMetadata = asObject(payment.metadata);
+  if (purpose === "wallet_topup") {
+    nextMetadata = mergeMetadata(payment, {
+      wallet_suspended: true,
+      wallet_credit_applied: false,
+      wallet_reconciliation_required: true,
+    });
+  }
   if (purpose === "campus_market_order" && relatedOrderId) {
     const existingHandoff = asObject(nextMetadata.handoff);
     if (!existingHandoff.delivery_pin || !existingHandoff.qr_token) {
@@ -724,11 +729,10 @@ export async function createCampusMarketCashCheckout({ userId, email, orderDraft
   if (!customerId) throw new Error("Cash checkout is missing a valid customer profile.");
 
   const prepared = await prepareCampusMarketOrderDraft({ customerId, orderDraft });
+  prepared.orderPayload.payment_status = "pending";
   const orderId = await insertCampusMarketOrder(prepared);
   const handoff = createHandoffSecurity(orderId);
   const paymentReference = `cash_${orderId}`;
-  const now = new Date().toISOString();
-
   const { data: payment, error: paymentError } = await supabase
     .from("payments")
     .insert({
@@ -745,7 +749,7 @@ export async function createCampusMarketCashCheckout({ userId, email, orderDraft
       title: title || "Cash order payment",
       description: description || "Cash on delivery order",
       customer_email: email || null,
-      status: "paid",
+      status: "pending",
       metadata: {
         purpose: "campus_market_order",
         payment_source: "cash",
@@ -759,14 +763,12 @@ export async function createCampusMarketCashCheckout({ userId, email, orderDraft
         source: "cash",
         settlement: "collect_on_delivery",
       },
-      verified_at: now,
-      paid_at: now,
     })
     .select("id")
     .single();
   throwIfError(paymentError);
 
-  await appendPaymentEvent(payment.id, "cash_checkout", "paid", {
+  await appendPaymentEvent(payment.id, "cash_checkout", "pending", {
     order_id: orderId,
     settlement: "collect_on_delivery",
   });
@@ -782,7 +784,7 @@ export async function createCampusMarketCashCheckout({ userId, email, orderDraft
       id: payment.id,
       user_id: customerId,
       related_order_id: orderId,
-      status: "paid",
+      status: "pending",
       provider: "cash",
       method: "cash",
       amount_mwk: Math.round(prepared.total),
@@ -797,7 +799,7 @@ export async function createCampusMarketCashCheckout({ userId, email, orderDraft
         payment_method_label: "Cash on Delivery",
       },
     },
-    "paid",
+    "pending",
   );
   await notifyCampusOrderCreated(orderId);
 
@@ -812,7 +814,6 @@ export async function getPaymentByRelatedOrderId(orderId) {
     .from("payments")
     .select("*")
     .eq("related_order_id", orderId)
-    .eq("status", "paid")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -822,7 +823,10 @@ export async function getPaymentByRelatedOrderId(orderId) {
 
 export async function markHandoffVerified(orderId, verifier, proof) {
   const payment = await getPaymentByRelatedOrderId(orderId);
-  if (!payment) throw new Error("Paid order not found.");
+  if (!payment) throw new Error("Order payment not found.");
+  const isPaid = String(payment.status || "").toLowerCase() === "paid";
+  const isPendingCash = payment.provider === "cash" && String(payment.status || "").toLowerCase() === "pending";
+  if (!isPaid && !isPendingCash) throw new Error("Order payment is not eligible for handoff.");
 
   const metadata = asObject(payment.metadata);
   const handoffRow = await getOrderHandoffByOrderId(orderId);
@@ -877,9 +881,13 @@ export async function markHandoffVerified(orderId, verifier, proof) {
     },
   };
 
+  const paidAt = new Date().toISOString();
   const { data, error } = await supabase
     .from("payments")
-    .update({ metadata: nextMetadata })
+    .update({
+      metadata: nextMetadata,
+      ...(isPendingCash ? { status: "paid", verified_at: paidAt, paid_at: paidAt } : {}),
+    })
     .eq("id", payment.id)
     .select("*")
     .single();

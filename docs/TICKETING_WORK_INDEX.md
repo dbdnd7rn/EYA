@@ -24,9 +24,16 @@ Use these documents together:
    - current test status
    - implementation checkpoints
 
+4. [`EYA_SECURITY_AUDIT.md`](./EYA_SECURITY_AUDIT.md)
+   - both-repository attack surface
+   - Supabase grants, RLS and privileged RPC findings
+   - payment/backend authority boundaries
+   - active security fixes and regression requirements
+
 Rules:
 - If a ticketing product/security/finance decision changes, update the Architecture Ledger.
 - If the account/workspace identity model changes, update the Account & Workspace Identity Model.
 - If implementation changes what must be tested, update the Build & Test Board.
+- Security blockers in the Security Audit take priority over new finance or payout behavior.
 - Do not use the test board as the source of truth for unresolved product decisions.
 - Do not enable real organizer payout execution until every blocker in the Architecture Ledger section `Blockers before real organizer money moves` is resolved.

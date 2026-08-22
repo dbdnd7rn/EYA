@@ -16,7 +16,7 @@ function firstDefinedString(...values: unknown[]) {
   return null;
 }
 
-function buildProfilePayload(user: User, role: Exclude<AppRole, null>) {
+function buildProfilePayload(user: User) {
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
   const firstName = firstDefinedString(meta.first_name, meta.firstName);
   const lastName = firstDefinedString(meta.last_name, meta.lastName, meta.surname);
@@ -25,16 +25,12 @@ function buildProfilePayload(user: User, role: Exclude<AppRole, null>) {
     firstDefinedString(user.email?.split("@")[0]);
 
   return {
-    id: user.id,
-    email: toNullableString(user.email)?.toLowerCase() ?? null,
     full_name: fullName,
     first_name: firstName,
     last_name: lastName,
     surname: firstDefinedString(meta.surname, lastName),
     phone: firstDefinedString(meta.phone, meta.phone_number),
-    role,
     onboarded: true,
-    updated_at: new Date().toISOString(),
   };
 }
 
@@ -68,12 +64,9 @@ export async function ensureProfileRole(
   if (!authRole && safeDbRole) return safeDbRole;
   if (!authRole) return null;
 
-  const payload = buildProfilePayload(user, authRole);
-  const upsertRes = await supabase.from("profiles").upsert(payload as never, { onConflict: "id" });
-  if (upsertRes.error) {
-    const updateRes = await supabase.from("profiles").update(payload as never).eq("id", user.id);
-    if (updateRes.error) return authRole;
-  }
+  const payload = buildProfilePayload(user);
+  const updateRes = await supabase.from("profiles").update(payload as never).eq("id", user.id);
+  if (updateRes.error) return authRole;
 
   return authRole;
 }

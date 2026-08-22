@@ -8,6 +8,7 @@ Standalone backend for the `EYA` mobile app PayChangu checkout flow.
 - `POST /api/paychangu/initiate`
 - `GET /api/paychangu/verify/:txRef`
 - `POST /api/paychangu/webhook`
+- `POST /api/ticket-finance/payout-destinations`
 - `GET /api/orders/:orderId/handoff`
 - `POST /api/orders/:orderId/handoff/verify`
 - `GET /pay/success`
@@ -25,8 +26,9 @@ Standalone backend for the `EYA` mobile app PayChangu checkout flow.
 8. Set `SUPABASE_SERVICE_ROLE_KEY`
 9. Set `SUPABASE_NEW_APP_SCHEMA` if your campus-market schema is not `public`
 10. Set `PUBLIC_BASE_URL` to the public URL where this backend is reachable
-11. Run `npm install`
-12. Run `npm start`
+11. Set `PAYOUT_DESTINATION_ENCRYPTION_KEY_B64` to a dedicated 32-byte base64 key and set its version
+12. Run `npm install`
+13. Run `npm start`
 
 ## Mobile app value
 
@@ -42,6 +44,7 @@ Point the Expo app env var `EXPO_PUBLIC_PAYCHANGU_BACKEND` to this backend's pub
 - The success and cancel pages are intentionally hosted on this backend so the mobile `WebView` can detect `/pay/success` and `/pay/cancel` reliably
 - Payment truth lives on the backend in `public.payments`
 - Wallet top-ups are finalized by the backend, not the mobile app
+- Payout destination account/phone details are encrypted with AES-256-GCM before Supabase storage; clients receive masked values only
 - Market and food orders are created by the backend after verified payment
 - Paid market and food orders receive a delivery handoff pass with:
   - invoice reference

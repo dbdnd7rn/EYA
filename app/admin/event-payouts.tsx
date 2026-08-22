@@ -2,7 +2,7 @@ import React from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, Banknote, CheckCircle2, LockKeyhole, RefreshCcw, ShieldCheck, TriangleAlert, XCircle } from "lucide-react-native";
+import { ArrowLeft, Banknote, CheckCircle2, Landmark, LockKeyhole, RefreshCcw, ShieldCheck, TriangleAlert, XCircle } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
 import {
   adminReviewTicketEventPayoutRequest,
@@ -155,6 +155,7 @@ export default function AdminEventPayoutsScreen() {
         </View>
 
         <View style={styles.securityNote}><ShieldCheck size={20} color="#087443" /><Text style={styles.securityText}>Early payouts are event advances. Protected refund reserve, EYA fee, holds and prior payouts are deducted before an organizer can request money.</Text></View>
+        <Pressable style={styles.destinationLink} onPress={() => router.push("/admin/payout-destinations" as any)}><Landmark size={19} color={ACCENT} /><View style={{ flex: 1 }}><Text style={styles.destinationTitle}>Verify payout destinations</Text><Text style={styles.meta}>Review masked bank and mobile-money details before payouts can be requested.</Text></View></Pressable>
 
         {loading ? <State><ActivityIndicator color={ACCENT} /><Text style={styles.stateText}>Loading organizer event finance...</Text></State> : null}
         {!loading && error ? <State><TriangleAlert size={30} color="#a32929" /><Text style={styles.errorText}>{error}</Text></State> : null}
@@ -246,6 +247,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: 12 }, iconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" },
   kicker: { color: ACCENT, fontSize: 10, fontWeight: "900", letterSpacing: 1, textTransform: "uppercase" }, title: { color: TEXT, fontSize: 25, fontWeight: "900", marginTop: 2 },
   securityNote: { borderRadius: 18, backgroundColor: "#e8f7ee", padding: 13, flexDirection: "row", alignItems: "flex-start", gap: 9 }, securityText: { flex: 1, color: "#276346", fontSize: 12, lineHeight: 17, fontWeight: "800" },
+  destinationLink: { borderRadius: 18, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 13, flexDirection: "row", alignItems: "center", gap: 10 }, destinationTitle: { color: TEXT, fontSize: 14, fontWeight: "900" },
   state: { minHeight: 210, borderRadius: 24, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center", gap: 10, padding: 24 }, stateText: { color: MUTED, fontWeight: "800" }, errorText: { color: "#a32929", fontWeight: "800", textAlign: "center" },
   sectionTitle: { color: TEXT, fontSize: 19, fontWeight: "900" }, emptyText: { color: MUTED, fontSize: 12, fontWeight: "700" },
   card: { borderRadius: 23, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 15, gap: 10 }, cardHead: { flexDirection: "row", gap: 10, alignItems: "flex-start" }, eventTitle: { color: TEXT, fontSize: 17, fontWeight: "900" }, meta: { color: MUTED, fontSize: 11, lineHeight: 16, fontWeight: "700", marginTop: 2 },

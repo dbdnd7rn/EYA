@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Ticket,
   Truck,
-  WalletCards,
 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import PaymentBrandLogo from "@/components/payment/PaymentBrandLogo";
@@ -24,10 +23,9 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
 import { initializePayChanguCheckout, type DirectChargeSession, type SupportedPaymentMethod, verifyPayChanguTxRef } from "@/lib/payments";
 import { checkoutWithCash } from "@/lib/cashCheckout";
-import { checkoutWithWallet } from "@/lib/walletCheckout";
 
 type CheckoutMode = "stay" | "market" | "food";
-type CheckoutPaymentMethod = SupportedPaymentMethod | "wallet" | "cash";
+type CheckoutPaymentMethod = SupportedPaymentMethod | "cash";
 type PendingPayment = DirectChargeSession & { method: SupportedPaymentMethod; uiMethod: CheckoutPaymentMethod; amountMwk: number };
 
 const formatMwk = (value: number) => `MWK ${Number(value || 0).toLocaleString("en-MW")}`;
@@ -75,7 +73,6 @@ function pendingPaymentLabel(payment: PendingPayment | null) {
   if (!payment) return "Payment";
   if (payment.uiMethod === "airtel_money") return "Airtel Money";
   if (payment.uiMethod === "mpamba") return "TNM Mpamba";
-  if (payment.uiMethod === "wallet") return "Wallet";
   if (payment.method === "bank_transfer") return "Bank Transfer";
   return "Payment";
 }
@@ -356,58 +353,6 @@ export default function CheckoutScreen() {
       return;
     }
 
-    if (payMethod === "wallet") {
-      if (!isOnline) {
-        await saveCheckoutDraft(user?.id, {
-          scope: draftScope,
-          payMethod,
-          mobileNumber,
-          couponCode,
-          quantity,
-          savedAt: Date.now(),
-        });
-        Alert.alert("Offline", "Wallet checkout needs internet. Your checkout draft was saved for later.");
-        return;
-      }
-      if (!session?.access_token) {
-        Alert.alert("Login required", "Please log in again to use wallet balance.");
-        return;
-      }
-      if (!campusMarketOrderDraft) {
-        Alert.alert("Wallet unavailable", "Wallet checkout needs a live market or food item.");
-        return;
-      }
-
-      try {
-        setSubmitting(true);
-        const result = await checkoutWithWallet(session.access_token, {
-          title: `EYA ${mode.toUpperCase()} checkout`,
-          description: `${mode} checkout - ${title}`,
-          purpose: "campus_market_order",
-          order: campusMarketOrderDraft,
-        });
-        await clearCheckoutDraft(user?.id);
-
-        router.replace({
-          pathname: "/pay/success",
-          params: {
-            tx_ref: `wallet_${result.order_id}`,
-            order_id: result.order_id,
-            mode,
-            title,
-            total: String(total),
-            delivery: String(delivery),
-            method: "wallet",
-          },
-        });
-      } catch (e: any) {
-        Alert.alert("Wallet payment failed", e?.message ?? "Could not complete wallet payment.");
-      } finally {
-        setSubmitting(false);
-      }
-      return;
-    }
-
     const cleanPhone = mobileNumber.trim().replace(/\s+/g, "");
     if (requiresPhone && cleanPhone.length < 8) {
       Alert.alert("Phone required", "Enter a valid mobile money number for this payment method.");
@@ -661,13 +606,6 @@ export default function CheckoutScreen() {
               active={payMethod === "bank_transfer"}
               icon={<Landmark size={22} color={payMethod === "bank_transfer" ? "#f5f8ff" : "#2170d9"} />}
               onPress={() => setPayMethod("bank_transfer")}
-            />
-            <MethodTile
-              label="Wallet"
-              subtitle="Pay from your wallet balance"
-              active={payMethod === "wallet"}
-              icon={<WalletCards size={22} color={payMethod === "wallet" ? "#f5f8ff" : "#155bdf"} />}
-              onPress={() => setPayMethod("wallet")}
             />
             <MethodTile
               label="Cash on Delivery"
@@ -1657,5 +1595,4 @@ const styles = StyleSheet.create({
   },
   mobileMoneySecureText: { color: "#6c7592", fontWeight: "700", fontSize: 13 },
 });
-
 
