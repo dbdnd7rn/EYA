@@ -11,12 +11,14 @@ function resolveAuthRedirectUrl() {
   // Native OAuth must return to the app. Never let a web/localhost URL
   // override Expo Go or the installed EYA custom scheme.
   if (/^eya:\/\//i.test(configuredAuthRedirectUrl)) return configuredAuthRedirectUrl;
-  if (/^exp:\/\//i.test(configuredAuthRedirectUrl) && !/^exp:\/\/(localhost|127\.0\.0\.1)(?::\d+)?/i.test(configuredAuthRedirectUrl)) {
+  if (/^exp:\/\//i.test(configuredAuthRedirectUrl) && !/^exp:\/\/(localhost|127\.0\.1)(?::\d+)?/i.test(configuredAuthRedirectUrl)) {
     return configuredAuthRedirectUrl;
   }
 
   return "";
 }
+
+const requestedDevAuthMode = (process.env.EXPO_PUBLIC_DEV_AUTH_MODE ?? "false").toLowerCase() === "true";
 
 export const ENV = {
   SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
@@ -29,7 +31,11 @@ export const ENV = {
   CLOUDINARY_UPLOAD_PRESET: process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? "",
   ENABLE_PUSH_NOTIFICATIONS: (process.env.EXPO_PUBLIC_ENABLE_PUSH_NOTIFICATIONS ?? "true").toLowerCase() !== "false",
   APP_ENV: process.env.EXPO_PUBLIC_APP_ENV ?? "development",
-  DEV_AUTH_MODE: (process.env.EXPO_PUBLIC_DEV_AUTH_MODE ?? "false").toLowerCase() === "true",
+  // Never allow a public environment flag to turn local-only identities into a
+  // production authentication mode. Expo/React Native replaces __DEV__ at build
+  // time, so production bundles remain on real Supabase Auth even if the env flag
+  // is accidentally left enabled.
+  DEV_AUTH_MODE: __DEV__ && requestedDevAuthMode,
   ADMIN_EMAILS: (process.env.EXPO_PUBLIC_ADMIN_EMAILS ?? "").trim(),
   AUTH_REDIRECT_URL: resolveAuthRedirectUrl(),
 };
