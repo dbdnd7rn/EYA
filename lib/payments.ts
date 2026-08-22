@@ -180,7 +180,8 @@ export async function verifyPayChanguTxRef(txRef: string): Promise<PayChanguVeri
     throw new Error("PayChangu backend URL is not configured. Set EXPO_PUBLIC_PAYCHANGU_BACKEND.");
   }
   const url = `${ENV.PAYCHANGU_BACKEND.replace(/\/+$/, "")}/api/paychangu/verify/${encodeURIComponent(txRef)}`;
-  const res = await fetch(url, { method: "GET" });
+  const headers = await authenticatedBackendHeaders();
+  const res = await fetch(url, { method: "GET", headers });
   if (!res.ok) throw new Error(`Verification failed (${res.status}).`);
   const data = await res.json().catch(() => ({}));
   return {
