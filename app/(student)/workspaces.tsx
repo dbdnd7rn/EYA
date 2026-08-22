@@ -2,28 +2,38 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, BriefcaseBusiness, ChevronRight, House, ShieldCheck, Store, UserRound } from "lucide-react-native";
+import { ArrowLeft, BriefcaseBusiness, ChevronRight, House, ShieldCheck, Store, Ticket, UserRound } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
-import { getWorkspaceHomeRoute, getWorkspaceStatuses, type WorkspaceRole, type WorkspaceStatus } from "@/lib/workspaceAccess";
+import { getMyTicketOrganizerAccess } from "@/lib/ticketOrganizerAccess";
+import { getWorkspaceHomeRoute, getWorkspaceStatuses, type WorkspaceRole } from "@/lib/workspaceAccess";
 import { useAuth } from "@/providers/AuthProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
-type ReadyWorkspace = Pick<WorkspaceStatus, "role" | "label" | "description" | "homeRoute">;
+type WorkspaceKey = WorkspaceRole | "ticket_organizer";
 
-function workspaceIcon(role: WorkspaceRole) {
-  if (role === "landlord") return House;
-  if (role === "vendor") return Store;
-  if (role === "agent") return BriefcaseBusiness;
-  if (role === "admin") return ShieldCheck;
+type ReadyWorkspace = {
+  key: WorkspaceKey;
+  label: string;
+  description: string;
+  homeRoute: string;
+};
+
+function workspaceIcon(key: WorkspaceKey) {
+  if (key === "landlord") return House;
+  if (key === "vendor") return Store;
+  if (key === "agent") return BriefcaseBusiness;
+  if (key === "ticket_organizer") return Ticket;
+  if (key === "admin") return ShieldCheck;
   return UserRound;
 }
 
-function workspaceSubtitle(role: WorkspaceRole, fallback: string) {
-  if (role === "student") return "Your main EYA experience for rooms, food, marketplace, tickets, messages and more.";
-  if (role === "vendor") return "Manage your food provider profile, menu, orders and customer activity.";
-  if (role === "landlord") return "Manage room listings, enquiries and property activity.";
-  if (role === "agent") return "Manage delivery jobs, rider activity and earnings.";
-  if (role === "admin") return "Manage EYA platform operations and approvals.";
+function workspaceSubtitle(key: WorkspaceKey, fallback: string) {
+  if (key === "student") return "Your main EYA experience for rooms, food, marketplace, tickets, messages and more.";
+  if (key === "vendor") return "Manage your food provider profile, menu, orders and customer activity.";
+  if (key === "landlord") return "Manage room listings, enquiries and property activity.";
+  if (key === "agent") return "Manage delivery jobs, rider activity and earnings.";
+  if (key === "ticket_organizer") return fallback;
+  if (key === "admin") return "Manage EYA platform operations and approvals.";
   return fallback;
 }
 
@@ -32,7 +42,7 @@ export default function WorkspacesScreen() {
   const { user, role, activeRole, setActiveRole } = useAuth();
   const { theme } = useStudentTheme();
   const [loading, setLoading] = useState(true);
-  const [switching, setSwitching] = useState<WorkspaceRole | null>(null);
+  const [switching, setSwitching] = useState<WorkspaceKey | null>(null);
   const [ready, setReady] = useState<ReadyWorkspace[]>([]);
 
   useEffect(() => {
@@ -41,21 +51,33 @@ export default function WorkspacesScreen() {
     const load = async () => {
       try {
         if (!user?.id) return;
-        const statuses = await getWorkspaceStatuses(user.id, user.email);
+        const [statuses, organizerAccess] = await Promise.all([
+          getWorkspaceStatuses(user.id, user.email),
+          getMyTicketOrganizerAccess().catch(() => null),
+        ]);
         if (!alive) return;
 
-        const visible = statuses
+        const visible: ReadyWorkspace[] = statuses
           .filter((entry) => entry.role === "student" || entry.ready)
           .map((entry) => ({
-            role: entry.role,
+            key: entry.role,
             label: entry.label,
             description: entry.description,
             homeRoute: entry.homeRoute,
           }));
 
+        if (organizerAccess) {
+          visible.push({
+            key: "ticket_organizer",
+            label: "Ticket Management",
+            description: `Manage approved events and ticket operations for ${organizerAccess.organization_name}.`,
+            homeRoute: "/(organizer)/dashboard",
+          });
+        }
+
         if (role === "admin") {
           visible.push({
-            role: "admin",
+            key: "admin",
             label: "Admin",
             description: "EYA platform management",
             homeRoute: getWorkspaceHomeRoute("admin"),
@@ -75,15 +97,19 @@ export default function WorkspacesScreen() {
   }, [role, user?.email, user?.id]);
 
   const ordered = useMemo(() => {
-    const order: WorkspaceRole[] = ["student", "vendor", "landlord", "agent", "admin"];
-    return [...ready].sort((a, b) => order.indexOf(a.role) - order.indexOf(b.role));
+    const order: WorkspaceKey[] = ["student", "vendor", "landlord", "agent", "ticket_organizer", "admin"];
+    return [...ready].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
   }, [ready]);
 
   const openWorkspace = async (workspace: ReadyWorkspace) => {
     if (switching) return;
     try {
-      setSwitching(workspace.role);
-      await setActiveRole(workspace.role);
+      setSwitching(workspace.key);
+      if (workspace.key === "ticket_organizer") {
+        router.push(workspace.homeRoute as any);
+        return;
+      }
+      await setActiveRole(workspace.key);
       router.replace(workspace.homeRoute as any);
     } finally {
       setSwitching(null);
@@ -95,10 +121,7 @@ export default function WorkspacesScreen() {
       <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Pressable
-            style={[styles.backBtn, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}
-            onPress={() => router.back()}
-          >
+          <Pressable style={[styles.backBtn, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} onPress={() => router.back()}>
             <ArrowLeft size={20} color={theme.text} />
           </Pressable>
           <View style={{ flex: 1 }}>
@@ -109,7 +132,7 @@ export default function WorkspacesScreen() {
 
         <View style={[styles.infoCard, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}>
           <Text style={[styles.infoTitle, { color: theme.text }]}>Your personal EYA access never disappears</Text>
-          <Text style={[styles.infoText, { color: theme.textMuted }]}>Becoming a landlord, food provider, delivery agent or another verified operator adds tools to your account. It does not stop you from using EYA as a normal user.</Text>
+          <Text style={[styles.infoText, { color: theme.textMuted }]}>Verified business or job workspaces add tools to your account. They do not stop you from using EYA as a normal user.</Text>
         </View>
 
         {loading ? (
@@ -120,16 +143,13 @@ export default function WorkspacesScreen() {
         ) : (
           <View style={styles.list}>
             {ordered.map((workspace) => {
-              const Icon = workspaceIcon(workspace.role);
-              const selected = (activeRole ?? "student") === workspace.role;
-              const busy = switching === workspace.role;
+              const Icon = workspaceIcon(workspace.key);
+              const selected = workspace.key !== "ticket_organizer" && (activeRole ?? "student") === workspace.key;
+              const busy = switching === workspace.key;
               return (
                 <Pressable
-                  key={workspace.role}
-                  style={[
-                    styles.workspaceCard,
-                    { backgroundColor: theme.surface, borderColor: selected ? theme.accent : theme.borderSoft },
-                  ]}
+                  key={workspace.key}
+                  style={[styles.workspaceCard, { backgroundColor: theme.surface, borderColor: selected ? theme.accent : theme.borderSoft }]}
                   onPress={() => void openWorkspace(workspace)}
                   disabled={Boolean(switching)}
                 >
@@ -138,14 +158,14 @@ export default function WorkspacesScreen() {
                   </View>
                   <View style={styles.workspaceCopy}>
                     <View style={styles.titleRow}>
-                      <Text style={[styles.workspaceTitle, { color: theme.text }]}>{workspace.role === "student" ? "Personal / User" : workspace.label}</Text>
+                      <Text style={[styles.workspaceTitle, { color: theme.text }]}>{workspace.key === "student" ? "Personal / User" : workspace.label}</Text>
                       {selected ? (
                         <View style={[styles.activePill, { backgroundColor: theme.accentSoft }]}>
                           <Text style={[styles.activePillText, { color: theme.accent }]}>Current</Text>
                         </View>
                       ) : null}
                     </View>
-                    <Text style={[styles.workspaceText, { color: theme.textMuted }]}>{workspaceSubtitle(workspace.role, workspace.description)}</Text>
+                    <Text style={[styles.workspaceText, { color: theme.textMuted }]}>{workspaceSubtitle(workspace.key, workspace.description)}</Text>
                   </View>
                   {busy ? <ActivityIndicator color={theme.accent} /> : <ChevronRight size={20} color={theme.textSoft} />}
                 </Pressable>
@@ -165,7 +185,7 @@ export default function WorkspacesScreen() {
           <ChevronRight size={20} color={theme.textSoft} />
         </Pressable>
 
-        <Text style={[styles.note, { color: theme.textSoft }]}>Ticket Management will appear here only for accounts EYA has verified and granted organizer access to.</Text>
+        <Text style={[styles.note, { color: theme.textSoft }]}>Ticket Management is Admin-granted only and appears here after EYA verifies the organizer account.</Text>
       </ScrollView>
     </SafeAreaView>
   );
