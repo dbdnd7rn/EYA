@@ -1,11 +1,11 @@
 {
-  "name": "vac-must-paychangu-backend",
+  "name": "eya-main-backend",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/secure-entry.js",
-    "start": "node src/secure-entry.js",
+    "dev": "node --watch src/local-server.js",
+    "start": "node src/local-server.js",
     "test:security": "node --test test/security-policy.test.js test/commerce-policy.test.js test/canonical-route-surface.test.js"
   },
   "engines": {
