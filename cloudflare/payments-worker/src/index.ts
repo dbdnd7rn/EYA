@@ -155,7 +155,7 @@ async function handleCreatePaymentIntent(
 ): Promise<Response> {
   validateFoundationEnvironment(env);
   const rawBody = await request.text();
-  const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON);
+  const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON, env.PAYMENTS_DB);
   let parsed: unknown;
   try {
     parsed = rawBody ? JSON.parse(rawBody) : null;
@@ -321,7 +321,7 @@ async function handlePayChanguWebhook(request: Request, env: PaymentsEnv): Promi
 async function handleDeliverOutbox(request: Request, env: PaymentsEnv): Promise<Response> {
   validateFoundationEnvironment(env);
   const rawBody = await request.text();
-  const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON);
+  const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON, env.PAYMENTS_DB);
   if (auth.appId !== "eya") throw new Error("Only EYA may trigger this outbox delivery endpoint.");
   let limit = 10;
   if (rawBody.trim()) {
