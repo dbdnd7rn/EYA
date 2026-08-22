@@ -38,11 +38,20 @@ Use these documents together:
    - current test status
    - implementation checkpoints
 
+6. [`TICKET_GATE_STAFF_AND_SCANNER_MODEL.md`](./TICKET_GATE_STAFF_AND_SCANNER_MODEL.md)
+   - event-scoped Gate Staff invitation model
+   - 48-hour pre-event scanner activation window
+   - automatic post-event expiry/revocation
+   - organizer check-in audit and staff activity model
+   - scanner authorization/privacy rules
+   - migration-safe implementation order
+
 Rules:
 - The Master Architecture & Delivery Plan defines whole-system boundaries and priority order.
 - If a ticketing product/security/finance decision changes, update the Architecture Ledger.
 - If the account/workspace identity model changes, update the Account & Workspace Identity Model.
 - If implementation changes what must be tested, update the Build & Test Board.
+- The Gate Staff & Scanner Model defines the event-scoped scanner direction until it is folded into the main Architecture Ledger.
 - Security blockers in the Security Audit take priority over new finance or payout behavior.
 - Do not use the test board as the source of truth for unresolved product decisions.
 - Do not enable real organizer payout execution until every blocker in the Architecture Ledger and Master Plan is resolved.
