@@ -35,21 +35,19 @@ export const REQUIRED_CANONICAL_ROUTES = Object.freeze([
   ["POST", "/api/admin/users/:userId"],
   ["DELETE", "/api/admin/users/:userId"],
   ["POST", "/api/admin/broadcast"],
-  ["POST", "/api/paychangu/initiate"],
-  ["GET", "/api/paychangu/verify/:txRef"],
-  ["POST", "/api/paychangu/reconcile"],
-  ["POST", "/api/paychangu/webhook"],
-  ["GET", "/pay/success"],
-  ["GET", "/pay/cancel"],
 ]);
 
 // These paths intentionally exist only as terminal 410 guards. They never expose
-// the historical business authority behind the route name.
+// the historical business/provider authority behind the route name.
 export const TERMINAL_GUARD_ROUTES = Object.freeze([
   ["ALL", "/api/wallet"],
   ["ALL", "/api/wallet/*splat"],
   ["ALL", "/api/checkout/wallet"],
   ["POST", "/api/admin/tickets/check-in"],
+  ["ALL", "/api/paychangu"],
+  ["ALL", "/api/paychangu/*splat"],
+  ["ALL", "/pay/success"],
+  ["ALL", "/pay/cancel"],
 ]);
 
 // These competing authorities must not be registered at all by canonical-v2.
