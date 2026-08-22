@@ -7,7 +7,7 @@ import {
   supabase,
 } from "../lib/supabase";
 import { normalizeAppRole } from "@/lib/roleRouting";
-import { ENV, isConfiguredAdminEmail } from "@/lib/env";
+import { ENV } from "@/lib/env";
 import { clearDevAuthRecord, getDevAuthRecord, recordToUser, setDevAuthRecord } from "@/lib/devAuth";
 import { ensureProfileRoleFromAuthUser } from "@/lib/authProfile";
 import { readStoredActiveWorkspace, storeActiveWorkspace } from "@/lib/activeWorkspace";
@@ -46,9 +46,9 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 }
 
-function sanitizeRole(role: Role, email?: string | null): Role {
-  if (ENV.DEV_AUTH_MODE) return role;
-  if (role === "admin" && !isConfiguredAdminEmail(email)) return null;
+function sanitizeRole(role: Role, _email?: string | null): Role {
+  // Production role state must come from server-backed profile/workspace checks.
+  // Public email lists and user-editable auth metadata are not authorization.
   return role;
 }
 
