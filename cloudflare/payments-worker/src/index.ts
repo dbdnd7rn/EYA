@@ -1,4 +1,5 @@
 import { authenticateAppRequest } from "./security";
+import { enforceRateLimit, readBoundedBody } from "./abuse-protection";
 import {
   createPaymentIntent,
   recordPaymentProviderFailure,
@@ -154,7 +155,7 @@ async function handleCreatePaymentIntent(
   context?: WorkerExecutionContextLike,
 ): Promise<Response> {
   validateFoundationEnvironment(env);
-  const rawBody = await request.text();
+  const rawBody = await readBoundedBody(request);
   const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON, env.PAYMENTS_DB);
   let parsed: unknown;
   try {
@@ -229,7 +230,7 @@ async function readPublicReference(request: Request, url: URL): Promise<string |
   const fromQuery = url.searchParams.get("tx_ref")?.trim() || url.searchParams.get("charge_id")?.trim();
   if (fromQuery) return fromQuery;
   if (request.method === "GET" || request.method === "HEAD") return null;
-  const rawBody = await request.text();
+  const rawBody = await readBoundedBody(request);
   if (!rawBody.trim()) return null;
   const contentType = request.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
@@ -275,7 +276,7 @@ async function handlePublicPaymentResult(request: Request, env: PaymentsEnv): Pr
 
 async function handlePayChanguWebhook(request: Request, env: PaymentsEnv): Promise<Response> {
   validateFoundationEnvironment(env);
-  const rawBody = await request.text();
+  const rawBody = await readBoundedBody(request);
   const signatureValid = await verifyPayChanguWebhookSignature(rawBody, request.headers.get("Signature"), env.PAYCHANGU_WEBHOOK_SECRET);
   if (!signatureValid) return json({ status: "error", message: "Invalid PayChangu webhook signature." }, 401);
 
@@ -320,7 +321,7 @@ async function handlePayChanguWebhook(request: Request, env: PaymentsEnv): Promi
 
 async function handleDeliverOutbox(request: Request, env: PaymentsEnv): Promise<Response> {
   validateFoundationEnvironment(env);
-  const rawBody = await request.text();
+  const rawBody = await readBoundedBody(request);
   const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON, env.PAYMENTS_DB);
   if (auth.appId !== "eya") throw new Error("Only EYA may trigger this outbox delivery endpoint.");
   let limit = 10;
@@ -361,6 +362,12 @@ export default {
     try {
       if (request.method === "GET" && url.pathname === "/health") return json({ status: "ok", service: "vac-payments", environment: env.ENVIRONMENT || "unknown", request_id: requestId });
       if (request.method === "GET" && url.pathname === "/ready") return await handleReadiness(env);
+      if (url.pathname === "/v1/payment-intents") await enforceRateLimit(request, env, "payment-intents", 30);
+      if (url.pathname === "/v1/paychangu/callback" || url.pathname === "/v1/paychangu/return") {
+        await enforceRateLimit(request, env, "public-payment-result", 30);
+      }
+      if (url.pathname === "/v1/webhooks/paychangu") await enforceRateLimit(request, env, "paychangu-webhook", 120);
+      if (url.pathname === "/v1/outbox/deliver") await enforceRateLimit(request, env, "outbox-deliver", 10);
       if (request.method === "POST" && url.pathname === "/v1/payment-intents") return await handleCreatePaymentIntent(request, env, context);
       if ((request.method === "GET" || request.method === "POST") && (url.pathname === "/v1/paychangu/callback" || url.pathname === "/v1/paychangu/return")) {
         const response = await handlePublicPaymentResult(request, env);
@@ -377,12 +384,14 @@ export default {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected payment service error.";
       const unauthorized = /signature|signed application|unknown or inactive application|expired|only eya/i.test(message);
+      const rateLimited = /rate limit exceeded/i.test(message);
+      const tooLarge = /request body is too large/i.test(message);
       const invalidRequest = /required|must be|too long|different payment request|limit must be|valid malawi/i.test(message);
       const conflict = /payment attempt is closed|different provider|session conflicts|cannot transition/i.test(message);
       const notFound = error instanceof PaymentIntentNotFoundError;
       const mismatch = error instanceof PaymentVerificationMismatchError;
       const providerFailure = error instanceof PaymentProviderError;
-      const status = unauthorized ? 401 : notFound ? 404 : conflict || mismatch ? 409 : invalidRequest ? 400 : providerFailure ? 502 : 500;
+      const status = rateLimited ? 429 : tooLarge ? 413 : unauthorized ? 401 : notFound ? 404 : conflict || mismatch ? 409 : invalidRequest ? 400 : providerFailure ? 502 : 500;
       console.error("[vac-payments]", {
         requestId,
         method: request.method,
