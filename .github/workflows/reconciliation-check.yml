@@ -27,6 +27,7 @@ jobs:
 
       - name: Syntax check canonical backend
         run: |
+          node --check index.js
           node --check src/auth.js
           node --check src/commercePolicy.js
           node --check src/commerceData.js
@@ -37,9 +38,8 @@ jobs:
           node --check src/adminCommerceRoutes.js
           node --check src/adminCatalogRoutes.js
           node --check src/adminUserRoutes.js
-          node --check src/paychanguRoutes.js
           node --check src/server-v2.js
           node --check src/secure-entry.js
 
-      - name: Security and commerce policy tests
+      - name: Security and route-surface tests
         run: npm run test:security
