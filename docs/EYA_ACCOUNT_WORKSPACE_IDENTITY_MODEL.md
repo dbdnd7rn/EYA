@@ -129,17 +129,26 @@ Keep independent guards/checks for privileged workspaces:
 - `SellerGuard` -> Food Provider authorization;
 - `AgentGuard` -> Delivery Agent authorization;
 - `AdminGuard` -> Admin authorization;
-- Ticket Management -> organizer/promoter workspace authorization.
+- `OrganizerGuard` -> Ticket Management authorization.
 
 The normal customer route tree should use a generic `UserGuard` whose main requirement is an authenticated EYA account, not `role === student`.
 
 ## Current migration state
 
-### Implemented first step
+### Implemented
 
 - `components/UserGuard.tsx` added.
 - `app/(student)/_layout.tsx` now uses `UserGuard`.
 - Food Provider/Landlord/Delivery/Admin accounts are no longer redirected out of the normal customer area solely because their active workspace is specialized.
+- `Account -> Workspaces` shows Personal/User plus only the specialized workspaces the person is approved to use.
+- Landlord/Food Provider/Delivery applications are separated from opening already-approved workspaces.
+- Ticket Management now uses the person's normal EYA account.
+- Admin grants Ticket Management to an existing EYA account email and attaches the user to a stable Promoter / Organization.
+- Ticket Management appears in Workspaces only while an active organizer grant exists.
+- `OrganizerGuard` checks the Ticket Management grant rather than requiring a `temporary_organizer` auth marker.
+- Organizer grant expiry/revocation does not ban or sign out a normal EYA account.
+- Legacy creation/claim of separate temporary organizer identities is disabled for new access.
+- Normal-account Event Studio creation has been rollback-tested through the real server RPC with organization ownership preserved.
 
 The internal route folder name `(student)` remains legacy naming for now and does not mean only students may use it.
 
@@ -152,19 +161,26 @@ The internal route folder name `(student)` remains legacy naming for now and doe
 
 ## Organizer decision revision
 
-Previous design:
+Retired design:
 - separate temporary Organizer auth account;
-- organizer identity excluded from normal Personal/User routes.
+- organizer identity excluded from normal Personal/User routes;
+- organizer grant expiry/revoke could ban the dedicated auth identity.
 
-Revised direction:
+Current design:
 - organizer is a normal EYA account;
 - Admin grants/verifies `Ticket Management` workspace permission;
-- permission may be tied to a stable Promoter / Organization;
-- Ticket Management card appears only while/when authorization permits;
-- the Promoter / Organization remains the stable owner of events, finance and liabilities;
-- the human account remains the actor/member.
+- permission is tied to a stable Promoter / Organization;
+- Ticket Management card appears only while authorization permits;
+- the Promoter / Organization remains the stable owner of events and is the future owner for finance/liabilities/payout destinations;
+- the human account remains the actor/member;
+- losing Ticket Management does not remove Personal/User access.
 
-The existing separate temporary-organizer implementation is now a migration target, not the desired final identity model.
+Compatibility code for the retired `temporary_organizer` identity may remain temporarily only so old deployments fail safely; it is not the path for new organizers.
+
+Current first-version constraint:
+- one active Ticket Management promoter organization per user at a time.
+
+Multi-promoter membership/switching is an open product decision and must not be silently introduced.
 
 ## Landlord / Food Provider / Delivery migration direction
 
@@ -194,7 +210,8 @@ Test with at least:
 - existing Landlord account;
 - existing Delivery Agent account;
 - Admin account;
-- normal User account.
+- normal User account;
+- normal EYA account with Admin-granted Ticket Management.
 
 For each specialized account, confirm the person can still enter Personal/User and:
 - browse rooms;
@@ -206,14 +223,25 @@ For each specialized account, confirm the person can still enter Personal/User a
 
 Then confirm they cannot open another specialized management workspace they do not have permission for.
 
+For Ticket Management specifically confirm:
+- user signs in normally and lands in Personal/User;
+- Ticket Management appears only after Admin grant;
+- opening it reaches Organizer/Event Studio tools;
+- revoke/expiry removes the Ticket Management card;
+- the same person remains signed in and can still use Personal/User features.
+
 ## Status
 
 Identity direction: `DECIDED`
 
 Universal Personal/User route access: `FOUNDATION IMPLEMENTED, PHONE RETEST REQUIRED`
 
+Verified Workspaces page: `IMPLEMENTED, PHONE RETEST REQUIRED`
+
+Ticket Management on normal EYA account: `IMPLEMENTED, PHONE RETEST REQUIRED`
+
 Legacy `student` feature checks: `NEEDS REVISION`
 
 Single `profiles.role` as authorization source: `LEGACY / MIGRATION IN PROGRESS`
 
-Separate temporary Organizer auth identity: `REVISED DIRECTION / MUST MIGRATE`
+Separate temporary Organizer auth identity: `RETIRED FOR NEW ACCESS`
