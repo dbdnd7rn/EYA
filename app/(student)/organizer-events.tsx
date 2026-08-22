@@ -99,7 +99,7 @@ export default function OrganizerEventsScreen() {
             <Text style={styles.title}>Event Studio</Text>
           </View>
           {access ? (
-            <Pressable style={styles.addBtn} onPress={() => router.push("/(student)/organizer-event-create" as any)}>
+            <Pressable style={styles.addBtn} onPress={() => router.push("/(organizer)/event-create" as any)}>
               <Plus size={19} color="#fff" />
               <Text style={styles.addText}>Create</Text>
             </Pressable>
@@ -138,7 +138,7 @@ export default function OrganizerEventsScreen() {
                 <View style={styles.emptyIcon}><CalendarDays size={30} color={ACCENT} /></View>
                 <Text style={styles.emptyTitle}>Create your first event</Text>
                 <Text style={styles.emptySub}>Build the listing and ticket types, then submit it to EYA Admin. It appears to customers only after approval.</Text>
-                <Pressable style={styles.primaryBtn} onPress={() => router.push("/(student)/organizer-event-create" as any)}>
+                <Pressable style={styles.primaryBtn} onPress={() => router.push("/(organizer)/event-create" as any)}>
                   <Plus size={18} color="#fff" /><Text style={styles.primaryText}>Create event</Text>
                 </Pressable>
               </View>
@@ -186,7 +186,7 @@ function EventCard({ event }: { event: OrganizerTicketEventSummary }) {
         {canEdit ? (
           <Pressable
             style={styles.editBtn}
-            onPress={() => router.push({ pathname: "/(student)/organizer-event-create", params: { eventId: event.id } } as any)}
+            onPress={() => router.push({ pathname: "/(organizer)/event-create", params: { eventId: event.id } } as any)}
           >
             <PencilLine size={14} color={ACCENT} />
             <Text style={styles.editText}>{event.status === "changes_requested" ? "Fix & resubmit" : "Edit draft"}</Text>
