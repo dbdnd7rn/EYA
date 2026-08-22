@@ -190,7 +190,7 @@ export default function MyTicketsScreen() {
         >
           <View style={styles.header}>
             <View style={styles.headerCopy}>
-              <Text style={styles.eyebrow}>TICKET WALLET</Text>
+              <Text style={styles.eyebrow}>MY PASSES</Text>
               <Text style={styles.title}>My Tickets</Text>
               <Text style={styles.subtitle}>Your purchased tickets, ready whenever you need them.</Text>
             </View>
