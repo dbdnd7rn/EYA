@@ -1,4 +1,10 @@
 import http from "node:http";
+import {
+  isLegacyStaticTicketAdmissionPath,
+  isPaymentVerifyPath,
+  isPrivilegedPath,
+  isSuspendedWalletPath,
+} from "./securityPolicy.js";
 
 const externalPort = Number(process.env.PORT || 4000);
 const internalPort = Number(
@@ -38,33 +44,6 @@ function sendJson(res, status, message) {
 
 function pathnameOf(req) {
   return new URL(req.url || "/", "http://eya.internal").pathname;
-}
-
-function isPaymentVerifyPath(pathname) {
-  return pathname.startsWith("/api/paychangu/verify/");
-}
-
-function isLegacyStaticTicketAdmissionPath(pathname) {
-  return pathname === "/api/admin/tickets/check-in";
-}
-
-function isPrivilegedPath(pathname) {
-  return (
-    pathname.startsWith("/api/admin/") ||
-    pathname.startsWith("/api/deliveries/") ||
-    pathname.startsWith("/api/orders/") ||
-    pathname.startsWith("/api/ticket-finance/") ||
-    pathname.startsWith("/api/tickets/orders") ||
-    pathname === "/api/tickets/my" ||
-    pathname === "/api/paychangu/initiate" ||
-    pathname === "/api/paychangu/reconcile" ||
-    isPaymentVerifyPath(pathname) ||
-    pathname === "/api/checkout/cash"
-  );
-}
-
-function isSuspendedWalletPath(pathname) {
-  return pathname === "/api/wallet" || pathname.startsWith("/api/wallet/") || pathname === "/api/checkout/wallet";
 }
 
 function bearerToken(req) {
