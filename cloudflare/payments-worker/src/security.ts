@@ -123,6 +123,7 @@ export async function authenticateAppRequest(
 export async function signApplicationEvent(
   appId: string,
   timestamp: number,
+  nonce: string,
   path: string,
   rawBody: string,
   appSecretsJson: string,
@@ -130,5 +131,5 @@ export async function signApplicationEvent(
   const secrets = readAppSecrets(appSecretsJson);
   const secret = secrets[appId];
   if (!secret) throw new Error(`No callback secret configured for ${appId}.`);
-  return hmacSha256Hex(secret, [String(timestamp), "POST", path, rawBody].join("."));
+  return hmacSha256Hex(secret, [String(timestamp), nonce, "POST", path, rawBody].join("."));
 }
