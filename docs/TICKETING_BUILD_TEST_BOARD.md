@@ -318,6 +318,8 @@ Current technical implementation exists, but browser live guest admission is not
 - Internal revision-apply context helper is service-only.
 - Signed-in non-Admin was explicitly blocked from Admin revision list/review RPCs.
 - Organizer access after re-enable now follows the trusted temporary organizer identity + current active grant, while original event grant ID remains preserved for audit.
+- Revision material-trigger execution was tested under the real `authenticated` database role: an Admin can still pause a published organizer event without gaining any material-change bypass, and the rollback left no rows behind.
+- Production cleanup audit passed after rollback tests: zero revision rows, zero revision-tier/log/apply-context rows, zero test approval versions, zero rollback-named events; the existing 5 published Admin-created catalog events remain unchanged.
 
 ## NEEDS PRODUCT DECISION TOGETHER
 
