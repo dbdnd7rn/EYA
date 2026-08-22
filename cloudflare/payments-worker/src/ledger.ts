@@ -11,7 +11,7 @@ export type D1PreparedStatementLike = {
 
 export type D1DatabaseLike = {
   prepare(query: string): D1PreparedStatementLike;
-  batch(statements: D1PreparedStatementLike[]): Promise<unknown>;
+  batch(statements: D1PreparedStatementLike[]): Promise<D1RunResult[]>;
 };
 
 export type PaymentsEnv = {
