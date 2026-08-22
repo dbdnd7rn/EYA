@@ -6,8 +6,6 @@ const internalPort = Number(
 );
 const supabaseUrl = String(process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
 const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-const payoutEncryptionKey = String(process.env.PAYOUT_DESTINATION_ENCRYPTION_KEY_B64 || "").trim();
-const payoutEncryptionKeyVersion = String(process.env.PAYOUT_DESTINATION_ENCRYPTION_KEY_VERSION || "v1").trim();
 const AUTH_TIMEOUT_MS = 8000;
 const MAX_JSON_BODY_BYTES = 128 * 1024;
 
@@ -27,8 +25,8 @@ function httpError(statusCode, message) {
   return error;
 }
 
-function sendJsonPayload(res, status, payload) {
-  const body = JSON.stringify(payload);
+function sendJson(res, status, message) {
+  const body = JSON.stringify({ status: "error", message });
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "content-length": Buffer.byteLength(body),
@@ -36,10 +34,6 @@ function sendJsonPayload(res, status, payload) {
     "x-content-type-options": "nosniff",
   });
   res.end(body);
-}
-
-function sendJson(res, status, message) {
-  sendJsonPayload(res, status, { status: "error", message });
 }
 
 function pathnameOf(req) {
@@ -50,15 +44,22 @@ function isPaymentVerifyPath(pathname) {
   return pathname.startsWith("/api/paychangu/verify/");
 }
 
+function isLegacyStaticTicketAdmissionPath(pathname) {
+  return pathname === "/api/admin/tickets/check-in";
+}
+
 function isPrivilegedPath(pathname) {
   return (
     pathname.startsWith("/api/admin/") ||
     pathname.startsWith("/api/deliveries/") ||
+    pathname.startsWith("/api/orders/") ||
+    pathname.startsWith("/api/ticket-finance/") ||
+    pathname.startsWith("/api/tickets/orders") ||
+    pathname === "/api/tickets/my" ||
     pathname === "/api/paychangu/initiate" ||
     pathname === "/api/paychangu/reconcile" ||
     isPaymentVerifyPath(pathname) ||
-    pathname === "/api/checkout/cash" ||
-    pathname === "/api/ticket-finance/payout-destinations"
+    pathname === "/api/checkout/cash"
   );
 }
 
@@ -221,7 +222,7 @@ async function callServiceRpc(name, payload) {
   if (!response.ok) {
     const message = typeof data?.message === "string" && data.message.trim()
       ? data.message.trim()
-      : "Server validation failed.";
+      : "Server checkout validation failed.";
     throw httpError(400, message);
   }
   return data;
@@ -326,78 +327,10 @@ async function secureReconcileBody(req) {
   return JSON.stringify(value);
 }
 
-let fulfillmentModule;
-let payoutDestinationModule;
-
-async function secureCashCheckout(req, verifiedUser) {
-  const { value } = await readJsonBody(req);
-  const purpose = typeof value.purpose === "string" ? value.purpose.trim() : "";
-  const orderDraft = value.order && typeof value.order === "object" && !Array.isArray(value.order) ? value.order : null;
-  if (purpose !== "campus_market_order") {
-    throw httpError(400, "Cash checkout currently supports campus market orders only.");
-  }
-  if (!orderDraft?.vendor_id || !orderDraft?.channel || !Array.isArray(orderDraft.lines) || !orderDraft.lines.length) {
-    throw httpError(400, "Cash checkout is missing order details.");
-  }
-
-  const result = await fulfillmentModule.createCampusMarketCashCheckout({
-    userId: verifiedUser.id,
-    email: verifiedUser.email,
-    orderDraft,
-    title: typeof value.title === "string" ? value.title.trim() : "Cash order payment",
-    description: typeof value.description === "string" ? value.description.trim() : "Cash on delivery order",
-  });
-
-  return {
-    status: "success",
-    payment_status: "pending",
-    method: "cash",
-    order_id: result.orderId,
-    payment_id: result.payment.id,
-    reference: result.payment.reference,
-  };
-}
-
-async function securePayoutDestination(req, verifiedUser) {
-  if (!payoutEncryptionKey) {
-    throw httpError(503, "Payout destination intake is not configured.");
-  }
-
-  const { value } = await readJsonBody(req);
-  const input = payoutDestinationModule.parsePayoutDestinationInput(value);
-  const encrypted = payoutDestinationModule.encryptPayoutDestination(
-    input,
-    payoutEncryptionKey,
-    payoutEncryptionKeyVersion,
-  );
-
-  try {
-    const data = await callServiceRpc("register_ticket_organization_payout_destination", {
-      p_organization_id: input.organizationId,
-      p_actor_id: verifiedUser.id,
-      p_method: input.method,
-      p_beneficiary_name: input.beneficiaryName,
-      p_bank_or_network: input.bankOrNetwork,
-      p_masked_destination: input.maskedDestination,
-      p_destination_fingerprint: encrypted.fingerprint,
-      p_details_ciphertext: encrypted.ciphertext,
-      p_encryption_key_version: encrypted.keyVersion,
-    });
-    return { status: "success", destination: data };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not register payout destination.";
-    if (message.toLowerCase().includes("duplicate")) throw httpError(409, "This payout destination is already registered.");
-    throw error;
-  }
-}
-
-// The legacy application reads PORT at module import time. Load the reconciled
-// modules only after moving PORT to the loopback-only internal listener so their
-// shared config module cannot accidentally bind the inner server to Render's
-// public port.
+// The legacy application reads PORT at module import time. Run it on a loopback-only
+// internal port from the platform's perspective, while this gateway owns Render's
+// externally routed PORT and sanitizes all actor identity headers.
 process.env.PORT = String(internalPort);
-fulfillmentModule = await import("./fulfillment.js");
-payoutDestinationModule = await import("./payoutDestinations.js");
 await import("./server.js");
 process.env.PORT = String(externalPort);
 
@@ -407,6 +340,13 @@ const gateway = http.createServer(async (req, res) => {
 
     if (isSuspendedWalletPath(pathname)) {
       sendJson(res, 410, "Wallet is currently suspended.");
+      return;
+    }
+
+    // Permanent ticket IDs/codes are support references only. Never allow the
+    // legacy static-code check-in route to become an admission authority again.
+    if (isLegacyStaticTicketAdmissionPath(pathname)) {
+      sendJson(res, 410, "Legacy ticket-code check-in is disabled. Use a live ticket credential.");
       return;
     }
 
@@ -441,18 +381,6 @@ const gateway = http.createServer(async (req, res) => {
     if (isPaymentVerifyPath(pathname) && req.method === "GET") {
       await assertPaymentOwnerForVerification(pathname, verifiedUser);
       proxyRequest(req, res, verifiedUser.id, true);
-      return;
-    }
-
-    if (pathname === "/api/checkout/cash" && req.method === "POST") {
-      const payload = await secureCashCheckout(req, verifiedUser);
-      sendJsonPayload(res, 200, payload);
-      return;
-    }
-
-    if (pathname === "/api/ticket-finance/payout-destinations" && req.method === "POST") {
-      const payload = await securePayoutDestination(req, verifiedUser);
-      sendJsonPayload(res, 201, payload);
       return;
     }
 
