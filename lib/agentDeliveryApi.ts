@@ -46,17 +46,16 @@ type DeliveryActionResponse = {
 };
 
 function backendUrl(path: string) {
-  if (!ENV.PAYCHANGU_BACKEND) {
-    throw new Error("PayChangu backend URL is not configured.");
+  if (!ENV.EYA_API_URL) {
+    throw new Error("EYA API URL is not configured. Set EXPO_PUBLIC_EYA_API_URL.");
   }
-  return `${ENV.PAYCHANGU_BACKEND.replace(/\/+$/, "")}${path}`;
+  return `${ENV.EYA_API_URL.replace(/\/+$/, "")}${path}`;
 }
 
-function agentHeaders(input: { accessToken?: string | null; userId?: string | null; json?: boolean }) {
+function agentHeaders(input: { accessToken?: string | null; json?: boolean }) {
   return {
     ...(input.json ? { "Content-Type": "application/json" } : {}),
     ...(input.accessToken ? { Authorization: `Bearer ${input.accessToken}` } : {}),
-    ...(input.userId ? { "x-user-id": input.userId } : {}),
   };
 }
 
@@ -71,7 +70,7 @@ async function parseJson<T>(res: Response) {
 export async function listOpenDeliveryRequests(input: { userId: string; accessToken?: string | null }) {
   const res = await fetch(backendUrl("/api/deliveries/unassigned"), {
     method: "GET",
-    headers: agentHeaders({ accessToken: input.accessToken, userId: input.userId }),
+    headers: agentHeaders({ accessToken: input.accessToken }),
   });
   const data = await parseJson<{ status: string; deliveries: AgentOpenDeliveryRequest[] }>(res);
   return data.deliveries ?? [];
@@ -80,7 +79,7 @@ export async function listOpenDeliveryRequests(input: { userId: string; accessTo
 export async function assignDeliveryToSelf(input: { orderId: string; userId: string; accessToken?: string | null }) {
   const res = await fetch(backendUrl(`/api/deliveries/${encodeURIComponent(input.orderId)}/assign`), {
     method: "POST",
-    headers: agentHeaders({ accessToken: input.accessToken, userId: input.userId, json: true }),
+    headers: agentHeaders({ accessToken: input.accessToken, json: true }),
     body: JSON.stringify({ driver_id: input.userId }),
   });
   return parseJson<DeliveryActionResponse>(res);
@@ -89,7 +88,7 @@ export async function assignDeliveryToSelf(input: { orderId: string; userId: str
 export async function unassignDeliveryFromSelf(input: { orderId: string; userId: string; accessToken?: string | null }) {
   const res = await fetch(backendUrl(`/api/deliveries/${encodeURIComponent(input.orderId)}/unassign`), {
     method: "POST",
-    headers: agentHeaders({ accessToken: input.accessToken, userId: input.userId, json: true }),
+    headers: agentHeaders({ accessToken: input.accessToken, json: true }),
     body: JSON.stringify({}),
   });
   return parseJson<DeliveryActionResponse>(res);
@@ -103,7 +102,7 @@ export async function updateDeliveryStatusForAgent(input: {
 }) {
   const res = await fetch(backendUrl(`/api/deliveries/${encodeURIComponent(input.orderId)}/status`), {
     method: "POST",
-    headers: agentHeaders({ accessToken: input.accessToken, userId: input.userId, json: true }),
+    headers: agentHeaders({ accessToken: input.accessToken, json: true }),
     body: JSON.stringify({ status: input.status }),
   });
   return parseJson<DeliveryActionResponse>(res);
