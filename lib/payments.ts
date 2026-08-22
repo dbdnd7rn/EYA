@@ -91,11 +91,20 @@ async function authenticatedBackendHeaders() {
   };
 }
 
-export async function initializePayChanguCheckout(input: InitPaymentInput): Promise<DirectChargeSession> {
-  if (!ENV.PAYCHANGU_BACKEND) {
-    throw new Error("PayChangu backend URL is not configured. Set EXPO_PUBLIC_PAYCHANGU_BACKEND.");
+function legacyPaymentBackendBaseUrl() {
+  if (!ENV.LEGACY_PAYMENT_BACKEND_URL) {
+    throw new Error("The temporary commerce payment bridge is not configured.");
   }
+  return ENV.LEGACY_PAYMENT_BACKEND_URL.replace(/\/+$/, "");
+}
 
+/**
+ * TEMPORARY compatibility path for the existing generic commerce checkout.
+ * Ticket checkout already uses Supabase Edge -> VAC Payments on Cloudflare.
+ * This function must be retired when generic commerce checkout is migrated to
+ * the same trusted Cloudflare payment boundary.
+ */
+export async function initializePayChanguCheckout(input: InitPaymentInput): Promise<DirectChargeSession> {
   const project = input.project ?? "eya";
   const payload = {
     amount: input.amountMwk,
@@ -114,7 +123,7 @@ export async function initializePayChanguCheckout(input: InitPaymentInput): Prom
       ...(input.metadata ?? {}),
     },
   };
-  const url = `${ENV.PAYCHANGU_BACKEND.replace(/\/+$/, "")}/api/paychangu/initiate`;
+  const url = `${legacyPaymentBackendBaseUrl()}/api/paychangu/initiate`;
   try {
     const headers = await authenticatedBackendHeaders();
     const res = await fetch(url, {
@@ -175,11 +184,13 @@ export type PayChanguVerifyResult = {
   raw: any;
 };
 
+/**
+ * TEMPORARY compatibility verification for the same legacy generic-commerce
+ * bridge. The request remains authenticated and must not be repointed at the
+ * Vercel EYA backend, where provider verification is intentionally retired.
+ */
 export async function verifyPayChanguTxRef(txRef: string): Promise<PayChanguVerifyResult> {
-  if (!ENV.PAYCHANGU_BACKEND) {
-    throw new Error("PayChangu backend URL is not configured. Set EXPO_PUBLIC_PAYCHANGU_BACKEND.");
-  }
-  const url = `${ENV.PAYCHANGU_BACKEND.replace(/\/+$/, "")}/api/paychangu/verify/${encodeURIComponent(txRef)}`;
+  const url = `${legacyPaymentBackendBaseUrl()}/api/paychangu/verify/${encodeURIComponent(txRef)}`;
   const headers = await authenticatedBackendHeaders();
   const res = await fetch(url, { method: "GET", headers });
   if (!res.ok) throw new Error(`Verification failed (${res.status}).`);
