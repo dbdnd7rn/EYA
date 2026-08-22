@@ -1,4 +1,4 @@
-import { authenticateAppRequest } from "./security";
+﻿import { authenticateAppRequest } from "./security";
 import { enforceRateLimit, readBoundedBody } from "./abuse-protection";
 import {
   createPaymentIntent,
@@ -383,7 +383,7 @@ export default {
       return json({ status: "error", message: "Route not found.", request_id: requestId }, 404);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected payment service error.";
-      const unauthorized = /signature|signed application|unknown or inactive application|expired|only eya/i.test(message);
+      const unauthorized = /signature|signed application|unknown or inactive application|expired|nonce|request timestamp|only eya/i.test(message);
       const rateLimited = /rate limit exceeded/i.test(message);
       const tooLarge = /request body is too large/i.test(message);
       const invalidRequest = /required|must be|too long|different payment request|limit must be|valid malawi/i.test(message);
@@ -427,3 +427,4 @@ export default {
     );
   },
 };
+
