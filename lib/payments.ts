@@ -1,4 +1,5 @@
 import { ENV } from "@/lib/env";
+import { supabase } from "@/lib/supabase";
 
 export type SupportedPaymentMethod = "airtel_money" | "mpamba" | "bank_transfer";
 
@@ -79,6 +80,17 @@ function parseHostedCheckout(payload: any, fallbackTxRef?: string): DirectCharge
   };
 }
 
+async function authenticatedBackendHeaders() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw new Error("Could not verify your EYA session.");
+  const accessToken = data.session?.access_token?.trim();
+  if (!accessToken) throw new Error("Please log in again before making a payment.");
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+  };
+}
+
 export async function initializePayChanguCheckout(input: InitPaymentInput): Promise<DirectChargeSession> {
   if (!ENV.PAYCHANGU_BACKEND) {
     throw new Error("PayChangu backend URL is not configured. Set EXPO_PUBLIC_PAYCHANGU_BACKEND.");
@@ -104,9 +116,10 @@ export async function initializePayChanguCheckout(input: InitPaymentInput): Prom
   };
   const url = `${ENV.PAYCHANGU_BACKEND.replace(/\/+$/, "")}/api/paychangu/initiate`;
   try {
+    const headers = await authenticatedBackendHeaders();
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
@@ -179,5 +192,3 @@ export async function verifyPayChanguTxRef(txRef: string): Promise<PayChanguVeri
     raw: data,
   };
 }
-
-
