@@ -1,4 +1,4 @@
-﻿import { authenticateAppRequest } from "./security";
+import { authenticateAppRequest } from "./security";
 import { enforceRateLimit, readBoundedBody } from "./abuse-protection";
 import {
   createPaymentIntent,
