@@ -47,7 +47,6 @@ Newer EYA application backend copy:
 ### Synchronized from EYA/backend on this reconciliation branch
 
 - `src/config.js`
-- `src/push.js`
 - `src/paychangu.js`
 - `env.example`
 
@@ -55,6 +54,7 @@ Newer EYA application backend copy:
 
 - `src/fulfillment.js`
 - `src/secure-entry.js`
+- `src/push.js`
 
 The newer fulfilment changes were classified before merging. The branch now includes:
 
@@ -69,6 +69,12 @@ The newer fulfilment changes were classified before merging. The branch now incl
 - Wallet verification returns `finalized: false` because payment verification is not Wallet fulfilment;
 - direct Node Wallet checkout export is hard-disabled and throws `Wallet services are suspended.` even if an internal caller somehow bypasses the HTTP gateway.
 
+Notification wording is also reconciled with those rules:
+
+- verified historical Wallet-top-up payments no longer claim that money was credited to a Wallet;
+- pending cash orders no longer tell customers/vendors that the order is already paid;
+- COD notifications state that cash is collected only at verified handoff.
+
 Legacy Wallet helper functions remain physically present inside `fulfillment.js` only because the old inner server and historical code are still being reconciled. The externally reachable gateway blocks Wallet, and the exported checkout function cannot execute Wallet mutations. Remove the dead helpers after `server.js` no longer references legacy Wallet behavior.
 
 ### Security policy/regression files added
@@ -77,7 +83,7 @@ Legacy Wallet helper functions remain physically present inside `fulfillment.js`
 - `test/security-policy.test.js`
 - `npm run test:security`
 
-The route policy now explicitly enforces these invariants before requests reach the inner service:
+The route policy explicitly enforces these invariants before requests reach the inner service:
 
 - every `/api/wallet/*` path and `/api/checkout/wallet` is suspended;
 - `POST /api/admin/tickets/check-in` is terminally blocked so permanent ticket codes cannot become admission authority again;
@@ -87,12 +93,20 @@ The route policy now explicitly enforces these invariants before requests reach 
 
 The route-policy regression suite passes locally under Node's built-in test runner.
 
-### Still under controlled comparison
+### Caller inventory added
 
-- `src/server.js`
-- backend README/source-of-truth documentation
+`CALLER_INVENTORY.md` records the actual current EYA callers from `dbdnd7rn/EYA/feat/hybrid-checkout`.
 
-`server.js` is intentionally not blindly overwritten because the newer app-repository copy mixes valid new EYA routes with legacy Wallet implementations and static ticket-admission QR/check-in routes.
+Key result: the canonical Node cutover is materially smaller than the newer monolithic `EYA/backend/src/server.js` suggests.
+
+- ticket checkout goes to Supabase Edge `create-payment-checkout`, not Node;
+- ticket payment truth/fulfilment comes from the signed VAC Payments callback, not a client or Node verify route;
+- live ticket credential issuance/check-in are authenticated Supabase RPCs;
+- Node ticket routes are needed only as read convenience/fallback routes for event/order/My Tickets data;
+- cash checkout, handoff, delivery and the commerce/Admin workspace really do depend on Node;
+- Admin ticket event/tier/order management currently uses Supabase helpers rather than Node ticket-admin CRUD.
+
+Therefore the canonical server must not copy Node ticket payment initiation/verification or static admission code merely because it exists in the newer monolith.
 
 ## `server.js` route classification
 
@@ -104,7 +118,7 @@ The route-policy regression suite passes locally under Node's built-in test runn
 - Admin vendors/catalog/housing/users/broadcast management;
 - Delivery Agent dispatch/assignment/status routes;
 - trusted payout-destination intake;
-- ticket event/order/listing business routes that do **not** create admission authority from a permanent ticket code;
+- read-only ticket event/order/My Tickets convenience routes, without generated static QR admission data;
 - cash checkout with pending-until-handoff semantics.
 
 ### Preserve only behind the existing security gateway / trusted auth
@@ -119,10 +133,27 @@ The route-policy regression suite passes locally under Node's built-in test runn
 
 - all `/api/wallet/*` functionality;
 - Wallet checkout;
+- Node `/api/tickets/orders` ticket-payment initiation as a competing authority;
+- Node ticket payment verify/finalize routes as a competing authority;
 - static QR generation from `ticket_code`;
 - `POST /api/admin/tickets/check-in` using permanent `ticket_code` as admission authority.
 
 Ticket admission must remain on the live short-lived credential architecture. Production migration `live_ticket_credentials` issues 60-second credentials, permits only a short overlap for the previous credential and atomically invalidates credentials after successful check-in. Permanent ticket IDs/codes may remain support/reference identifiers only.
+
+## Additional app-side admission finding
+
+The caller inventory found a legacy `checkInAdminTicketViaSupabase()` implementation still present in `EYA/lib/adminControlApi.ts`. It looks up and consumes permanent `ticket_code` values directly in Supabase. The current gate-specific API (`lib/ticketGateApi.ts`) correctly accepts only live/guest/offline credentials and calls `check_in_ticket_entry_credential`.
+
+Required app hardening: deprecate/remove the static-code helper and ensure every scanner path uses `ticketGateApi.ts`. This is an app security cleanup, not a reason to restore the old Node route.
+
+## COD merge invariants
+
+The newer monolithic server has inconsistent COD checks. The canonical merge must use one definition everywhere:
+
+- a delivery is eligible when the order is paid, **or** when it is an authorized pending cash order;
+- pending cash orders must appear in dispatch/Admin views and be assignable;
+- a delivery status update may move through searching/assigned/picked_up/arriving, but must not make a pending cash payment paid merely by setting `delivered`;
+- verified handoff owns the final COD `payment_status=paid` and delivered transition.
 
 ## Security constraints during merge
 
@@ -137,11 +168,12 @@ Ticket admission must remain on the live short-lived credential architecture. Pr
 
 ## Next controlled steps
 
-1. Merge `server.js` route-by-route instead of wholesale copying it.
-2. Add the valid newer Admin, delivery, cash, payout and non-static ticket business routes.
-3. Keep the security gateway as the public Render entrypoint.
-4. For ticket views, return ticket/reference data only; live admission QR/manual credentials come from `issue_ticket_live_credential`, not from `ticket_code`.
-5. Remove dead Wallet mutation helpers once no internal server route references them.
-6. Update the backend README after the final server shape is known.
-7. Run Node syntax/startup checks plus actor/payment regression tests.
-8. Only after passing tests, plan the Render Git-source switch to `dbdnd7rn/EYA-Main-Backend`.
+1. Build the canonical inner server from the real caller set rather than copying the 100KB monolith wholesale.
+2. Port the valid Admin commerce/support/vendor/catalog/housing/user/broadcast routes.
+3. Port delivery routes with the COD invariants above.
+4. Preserve cash checkout and handoff routes with pending-until-verified-handoff semantics.
+5. Keep read-only ticket convenience routes free of static admission QR data.
+6. Remove dead Wallet mutation helpers once no canonical server route references them.
+7. Update the backend README after the final server shape is known.
+8. Run Node syntax/startup checks plus actor/COD/payment/ticket-admission regression tests.
+9. Only after passing tests, plan the Render Git-source switch to `dbdnd7rn/EYA-Main-Backend`.
