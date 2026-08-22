@@ -82,15 +82,17 @@ The tracked app `.env` file was removed from Git because `.env` is already ignor
 
 ## Validation checkpoint
 
-GitHub Actions `Reconciliation Check` run 23 completed successfully on commit `8fd6770b43d432b07dd4a252f3ad2e7a6eec13c7` after the canonical Vercel runtime became the default local start path. The workflow validates syntax for the Vercel export/canonical modules and runs the Wallet, ticket-admission, COD and route-surface regression suite.
+GitHub Actions `Reconciliation Check` run 25 completed successfully on the canonical Vercel candidate. The workflow validates syntax for the Vercel export/canonical modules and runs the Wallet, ticket-admission, COD and route-surface regression suite.
 
 This is source/CI validation only. It is not a production deployment claim.
 
 ## Vercel cutover checkpoint
 
-The connected Vercel account currently has no dedicated `EYA-Main-Backend` / EYA API project. Existing projects are unrelated and must not be repurposed.
+A dedicated Vercel project now exists and is connected to `dbdnd7rn/EYA-Main-Backend` with the Express preset. Its first deployment used `main`, which still represents the old provider-owning runtime and fails without `PAYCHANGU_SECRET_KEY`; do not add that provider secret to Vercel.
 
-Create/import a dedicated Vercel project from `dbdnd7rn/EYA-Main-Backend`, deploy this reconciliation branch as **Preview** first, configure only the Vercel-side environment variables above, then smoke-test:
+The next controlled step is a **Preview deployment from `reconcile/eya-main-backend-20260822`**. This documentation-only commit intentionally advances that branch so the Git integration can produce a fresh Preview without changing `main` or making the reconciliation branch the repository default.
+
+Preview smoke-test targets:
 
 - `/health`;
 - authenticated Admin routes;
@@ -104,7 +106,7 @@ Only after Preview validation should the app's EYA API URL move to the verified 
 
 ## Remaining blockers
 
-1. Create/import the dedicated Vercel backend project and run Preview smoke tests.
+1. Complete the reconciliation-branch Vercel Preview smoke tests.
 2. Migrate the remaining generic marketplace/food payment caller from the legacy Render bridge to VAC Payments on Cloudflare.
 3. Keep the Supabase migration-history blocker open; no blanket production `db push`.
 4. Finish payment direct-insert authority and notification-integrity hardening.
