@@ -2,7 +2,7 @@ import React from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, CheckCircle2, Clock3, GitCompareArrows, MapPin, RotateCcw, ShieldCheck, UserPlus, XCircle } from "lucide-react-native";
+import { ArrowLeft, Banknote, CheckCircle2, Clock3, GitCompareArrows, MapPin, RotateCcw, ShieldCheck, UserPlus, XCircle } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
 import { listPendingAdminTicketEvents, reviewAdminTicketEvent, type AdminTicketReviewEvent } from "@/lib/adminTicketReviewApi";
 
@@ -99,6 +99,11 @@ export default function AdminEventReviewsScreen() {
         <Pressable style={styles.organizerAccessBtn} onPress={() => router.push("/admin/event-revisions" as any)}>
           <View style={styles.organizerAccessIcon}><GitCompareArrows size={20} color={ACCENT} /></View>
           <View style={{ flex: 1 }}><Text style={styles.organizerAccessTitle}>Live event revisions</Text><Text style={styles.organizerAccessSub}>Compare the currently approved customer version against proposed organizer changes before replacing it.</Text></View>
+        </Pressable>
+
+        <Pressable style={styles.organizerAccessBtn} onPress={() => router.push("/admin/event-payouts" as any)}>
+          <View style={styles.organizerAccessIcon}><Banknote size={20} color={ACCENT} /></View>
+          <View style={{ flex: 1 }}><Text style={styles.organizerAccessTitle}>Event finance & payouts</Text><Text style={styles.organizerAccessSub}>Configure refund reserves and review organizer Early Payout / Final Settlement requests.</Text></View>
         </Pressable>
 
         {loading ? <State><ActivityIndicator color={ACCENT} /><Text style={styles.stateText}>Loading submissions...</Text></State> : null}
