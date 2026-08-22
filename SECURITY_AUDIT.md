@@ -4,7 +4,7 @@ Status: active hardening sprint
 
 Date: 2026-08-22
 
-This repository is treated as the auditable EYA backend mirror. Render currently deploys `Tchoka/EYA-backend`, so a change here must not be assumed to protect production until deployment provenance is reconciled.
+This repository is the backend repository named by the EYA architecture, but the security pass found a newer backend copy under `dbdnd7rn/EYA/backend` on `feat/hybrid-checkout`. Render currently deploys `Tchoka/EYA-backend`. These three source locations are not synchronized, so a security property must not be called production-effective until deployment provenance is reconciled.
 
 ## Security invariants
 
@@ -13,75 +13,82 @@ This repository is treated as the auditable EYA backend mirror. Render currently
 - Service-role access is backend-only and must not turn a weakly authenticated HTTP route into an RLS bypass.
 - Wallet and wallet-backed payments are suspended; no public/user backend route may operate Wallet balances or activities.
 - PayChangu/payment success is established only through the trusted payment boundary and independent provider verification.
-- Legacy Render services must not duplicate or compete with the Cloudflare payment source of truth.
+- Render must not duplicate or compete with the Cloudflare payment source of truth.
+- Payment behavior is not being redesigned as part of this source-of-truth cleanup.
+
+## Source reconciliation
+
+Three materially different backend copies exist:
+
+1. `dbdnd7rn/EYA/backend` — newer candidate implementation on `feat/hybrid-checkout`.
+2. `dbdnd7rn/EYA-Main-Backend` — intended backend repository, but current `main` is stale relative to the copy above.
+3. `Tchoka/EYA-backend` — current Render Git source; exact contents are not readable through the GitHub connection available to this audit.
+
+The newer `dbdnd7rn/EYA/backend/src/server.js` already contains local fixes for the first three findings below. Therefore those findings are not regressions in the newer candidate source; they are synchronization/deployment blockers.
 
 ## Verified findings
 
-### BACKEND-SEC-001 — Critical — Admin identity header spoofing
+### BACKEND-SEC-001 — Critical if stale source is deployed — Admin identity header spoofing
 
-Current `src/server.js` implements `requireAdmin()` by reading `x-admin-user-id`, `x-actor-user-id` or `x-user-id`, then loading that profile with the service-role Supabase client. The bearer token is not bound to the claimed Admin ID.
+`EYA-Main-Backend/main` still implements Admin authorization from caller-controlled identity headers without binding the claimed Admin to a validated bearer session.
 
-Impact: possession/knowledge of a valid Admin UUID can potentially impersonate that Admin on routes including Admin payments, orders, driver assignment and support-ticket operations.
+The newer `dbdnd7rn/EYA/backend` copy fixes this by validating the Supabase bearer session, deriving the user from that session, rejecting mismatched legacy identity headers and checking the Admin profile.
 
-Required remediation:
-1. require a valid `Authorization: Bearer <Supabase access token>` session;
-2. derive the actor ID exclusively from the validated session;
-3. load the profile for that session user and require Admin authorization;
-4. reject a legacy identity header if supplied and it does not exactly match the session user;
-5. regression-test every Admin endpoint with anonymous, normal-user, mismatched-header and valid-Admin actors.
+State: **fixed in newer app-repository backend copy; not synchronized here; not proven on Render.**
 
-### BACKEND-SEC-002 — Critical — Delivery actor header spoofing
+### BACKEND-SEC-002 — Critical if stale source is deployed — Delivery actor header spoofing
 
-`actorIdFromHeaders()` is used by delivery listing/assignment/unassignment/status flows. Authorization therefore starts from caller-controlled `x-user-id` / `x-actor-user-id` rather than the authenticated session.
+`EYA-Main-Backend/main` still begins delivery authorization from `x-user-id` / `x-actor-user-id`.
 
-Impact: an attacker who knows an eligible Delivery Agent, vendor owner or Admin UUID may be able to act as that principal.
+The newer `dbdnd7rn/EYA/backend` copy uses a bearer-derived authenticated actor and rejects mismatched legacy actor headers.
 
-Required remediation: use the same bearer-derived actor helper for all delivery routes and treat identity headers as non-authoritative compatibility data only.
+State: **fixed in newer app-repository backend copy; not synchronized here; not proven on Render.**
 
-### BACKEND-SEC-003 — Critical — Wallet still active through service-role backend
+### BACKEND-SEC-003 — Critical if stale source is deployed — Wallet service-role routes
 
-The server exposes authenticated Wallet routes including:
-- `GET /api/wallet/me`
-- `GET /api/wallet/debug`
-- `POST /api/wallet/withdraw`
-- `POST /api/wallet/send`
-- `POST /api/wallet/request`
-- `POST /api/wallet/checkout`
+`EYA-Main-Backend/main` still contains functioning Wallet routes that can operate through backend service-role access.
 
-These routes read/write `wallet_accounts` and `wallet_activities` using backend service-role access. Revoking mobile-client table/RPC privileges in Supabase therefore does not suspend Wallet while these routes remain reachable.
+The newer `dbdnd7rn/EYA/backend` copy installs an early `/api/wallet` HTTP 410 suspension guard before the legacy handlers, so the legacy implementations are unreachable through HTTP.
 
-Required remediation: return a terminal suspended response (for example HTTP 410) from every Wallet route, remove any path that mutates balances/activities, and preserve historical rows only for audit/reconciliation. Do not add new Wallet behavior.
+State: **fixed by route guard in newer app-repository backend copy; not synchronized here; not proven on Render.** Legacy Wallet implementations should eventually be removed after regression coverage so a future middleware refactor cannot reactivate them.
 
-### BACKEND-SEC-004 — High — Legacy PayChangu endpoints are not consistently authenticated
+### BACKEND-SEC-004 — High — Generic/legacy PayChangu endpoints need caller inventory
 
-The current mirror exposes unauthenticated `POST /api/paychangu/initiate` and unauthenticated `GET /api/paychangu/verify/:txRef`. The verify path can call payment finalization after provider verification. `POST /api/paychangu/reconcile` does require a bearer session and ownership/Admin authorization.
+The newer candidate backend still exposes generic `POST /api/paychangu/initiate` and `GET /api/paychangu/verify/:txRef` without a route-level bearer requirement. The verify path independently verifies with the provider before calling payment finalization; reconciliation does require an authenticated owner/Admin.
 
-The EYA app branch currently contains legacy/generic payment code that calls these Render-style endpoints, while ticket checkout uses the newer server-authoritative Edge/Cloudflare path. Payment behavior must not be changed casually during this audit.
+Current EYA source still points generic payment code at `paychangu-backend.onrender.com`, while newer ticket checkout uses the server-authoritative Edge/Cloudflare path. Therefore the Render payment service cannot simply be disabled during this audit.
 
-Required next step: inventory real production callers and distinguish legacy/general payments from the Cloudflare ticket-payment architecture. If the Render routes remain required, bind sensitive finalization to authenticated ownership/trusted server authorization and add abuse controls. If they are legacy, retire them only after dependency verification.
+State: **open dependency/security review; do not change the working payment architecture until callers are inventoried.**
 
 ### BACKEND-SEC-005 — Medium/High — Wildcard browser exposure
 
-`app.use(cors())` enables permissive CORS globally while the server has service-role authority and exposes Admin, delivery, Wallet and payment routes.
+Both the stale mirror and newer candidate backend globally enable permissive `cors()` while the server has service-role authority.
 
-Required remediation after caller inventory: allow only necessary browser origins, keep native/server calls independent of browser CORS, bound request bodies, and apply route-appropriate rate limits.
+State: **open.** Restrict browser origins only after caller inventory; native/server calls do not require wildcard browser CORS. Also add bounded request bodies and route-appropriate abuse limits.
 
 ### BACKEND-SEC-006 — Critical operational integrity — Render source provenance mismatch
 
 Connected Render currently has two public services (`EYA-backend`, `paychangu-backend`) auto-deploying `main` from `Tchoka/EYA-backend`. The latest recorded live `EYA-backend` deploy is an April 2026 commit SHA not present in this repository. GitHub access available to this audit cannot read `Tchoka/EYA-backend`.
 
-Therefore:
-- this mirror is not proof of the exact live Render source;
-- fixes committed here must not be described as deployed;
-- Render services must not be suspended until caller/config dependency is verified;
-- canonical repository ownership/deployment should be reconciled before production security claims are closed.
+State: **open blocker.** A fix in either auditable repository must not be described as deployed until the Render source is reconciled. Do not suspend either Render service until dependency verification is complete.
 
-## Current order
+### BACKEND-SEC-007 — Medium/High — Payment webhook log exposure
 
-1. Reconcile canonical source/deployment provenance.
-2. Replace header-trusted Admin and delivery identity with bearer-derived identity.
-3. Disable all Wallet routes in the canonical backend.
-4. Inventory generic/legacy PayChangu callers before modifying payment routes.
-5. Restrict CORS and add route abuse limits.
-6. Add regression tests for anonymous, normal User, Delivery Agent, vendor owner and Admin actors.
-7. Review secrets/logging/dependencies and production monitoring.
+The newer candidate backend logs the full PayChangu webhook event JSON before finalization. Provider/payment/customer metadata can therefore enter infrastructure logs unnecessarily.
+
+State: **open non-payment-behavior hardening.** Replace full-payload logging with a redacted event/reference/status audit record while preserving signature verification and provider re-verification.
+
+## Safe branch objective
+
+This `security/pass-1-20260822` branch should receive only security/source reconciliation work first. Do not wholesale copy the newer monolithic server in a way that silently changes payment behavior.
+
+Recommended order:
+
+1. identify the exact security-only delta needed for bearer-derived Admin/delivery identity and Wallet suspension;
+2. port those changes here without modifying PayChangu/Cloudflare semantics;
+3. add actor regression tests;
+4. inventory Render/generic-payment callers;
+5. reconcile the canonical source used by Render;
+6. only then plan a controlled Render deployment.
+
+No production Render service, PayChangu configuration, Cloudflare Worker or production payment route was changed by this audit branch.
