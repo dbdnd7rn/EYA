@@ -1,7 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { normalizeAppRole, type AppRole } from "@/lib/roleRouting";
-import { isConfiguredAdminEmail } from "@/lib/env";
 
 function toNullableString(value: unknown) {
   const text = String(value ?? "").trim();
@@ -34,41 +33,35 @@ function buildProfilePayload(user: User) {
   };
 }
 
-export function getRoleFromAuthUser(user: User | null | undefined): AppRole {
-  if (!user) return null;
-  return normalizeAppRole((user.user_metadata ?? {}).role);
+/**
+ * Legacy helper retained for compatibility only.
+ * Auth user metadata is user-editable and therefore MUST NOT be an authorization
+ * source in production. Specialized capabilities are resolved by workspace
+ * authorization, not by this value.
+ */
+export function getRoleFromAuthUser(_user: User | null | undefined): AppRole {
+  return null;
 }
 
 export async function ensureProfileRole(
   user: User | null | undefined,
-  fallbackRole?: Exclude<AppRole, null> | null,
+  _fallbackRole?: Exclude<AppRole, null> | null,
 ): Promise<AppRole> {
   if (!user) return null;
 
-  const requestedRole = getRoleFromAuthUser(user) ?? normalizeAppRole(fallbackRole);
   const { data, error } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-
   const dbRole = error ? null : normalizeAppRole(data?.role);
-  const canUseAdmin = isConfiguredAdminEmail(user.email);
-  const safeDbRole = dbRole === "admin" ? (canUseAdmin ? "admin" : null) : dbRole ? "student" : null;
-  const authRole =
-    requestedRole === "admin" && canUseAdmin
-      ? "admin"
-      : requestedRole
-        ? "student"
-        : safeDbRole === "admin"
-          ? "admin"
-          : "student";
 
-  if (safeDbRole && (!authRole || safeDbRole === authRole)) return safeDbRole;
-  if (!authRole && safeDbRole) return safeDbRole;
-  if (!authRole) return null;
+  // The database profile is the authority for the legacy primary role. The
+  // one-account model treats every non-Admin person as a normal User here;
+  // Landlord/Food/Delivery/Ticket permissions are resolved separately.
+  if (dbRole === "admin") return "admin";
 
   const payload = buildProfilePayload(user);
   const updateRes = await supabase.from("profiles").update(payload as never).eq("id", user.id);
-  if (updateRes.error) return authRole;
+  if (updateRes.error) return "student";
 
-  return authRole;
+  return "student";
 }
 
 export async function ensureProfileRoleFromAuthUser(user: User | null | undefined): Promise<AppRole> {
