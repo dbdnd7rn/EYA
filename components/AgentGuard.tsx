@@ -44,7 +44,7 @@ export default function AgentGuard({ children }: { children: React.ReactNode }) 
 
         const approved = await hasWorkspaceAccess(user.id, "agent");
         if (!approved) {
-          router.replace("/onboarding" as any);
+          router.replace("/onboarding?mode=apply&focus=delivery" as any);
           return;
         }
 
