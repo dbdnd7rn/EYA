@@ -2,6 +2,14 @@ import { Platform } from "react-native";
 
 const configuredAuthRedirectUrl = (process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL ?? "").trim();
 
+function firstNonEmpty(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const normalized = String(value ?? "").trim();
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
 function resolveAuthRedirectUrl() {
   if (!configuredAuthRedirectUrl) return "";
 
@@ -20,13 +28,26 @@ function resolveAuthRedirectUrl() {
 
 const requestedDevAuthMode = (process.env.EXPO_PUBLIC_DEV_AUTH_MODE ?? "false").toLowerCase() === "true";
 
+// Canonical public backend URL. During migration we still accept the old
+// PAYCHANGU_BACKEND variable as a compatibility alias so existing callers do
+// not break before the Vercel cutover is complete. The alias must eventually be
+// removed after every caller uses EYA_API_URL directly.
+const configuredEyaApiUrl = firstNonEmpty(
+  process.env.EXPO_PUBLIC_EYA_API_URL,
+  process.env.NEXT_PUBLIC_EYA_API_URL,
+  process.env.EXPO_PUBLIC_PAYCHANGU_BACKEND,
+  process.env.NEXT_PUBLIC_PAYCHANGU_BACKEND,
+);
+
 export const ENV = {
   SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
   SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
   NEW_APP_SCHEMA: process.env.EXPO_PUBLIC_NEW_APP_SCHEMA ?? "",
   WEB_BASE_URL: (process.env.EXPO_PUBLIC_WEB_BASE_URL ?? "https://eya.vercel.app").trim(),
-  PAYCHANGU_BACKEND:
-    process.env.EXPO_PUBLIC_PAYCHANGU_BACKEND ?? process.env.NEXT_PUBLIC_PAYCHANGU_BACKEND ?? "",
+  EYA_API_URL: configuredEyaApiUrl,
+  // Deprecated compatibility alias. This no longer means that the EYA backend
+  // owns PayChangu. Provider authority belongs to VAC Payments on Cloudflare.
+  PAYCHANGU_BACKEND: configuredEyaApiUrl,
   CLOUDINARY_CLOUD_NAME: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ?? "",
   CLOUDINARY_UPLOAD_PRESET: process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? "",
   ENABLE_PUSH_NOTIFICATIONS: (process.env.EXPO_PUBLIC_ENABLE_PUSH_NOTIFICATIONS ?? "true").toLowerCase() !== "false",
@@ -76,7 +97,7 @@ export function getOptionalServiceWarnings() {
   const warnings: string[] = [];
   if (!ENV.CLOUDINARY_CLOUD_NAME) warnings.push("Cloudinary cloud name is missing. Image uploads will fail.");
   if (!ENV.CLOUDINARY_UPLOAD_PRESET) warnings.push("Cloudinary upload preset is missing. Image uploads will fail.");
-  if (!ENV.PAYCHANGU_BACKEND) warnings.push("PayChangu backend is missing. Checkout and payment verification will fail.");
-  if (!/^https?:\/\//i.test(ENV.WEB_BASE_URL)) warnings.push("Web base URL is invalid. Payment redirects may fail.");
+  if (!ENV.EYA_API_URL) warnings.push("EYA API URL is missing. Vercel-backed Admin, delivery, COD and handoff APIs will fail.");
+  if (!/^https?:\/\//i.test(ENV.WEB_BASE_URL)) warnings.push("Web base URL is invalid. Browser/deep-link redirects may fail.");
   return warnings;
 }
