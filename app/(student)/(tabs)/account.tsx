@@ -1,24 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, Bell, ChevronRight, CircleHelp, Clock3, CreditCard, LogOut, MapPin, PencilLine, Settings, ShieldCheck, ShoppingBag, Sparkles, Star, Wallet2 } from "lucide-react-native";
+import { ArrowLeft, Bell, ChevronRight, CircleHelp, CreditCard, LogOut, MapPin, PencilLine, Settings, ShieldCheck, ShoppingBag, Star } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
 import { useStudentBadges } from "@/providers/StudentBadgeProvider";
-import { useStudentTheme, type StudentThemePalette } from "@/providers/StudentThemeProvider";
+import { useStudentTheme } from "@/providers/StudentThemeProvider";
 import { formatPreferredLocation, usePreferredLocation } from "@/providers/PreferredLocationProvider";
 
 type ProfileRow = {
   full_name?: string | null;
   phone?: string | null;
   avatar_url?: string | null;
-};
-
-type WalletAccountRow = {
-  balance_mwk?: number | null;
 };
 
 function initials(name?: string | null) {
@@ -36,96 +32,11 @@ function maskPhone(phone?: string | null) {
   return `+${digits.slice(0, Math.min(3, digits.length - 4))} ${digits.slice(3, 5) || "99"} **** ${tail}`;
 }
 
-function formatCurrency(amount: number) {
-  return `MWK ${amount.toLocaleString("en-MW")}`;
-}
-
-function WalletComingSoonBanner({
-  theme,
-  reveal,
-  drift,
-}: {
-  theme: StudentThemePalette;
-  reveal: Animated.Value;
-  drift: Animated.Value;
-}) {
-  const revealStyle = {
-    opacity: reveal,
-    transform: [
-      {
-        translateY: reveal.interpolate({
-          inputRange: [0, 1],
-          outputRange: [-10, 0],
-        }),
-      },
-      {
-        scale: reveal.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.98, 1],
-        }),
-      },
-    ],
-  };
-
-  const floatY = drift.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -8],
-  });
-  const floatX = drift.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-5, 7],
-  });
-  const ringScale = drift.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.96, 1.04],
-  });
-  const ringOpacity = drift.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.45, 0.82],
-  });
-
-  return (
-    <Animated.View
-      style={[
-        styles.walletSoonBanner,
-        {
-          backgroundColor: theme.isDark ? "#14243b" : "#f7fbff",
-          borderColor: theme.isDark ? "#32486a" : "#d9e8ff",
-        },
-        revealStyle,
-      ]}
-    >
-      <View style={styles.walletSoonGlowA} />
-      <View style={[styles.walletSoonGlowB, { backgroundColor: theme.isDark ? "rgba(124,147,255,0.22)" : "rgba(255,194,161,0.42)" }]} />
-
-      <View style={styles.walletSoonCopy}>
-        <View style={[styles.walletSoonKicker, { backgroundColor: theme.isDark ? "#1e3353" : "#e9f2ff", borderColor: theme.isDark ? "#385477" : "#d5e5fb" }]}>
-          <Clock3 size={13} color={theme.accent} />
-          <Text style={[styles.walletSoonKickerText, { color: theme.textMuted }]}>Not live yet</Text>
-        </View>
-        <Text style={[styles.walletSoonTitle, { color: theme.text }]}>Wallet coming soon</Text>
-        <Text style={[styles.walletSoonText, { color: theme.textMuted }]}>Top-ups, transfers, and balance tools are being polished for a smoother first release.</Text>
-      </View>
-
-      <Animated.View style={[styles.walletSoonStage, { transform: [{ translateY: floatY }] }]}>
-        <Animated.View style={[styles.walletSoonRing, { opacity: ringOpacity, transform: [{ scale: ringScale }] }]} />
-        <View style={styles.walletSoonIconCore}>
-          <Wallet2 size={30} color="#ffffff" />
-        </View>
-        <Animated.View style={[styles.walletSoonChip, styles.walletSoonChipTop, { transform: [{ translateX: floatX }] }]}>
-          <Sparkles size={12} color="#0e2756" />
-          <Text style={styles.walletSoonChipText}>Soon</Text>
-        </Animated.View>
-      </Animated.View>
-    </Animated.View>
-  );
-}
-
 export default function AccountScreen() {
   const router = useRouter();
   const { user, role, signOut, setActiveRole } = useAuth();
   const { theme } = useStudentTheme();
-  const { orders, wallet } = useStudentBadges();
+  const { orders } = useStudentBadges();
   const { unreadCount } = useNotificationInbox();
   const notificationCount = unreadCount;
   const { location } = usePreferredLocation();
@@ -133,44 +44,6 @@ export default function AccountScreen() {
   const [fullName, setFullName] = useState("User Account");
   const [phone, setPhone] = useState("No phone added");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [showWalletBanner, setShowWalletBanner] = useState(false);
-  const walletReveal = React.useRef(new Animated.Value(0)).current;
-  const walletDrift = React.useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(walletDrift, {
-          toValue: 1,
-          duration: 1600,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(walletDrift, {
-          toValue: 0,
-          duration: 1600,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-
-    animation.start();
-    return () => animation.stop();
-  }, [walletDrift]);
-
-  const showWalletComingSoon = () => {
-    setShowWalletBanner(true);
-    walletReveal.stopAnimation();
-    walletReveal.setValue(0);
-    Animated.spring(walletReveal, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 18,
-      bounciness: 8,
-    }).start();
-  };
 
   useEffect(() => {
     let active = true;
@@ -179,20 +52,18 @@ export default function AccountScreen() {
       try {
         if (!user?.id) return;
 
-        const [{ data: profile }, { data: wallet }] = await Promise.all([
-          supabase.from("profiles").select("full_name,phone,avatar_url").eq("id", user.id).maybeSingle(),
-          supabase.from("wallet_accounts").select("balance_mwk").eq("user_id", user.id).maybeSingle(),
-        ]);
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name,phone,avatar_url")
+          .eq("id", user.id)
+          .maybeSingle();
 
         if (!active) return;
 
         const prof = (profile ?? null) as ProfileRow | null;
-        const wal = (wallet ?? null) as WalletAccountRow | null;
-
         setFullName(prof?.full_name?.trim() || "User Account");
         setPhone(maskPhone(prof?.phone));
         setAvatarUrl(prof?.avatar_url ?? null);
-        setWalletBalance(Number(wal?.balance_mwk ?? 0));
       } finally {
         if (active) setLoading(false);
       }
@@ -272,21 +143,6 @@ export default function AccountScreen() {
           </View>
 
           <View style={styles.grid}>
-            <Pressable style={[styles.tile, styles.walletTile, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]} onPress={showWalletComingSoon}>
-              <View style={styles.walletGlow} />
-              {wallet ? (
-                <View style={[styles.countBubble, { backgroundColor: theme.isDark ? "#24344e" : "#fff4ea" }]}>
-                  <Text style={[styles.countText, { color: theme.text }]}>{wallet > 9 ? "9+" : wallet}</Text>
-                </View>
-              ) : null}
-              <Text style={[styles.tileEyebrow, { color: theme.textMuted }]}>Wallet Balance</Text>
-              <Text style={[styles.walletAmount, { color: theme.text }]}>{formatCurrency(walletBalance)}</Text>
-              <View style={[styles.walletPill, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <Wallet2 size={18} color={theme.textMuted} />
-                <Text style={[styles.walletPillText, { color: theme.text }]}>Coming soon</Text>
-              </View>
-            </Pressable>
-
             <Pressable style={[styles.tile, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]} onPress={() => router.push("/(student)/(tabs)/orders")}>
               <View style={[styles.iconBubble, { backgroundColor: "#fdecd7" }]}>
                 <ShoppingBag size={22} color="#c28d36" />
@@ -320,8 +176,6 @@ export default function AccountScreen() {
               <Text style={[styles.tileTitle, { color: theme.text }]}>Payments</Text>
             </Pressable>
           </View>
-
-          {showWalletBanner ? <WalletComingSoonBanner theme={theme} reveal={walletReveal} drift={walletDrift} /> : null}
 
           <View style={styles.rowMenu}>
             <Pressable style={[styles.menuPill, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]} onPress={() => router.push("/(student)/settings")}>
@@ -364,8 +218,8 @@ export default function AccountScreen() {
               <Star size={17} color={theme.accent} />
             </View>
             <View style={styles.rolesWorkspaceTextWrap}>
-              <Text style={[styles.rolesWorkspaceTitle, { color: theme.text }]}>Roles & Workspaces</Text>
-              <Text style={[styles.rolesWorkspaceSub, { color: theme.textMuted }]}>Register extra roles and switch workspaces</Text>
+              <Text style={[styles.rolesWorkspaceTitle, { color: theme.text }]}>Workspaces</Text>
+              <Text style={[styles.rolesWorkspaceSub, { color: theme.textMuted }]}>Open the verified EYA workspaces available to your account</Text>
             </View>
             <ChevronRight size={19} color={theme.textSoft} />
           </Pressable>
@@ -505,124 +359,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 1,
   },
-  walletTile: {
-    overflow: "hidden",
-    backgroundColor: "#dceeff",
-    borderColor: "#d7e7fb",
-  },
-  walletGlow: {
-    position: "absolute",
-    right: -20,
-    bottom: -20,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(255,214,200,0.45)",
-  },
-  tileEyebrow: { color: "#6e7892", fontSize: 14, fontWeight: "500" },
-  walletAmount: { color: "#0e2756", fontSize: 21, fontWeight: "900", maxWidth: 120 },
-  walletPill: {
-    alignSelf: "flex-start",
-    minHeight: 52,
-    borderRadius: 999,
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderWidth: 1,
-    borderColor: "#e7ebf5",
-  },
-  walletPillText: { color: "#0e2756", fontSize: 14, fontWeight: "800" },
-  walletSoonBanner: {
-    minHeight: 154,
-    borderRadius: 30,
-    borderWidth: 1,
-    padding: 18,
-    overflow: "hidden",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    shadowColor: "#5773a8",
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 2,
-  },
-  walletSoonGlowA: {
-    position: "absolute",
-    left: -36,
-    top: -42,
-    width: 128,
-    height: 128,
-    borderRadius: 64,
-    backgroundColor: "rgba(94,115,221,0.16)",
-  },
-  walletSoonGlowB: {
-    position: "absolute",
-    right: -38,
-    bottom: -44,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "rgba(255,194,161,0.42)",
-  },
-  walletSoonCopy: { flex: 1, gap: 8 },
-  walletSoonKicker: {
-    alignSelf: "flex-start",
-    minHeight: 30,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-  },
-  walletSoonKickerText: { fontSize: 12, fontWeight: "900" },
-  walletSoonTitle: { fontSize: 23, fontWeight: "900", lineHeight: 28 },
-  walletSoonText: { fontSize: 13, fontWeight: "700", lineHeight: 18 },
-  walletSoonStage: {
-    width: 108,
-    height: 108,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  walletSoonRing: {
-    position: "absolute",
-    width: 94,
-    height: 94,
-    borderRadius: 47,
-    backgroundColor: "rgba(94,115,221,0.18)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.5)",
-  },
-  walletSoonIconCore: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#5e73dd",
-    shadowColor: "#5e73dd",
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  walletSoonChip: {
-    position: "absolute",
-    minHeight: 28,
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#fff4d9",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.72)",
-  },
-  walletSoonChipTop: { top: 2, right: -2 },
-  walletSoonChipText: { color: "#0e2756", fontSize: 11, fontWeight: "900" },
   iconBubble: {
     width: 52,
     height: 52,
