@@ -43,15 +43,17 @@ export const REQUIRED_CANONICAL_ROUTES = Object.freeze([
   ["GET", "/pay/cancel"],
 ]);
 
-export const FORBIDDEN_CANONICAL_ROUTES = Object.freeze([
-  ["GET", "/api/wallet/me"],
-  ["GET", "/api/wallet/debug"],
-  ["POST", "/api/wallet/withdraw"],
-  ["POST", "/api/wallet/send"],
-  ["POST", "/api/wallet/request"],
-  ["POST", "/api/wallet/checkout"],
-  ["POST", "/api/checkout/wallet"],
+// These paths intentionally exist only as terminal 410 guards. They never expose
+// the historical business authority behind the route name.
+export const TERMINAL_GUARD_ROUTES = Object.freeze([
+  ["ALL", "/api/wallet"],
+  ["ALL", "/api/wallet/*splat"],
+  ["ALL", "/api/checkout/wallet"],
   ["POST", "/api/admin/tickets/check-in"],
+]);
+
+// These competing authorities must not be registered at all by canonical-v2.
+export const OMITTED_CANONICAL_ROUTES = Object.freeze([
   ["POST", "/api/tickets/orders"],
   ["POST", "/api/tickets/orders/:orderId/verify"],
 ]);
