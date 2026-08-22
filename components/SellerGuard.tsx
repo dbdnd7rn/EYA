@@ -44,7 +44,7 @@ export default function SellerGuard({ children }: { children: React.ReactNode })
 
         const approved = await hasWorkspaceAccess(user.id, "vendor");
         if (!approved) {
-          router.replace("/onboarding" as any);
+          router.replace("/onboarding?mode=apply&focus=restaurant" as any);
           return;
         }
 
