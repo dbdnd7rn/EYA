@@ -4,11 +4,11 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../providers/AuthProvider";
 import { normalizeAppRole } from "@/lib/roleRouting";
 import { getWorkspaceHomeRoute } from "@/lib/workspaceAccess";
+import { isTemporaryOrganizerUser } from "@/lib/temporaryOrganizerIdentity";
 
 export default function StudentGuard({ children }: { children: React.ReactNode }) {
   const { user, role, activeRole, loading: authLoading, refreshRole } = useAuth();
   const router = useRouter();
-
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
@@ -17,10 +17,16 @@ export default function StudentGuard({ children }: { children: React.ReactNode }
     const run = async () => {
       try {
         setChecking(true);
-
         if (authLoading) return;
         if (!user) {
           router.replace("/(auth)/login");
+          return;
+        }
+
+        // Temporary organizer identities are server-marked and may never use
+        // the normal customer/student route tree.
+        if (isTemporaryOrganizerUser(user)) {
+          router.replace("/(organizer)/dashboard" as any);
           return;
         }
 
@@ -44,10 +50,8 @@ export default function StudentGuard({ children }: { children: React.ReactNode }
       }
     };
 
-    run();
-    return () => {
-      alive = false;
-    };
+    void run();
+    return () => { alive = false; };
   }, [user, role, activeRole, authLoading, router, refreshRole]);
 
   if (authLoading || checking) {
