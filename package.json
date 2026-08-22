@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/secure-entry.js",
-    "start": "node src/secure-entry.js"
+    "start": "node src/secure-entry.js",
+    "test:security": "node --test test/security-policy.test.js"
   },
   "engines": {
     "node": ">=18"
