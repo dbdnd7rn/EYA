@@ -2,7 +2,7 @@ import React from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, Banknote, ChevronRight, Landmark, LockKeyhole, ShieldCheck } from "lucide-react-native";
+import { ArrowLeft, Banknote, BookOpenText, ChevronRight, Landmark, LockKeyhole, ShieldCheck } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
 import { getMyTicketFinanceWorkspace, type TicketFinanceWorkspace } from "@/lib/ticketEventFinanceApi";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
@@ -45,6 +45,12 @@ export default function FinanceWorkspaceScreen() {
             <Pressable style={[styles.eventCard, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]} onPress={() => router.push({ pathname: "/(student)/payout-destinations", params: { organizationId: workspace.organization_id, organizationName: workspace.organization_name, accessStatus: workspace.status } } as any)}>
               <View style={[styles.eventIcon, { backgroundColor: theme.accentSoft }]}><Landmark size={19} color={theme.accent} /></View>
               <View style={{ flex: 1 }}><Text style={[styles.eventName, { color: theme.text }]}>Payout destinations</Text><Text style={[styles.eventMeta, { color: theme.textMuted }]}>{workspace.status === "suspended" ? "View masked details · changes suspended" : "Register and track verified bank or mobile money"}</Text></View>
+              <ChevronRight size={20} color={theme.textSoft} />
+            </Pressable>
+
+            <Pressable style={[styles.eventCard, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]} onPress={() => router.push({ pathname: "/(student)/finance-ledger", params: { organizationId: workspace.organization_id, organizationName: workspace.organization_name } } as any)}>
+              <View style={[styles.eventIcon, { backgroundColor: theme.accentSoft }]}><BookOpenText size={19} color={theme.accent} /></View>
+              <View style={{ flex: 1 }}><Text style={[styles.eventName, { color: theme.text }]}>Liability ledger</Text><Text style={[styles.eventMeta, { color: theme.textMuted }]}>Immutable assessments, repayments, offsets and reversals</Text></View>
               <ChevronRight size={20} color={theme.textSoft} />
             </Pressable>
 

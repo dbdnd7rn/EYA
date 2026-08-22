@@ -2,7 +2,7 @@ import React from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, Banknote, CheckCircle2, Landmark, LockKeyhole, RefreshCcw, ShieldCheck, TriangleAlert, XCircle } from "lucide-react-native";
+import { ArrowLeft, Banknote, BookOpenText, CheckCircle2, Landmark, LockKeyhole, RefreshCcw, ShieldCheck, TriangleAlert, XCircle } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
 import {
   adminReviewTicketEventPayoutRequest,
@@ -156,6 +156,7 @@ export default function AdminEventPayoutsScreen() {
 
         <View style={styles.securityNote}><ShieldCheck size={20} color="#087443" /><Text style={styles.securityText}>Early payouts are event advances. Protected refund reserve, EYA fee, holds and prior payouts are deducted before an organizer can request money.</Text></View>
         <Pressable style={styles.destinationLink} onPress={() => router.push("/admin/payout-destinations" as any)}><Landmark size={19} color={ACCENT} /><View style={{ flex: 1 }}><Text style={styles.destinationTitle}>Verify payout destinations</Text><Text style={styles.meta}>Review masked bank and mobile-money details before payouts can be requested.</Text></View></Pressable>
+        <Pressable style={styles.destinationLink} onPress={() => router.push("/admin/organization-liabilities" as any)}><BookOpenText size={19} color={ACCENT} /><View style={{ flex: 1 }}><Text style={styles.destinationTitle}>Organization liability ledgers</Text><Text style={styles.meta}>Post auditable assessments, repayments, offsets and reversals.</Text></View></Pressable>
 
         {loading ? <State><ActivityIndicator color={ACCENT} /><Text style={styles.stateText}>Loading organizer event finance...</Text></State> : null}
         {!loading && error ? <State><TriangleAlert size={30} color="#a32929" /><Text style={styles.errorText}>{error}</Text></State> : null}

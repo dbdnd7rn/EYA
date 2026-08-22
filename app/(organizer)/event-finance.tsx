@@ -2,7 +2,7 @@ import React from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowLeft, Banknote, Clock3, LockKeyhole, RefreshCcw, ShieldCheck, TriangleAlert, WalletCards, XCircle } from "lucide-react-native";
+import { ArrowLeft, Banknote, BookOpenText, Clock3, LockKeyhole, RefreshCcw, ShieldCheck, TriangleAlert, WalletCards, XCircle } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
 import {
   cancelMyTicketEventPayoutRequest,
@@ -174,6 +174,21 @@ export default function OrganizerEventFinanceScreen() {
               <Text style={styles.reserveText}>Protected funds are excluded from early-payout eligibility. EYA can release the reserve only after refund/risk reconciliation.</Text>
             </View>
 
+            <View style={styles.reconciliationCard}>
+              <Text style={styles.sectionTitle}>Event reconciliation</Text>
+              <FinanceRow label="Active paid ticket sales" value={finance.active_paid_ticket_sales_mwk} />
+              <FinanceRow label="Less EYA/platform fee" value={-finance.platform_fee_mwk} />
+              <FinanceRow label="Less refund reserve" value={-finance.protected_refund_reserve_mwk} />
+              <FinanceRow label="Less other hold" value={-finance.other_hold_mwk} />
+              <View style={styles.reconciliationRule} />
+              <FinanceRow label="Net before payouts" value={finance.net_event_funds_before_payout_mwk} />
+              <FinanceRow label="Paid and approved payouts" value={-(finance.paid_out_mwk + finance.approved_unpaid_mwk)} />
+              <View style={styles.reconciliationRule} />
+              <FinanceRow label="Currently eligible" value={finance.available_for_payout_mwk} />
+              <Text style={styles.reconciliationNote}>This is a read-only reconciliation from EYA records. It does not initiate or verify payments.</Text>
+              {finance.organization_id ? <Pressable style={styles.ledgerLink} onPress={() => router.push({ pathname: "/(student)/finance-ledger", params: { organizationId: finance.organization_id!, eventId: finance.event_id, organizationName: finance.event_title } } as any)}><BookOpenText size={17} color={ACCENT} /><Text style={styles.ledgerLinkText}>View event-linked liability entries</Text></Pressable> : null}
+            </View>
+
             {finance.organizer_advance_liability_mwk > 0 ? (
               <View style={styles.liabilityCard}>
                 <TriangleAlert size={20} color="#a32929" />
@@ -243,7 +258,7 @@ export default function OrganizerEventFinanceScreen() {
 
 function State({ children }: { children: React.ReactNode }) { return <View style={styles.state}>{children}</View>; }
 function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) { return <View style={styles.metric}><Text style={styles.metricLabel}>{label}</Text><Text style={[styles.metricValue, strong && { color: ACCENT }]} numberOfLines={1}>{value}</Text></View>; }
-function FinanceRow({ label, value }: { label: string; value: number }) { return <View style={styles.financeRow}><Text style={styles.financeLabel}>{label}</Text><Text style={styles.financeValue}>{kwacha(value)}</Text></View>; }
+function FinanceRow({ label, value }: { label: string; value: number }) { return <View style={styles.financeRow}><Text style={styles.financeLabel}>{label}</Text><Text style={styles.financeValue}>{value < 0 ? `−${kwacha(Math.abs(value))}` : kwacha(value)}</Text></View>; }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG }, content: { padding: 18, paddingBottom: 80, gap: 14 },
@@ -253,6 +268,7 @@ const styles = StyleSheet.create({
   eventCard: { borderRadius: 22, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 16 }, eventTitle: { color: TEXT, fontSize: 20, fontWeight: "900" }, eventMeta: { color: MUTED, fontSize: 12, fontWeight: "700", marginTop: 4 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, metric: { width: "48%", minHeight: 82, borderRadius: 18, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 12, justifyContent: "space-between" }, metricLabel: { color: MUTED, fontSize: 10, fontWeight: "800" }, metricValue: { color: TEXT, fontSize: 16, fontWeight: "900" },
   reserveCard: { borderRadius: 22, backgroundColor: "#e8f7ee", padding: 15, gap: 8 }, reserveHead: { flexDirection: "row", alignItems: "center", gap: 8 }, reserveTitle: { color: "#276346", fontSize: 15, fontWeight: "900" }, financeRow: { flexDirection: "row", justifyContent: "space-between", gap: 10 }, financeLabel: { color: "#4f6c5d", fontSize: 12, fontWeight: "700" }, financeValue: { color: "#276346", fontSize: 12, fontWeight: "900" }, reserveText: { color: "#4f6c5d", fontSize: 11, lineHeight: 16, fontWeight: "700", marginTop: 2 },
+  reconciliationCard: { borderRadius: 22, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 15, gap: 9 }, reconciliationRule: { height: 1, backgroundColor: BORDER }, reconciliationNote: { color: MUTED, fontSize: 10, lineHeight: 15, fontWeight: "700" }, ledgerLink: { minHeight: 42, borderRadius: 14, backgroundColor: "#eef1ff", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }, ledgerLinkText: { color: ACCENT, fontSize: 11, fontWeight: "900" },
   liabilityCard: { borderRadius: 20, backgroundColor: "#fff0f0", padding: 14, flexDirection: "row", alignItems: "flex-start", gap: 10 }, liabilityTitle: { color: "#a32929", fontSize: 13, fontWeight: "900" }, liabilityValue: { color: "#a32929", fontSize: 20, fontWeight: "900", marginTop: 2 }, liabilityText: { color: "#7f3f3f", fontSize: 11, lineHeight: 16, fontWeight: "700", marginTop: 3 },
   waitCard: { borderRadius: 18, backgroundColor: "#fff4df", padding: 13, flexDirection: "row", gap: 9, alignItems: "flex-start" }, waitText: { flex: 1, color: "#7a5519", fontSize: 12, lineHeight: 17, fontWeight: "800" }, doneCard: { borderRadius: 18, backgroundColor: "#e8f7ee", padding: 13, flexDirection: "row", gap: 9 }, doneText: { flex: 1, color: "#276346", fontSize: 12, fontWeight: "800" },
   actionCard: { borderRadius: 24, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 16, gap: 10 }, actionHead: { flexDirection: "row", alignItems: "flex-start", gap: 9 }, actionTitle: { color: TEXT, fontSize: 17, fontWeight: "900" }, actionSub: { color: MUTED, fontSize: 11, lineHeight: 16, fontWeight: "700", marginTop: 2 }, availableLabel: { color: MUTED, fontSize: 9, fontWeight: "900", letterSpacing: 0.8, marginTop: 4 }, availableValue: { color: TEXT, fontSize: 27, fontWeight: "900" }, input: { minHeight: 50, borderRadius: 16, borderWidth: 1, borderColor: BORDER, backgroundColor: "#fbfcff", paddingHorizontal: 14, color: TEXT, fontSize: 15, fontWeight: "800" }, primaryBtn: { minHeight: 50, borderRadius: 18, backgroundColor: ACCENT, flexDirection: "row", gap: 7, alignItems: "center", justifyContent: "center" }, disabled: { opacity: 0.45 }, primaryText: { color: "#fff", fontSize: 13, fontWeight: "900" }, pendingSettlement: { color: "#8a5a00", fontSize: 11, fontWeight: "800" },

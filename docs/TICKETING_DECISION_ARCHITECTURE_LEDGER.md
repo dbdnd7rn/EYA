@@ -478,7 +478,7 @@ Current event finance controls contain a manual platform-fee MWK amount but do n
 
 ## 12. Finance ledger target model
 
-Status: `DECIDED DIRECTION + NOT BUILT AS COMPLETE LEDGER`
+Status: `IMMUTABLE ORGANIZATION LIABILITY FOUNDATION IMPLEMENTED; COMPLETE EVENT LEDGER STILL PENDING`
 
 Before real organizer payouts, finance should reconcile explicit ledger entries rather than infer everything only from mutable order status.
 
@@ -500,6 +500,22 @@ Recommended event/promoter finance entries include:
 - liability repayment/offset
 
 Every entry should be immutable/auditable and trace back to order/payment/refund/payout/provider references.
+
+Implemented without changing payment integrations:
+- organization-owned append-only liability assessments, repayments, offsets and reversal entries;
+- whole-MWK validation, event/organization binding and idempotency keys;
+- mutation trigger blocks updates/deletes and requires compensating reversals;
+- direct browser table access is denied;
+- active or suspended finance-entitlement holders may read their organization ledger through a scoped RPC;
+- only an internally authorized EYA Admin RPC may post entries.
+- organizer event finance now exposes a read-only reconciliation equation and event-tagged liability history while keeping the organization total visible;
+- Admin and finance-entitlement holders have dedicated ledger interfaces; neither interface executes or verifies payments.
+
+Still required:
+- automatic entries from the future refund/cancellation lifecycle;
+- controlled cross-event offset allocation into event availability;
+- full sales, provider-settlement, fee, reserve, payout and reversal accounts;
+- automatic ledger links from event-level finance views as the complete event ledger is introduced.
 
 ---
 

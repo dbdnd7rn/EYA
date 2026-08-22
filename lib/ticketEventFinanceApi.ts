@@ -21,6 +21,7 @@ export type TicketEventPayoutRequest = {
 
 export type TicketEventFinance = {
   event_id: string;
+  organization_id: string | null;
   event_title: string;
   event_status: string;
   starts_at: string | null;
@@ -67,6 +68,43 @@ export type TicketPayoutDestination = {
   verified_at: string | null;
   review_note: string | null;
   created_at: string;
+};
+
+export type TicketOrganizationFinanceLedgerEntry = {
+  id: string;
+  event_id: string | null;
+  entry_type: "liability_assessment" | "liability_repayment" | "liability_offset" | "reversal";
+  direction: "debit" | "credit";
+  amount_mwk: number;
+  memo: string;
+  source_type: string | null;
+  source_id: string | null;
+  reverses_entry_id: string | null;
+  posted_by: string | null;
+  posted_at: string;
+};
+
+export type TicketOrganizationFinanceLedger = {
+  organization_id: string;
+  liability_balance_mwk: number;
+  entries: TicketOrganizationFinanceLedgerEntry[];
+};
+
+export type AdminTicketOrganizationFinanceLedgerSummary = {
+  organization_id: string;
+  organization_name: string;
+  organization_status: string;
+  liability_balance_mwk: number;
+  entry_count: number;
+  last_entry_at: string | null;
+};
+
+export type AdminTicketOrganizationEvent = {
+  event_id: string;
+  event_title: string;
+  event_status: string;
+  starts_at: string | null;
+  ends_at: string | null;
 };
 
 export type AdminTicketEventPayoutRequest = {
@@ -118,6 +156,7 @@ function normalizeFinance(data: any): TicketEventFinance {
   return {
     ...data,
     event_id: String(data?.event_id || ""),
+    organization_id: data?.organization_id ? String(data.organization_id) : null,
     event_title: String(data?.event_title || "Event"),
     event_finished: Boolean(data?.event_finished),
     payouts_configured: Boolean(data?.payouts_configured),
@@ -218,6 +257,43 @@ export async function adminReviewTicketPayoutDestination(input: {
     p_note: input.note?.trim() || null,
   });
   if (error) throw new Error(message(error, "Could not review payout destination."));
+  return data;
+}
+
+export async function getTicketOrganizationFinanceLedger(organizationId: string, limit = 100): Promise<TicketOrganizationFinanceLedger> {
+  const { data, error } = await supabase.rpc("get_ticket_organization_finance_ledger", { p_organization_id: organizationId, p_limit: limit });
+  if (error) throw new Error(message(error, "Could not load organization finance ledger."));
+  const rows = Array.isArray(data?.entries) ? data.entries : [];
+  return { organization_id: String(data?.organization_id || organizationId), liability_balance_mwk: num(data?.liability_balance_mwk), entries: rows.map((row: any) => ({ ...row, id: String(row.id), amount_mwk: num(row.amount_mwk) })) };
+}
+
+export async function listAdminTicketOrganizationFinanceLedgers(): Promise<AdminTicketOrganizationFinanceLedgerSummary[]> {
+  const { data, error } = await supabase.rpc("admin_list_ticket_organization_finance_ledgers");
+  if (error) throw new Error(message(error, "Could not load organization finance ledgers."));
+  return Array.isArray(data) ? data.map((row: any) => ({ ...row, organization_id: String(row.organization_id), organization_name: String(row.organization_name || "Organization"), liability_balance_mwk: num(row.liability_balance_mwk), entry_count: num(row.entry_count) })) : [];
+}
+
+export async function listAdminTicketOrganizationEvents(organizationId: string): Promise<AdminTicketOrganizationEvent[]> {
+  const { data, error } = await supabase.rpc("admin_list_ticket_organization_events", { p_organization_id: organizationId });
+  if (error) throw new Error(message(error, "Could not load organization events."));
+  return Array.isArray(data) ? data.map((row: any) => ({ ...row, event_id: String(row.event_id), event_title: String(row.event_title || "Event") })) : [];
+}
+
+export async function adminPostTicketOrganizationLiabilityEntry(input: { organizationId: string; entryType: "liability_assessment" | "liability_repayment" | "liability_offset" | "reversal"; amountMwk: number; memo: string; eventId?: string | null; reversesEntryId?: string | null; }) {
+  const idempotencyKey = `${input.entryType}:${input.organizationId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  const { data, error } = await supabase.rpc("admin_post_ticket_organization_liability_entry", {
+    p_organization_id: input.organizationId,
+    p_entry_type: input.entryType,
+    p_amount_mwk: input.amountMwk,
+    p_memo: input.memo.trim(),
+    p_event_id: input.eventId || null,
+    p_source_type: "admin_finance_workspace",
+    p_source_id: null,
+    p_idempotency_key: idempotencyKey,
+    p_reverses_entry_id: input.reversesEntryId || null,
+    p_metadata: {},
+  });
+  if (error) throw new Error(message(error, "Could not post organization liability entry."));
   return data;
 }
 
