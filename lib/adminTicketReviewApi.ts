@@ -3,10 +3,14 @@ import { supabase } from "@/lib/supabase";
 export type AdminTicketReviewTier = {
   id: string;
   name: string;
+  description: string;
   price_mwk: number;
   capacity_total: number;
   capacity_sold: number;
+  capacity_reserved: number;
   available: boolean;
+  sale_starts_at: string | null;
+  sale_ends_at: string | null;
 };
 
 export type AdminTicketReviewEvent = {
@@ -32,6 +36,15 @@ export type AdminTicketReviewEvent = {
   tiers: AdminTicketReviewTier[];
 };
 
+export type AdminTicketReviewResult = {
+  ok: true;
+  event_id: string;
+  status: string;
+  approved_version_id?: string | null;
+  approved_version_number?: number | null;
+  approval_hash?: string | null;
+};
+
 function err(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "message" in error) {
     return String((error as { message?: unknown }).message || fallback);
@@ -55,7 +68,7 @@ export async function listPendingAdminTicketEvents(): Promise<AdminTicketReviewE
   const [{ data: tiers, error: tierError }, { data: organizers, error: organizerError }] = await Promise.all([
     supabase
       .from("ticket_tiers")
-      .select("id,event_id,name,price_mwk,capacity_total,capacity_sold,available,sort_order")
+      .select("id,event_id,name,description,price_mwk,capacity_total,capacity_sold,capacity_reserved,available,sale_starts_at,sale_ends_at,sort_order")
       .in("event_id", eventIds)
       .order("sort_order", { ascending: true }),
     organizerIds.length
@@ -72,10 +85,14 @@ export async function listPendingAdminTicketEvents(): Promise<AdminTicketReviewE
     current.push({
       id: String(row.id),
       name: String(row.name || "Ticket"),
+      description: String(row.description || ""),
       price_mwk: Number(row.price_mwk || 0),
       capacity_total: Number(row.capacity_total || 0),
       capacity_sold: Number(row.capacity_sold || 0),
+      capacity_reserved: Number(row.capacity_reserved || 0),
       available: row.available !== false,
+      sale_starts_at: row.sale_starts_at ? String(row.sale_starts_at) : null,
+      sale_ends_at: row.sale_ends_at ? String(row.sale_ends_at) : null,
     });
     tiersByEvent.set(eventId, current);
   }
@@ -100,12 +117,12 @@ export async function reviewAdminTicketEvent(input: {
   eventId: string;
   action: "approve" | "request_changes" | "reject";
   note?: string | null;
-}) {
+}): Promise<AdminTicketReviewResult> {
   const { data, error } = await supabase.rpc("admin_review_ticket_event", {
     p_event_id: input.eventId,
     p_action: input.action,
     p_note: input.note?.trim() || null,
   });
   if (error) throw new Error(err(error, "Could not review event."));
-  return data as { ok: true; event_id: string; status: string };
+  return data as AdminTicketReviewResult;
 }
