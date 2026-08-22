@@ -13,7 +13,7 @@ export default function OrganizerAccessEndedScreen() {
         <Text style={styles.kicker}>EYA ORGANIZER</Text>
         <Text style={styles.title}>Organizer access is not active</Text>
         <Text style={styles.text}>This temporary Organizer Workspace has expired, was revoked, or could not be verified. Contact EYA Admin if the event still needs organizer access.</Text>
-        <Pressable style={styles.btn} onPress={() => router.replace("/(auth)/login")}><LogIn size={17} color="#fff" /><Text style={styles.btnText}>Return to login</Text></Pressable>
+        <Pressable style={styles.btn} onPress={() => router.replace("/organizer-login" as any)}><LogIn size={17} color="#fff" /><Text style={styles.btnText}>Organizer Login</Text></Pressable>
       </View>
     </SafeAreaView>
   );
