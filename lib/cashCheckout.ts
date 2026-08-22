@@ -1,10 +1,10 @@
 import { ENV } from "@/lib/env";
 
 function getBackendBaseUrl() {
-  if (!ENV.PAYCHANGU_BACKEND) {
-    throw new Error("Backend URL is not configured. Set EXPO_PUBLIC_PAYCHANGU_BACKEND.");
+  if (!ENV.EYA_API_URL) {
+    throw new Error("EYA API URL is not configured. Set EXPO_PUBLIC_EYA_API_URL.");
   }
-  return ENV.PAYCHANGU_BACKEND.replace(/\/+$/, "");
+  return ENV.EYA_API_URL.replace(/\/+$/, "");
 }
 
 async function parseJson(res: Response) {
