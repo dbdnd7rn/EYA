@@ -2,15 +2,16 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, Banknote, BriefcaseBusiness, ChevronRight, House, ShieldCheck, Store, Ticket, UserRound } from "lucide-react-native";
+import { ArrowLeft, Banknote, BriefcaseBusiness, ChevronRight, House, ScanLine, ShieldCheck, Store, Ticket, UserRound } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
+import { getMyGateStaffAssignments } from "@/lib/ticketGateStaff";
 import { getMyTicketOrganizerAccess } from "@/lib/ticketOrganizerAccess";
 import { getMyTicketFinanceWorkspace } from "@/lib/ticketEventFinanceApi";
 import { getWorkspaceHomeRoute, getWorkspaceStatuses, type WorkspaceRole } from "@/lib/workspaceAccess";
 import { useAuth } from "@/providers/AuthProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
-type WorkspaceKey = WorkspaceRole | "ticket_organizer" | "ticket_finance";
+type WorkspaceKey = WorkspaceRole | "ticket_organizer" | "ticket_gate_staff" | "ticket_finance";
 
 type ReadyWorkspace = {
   key: WorkspaceKey;
@@ -24,6 +25,7 @@ function workspaceIcon(key: WorkspaceKey) {
   if (key === "vendor") return Store;
   if (key === "agent") return BriefcaseBusiness;
   if (key === "ticket_organizer") return Ticket;
+  if (key === "ticket_gate_staff") return ScanLine;
   if (key === "ticket_finance") return Banknote;
   if (key === "admin") return ShieldCheck;
   return UserRound;
@@ -35,6 +37,7 @@ function workspaceSubtitle(key: WorkspaceKey, fallback: string) {
   if (key === "landlord") return "Manage room listings, enquiries and property activity.";
   if (key === "agent") return "Manage delivery jobs, rider activity and earnings.";
   if (key === "ticket_organizer") return fallback;
+  if (key === "ticket_gate_staff") return fallback;
   if (key === "ticket_finance") return fallback;
   if (key === "admin") return "Manage EYA platform operations and approvals.";
   return fallback;
@@ -54,9 +57,10 @@ export default function WorkspacesScreen() {
     const load = async () => {
       try {
         if (!user?.id) return;
-        const [statuses, organizerAccess, financeAccess] = await Promise.all([
+        const [statuses, organizerAccess, gateAssignments, financeAccess] = await Promise.all([
           getWorkspaceStatuses(user.id, user.email),
           getMyTicketOrganizerAccess().catch(() => null),
+          getMyGateStaffAssignments().catch(() => []),
           getMyTicketFinanceWorkspace().catch(() => []),
         ]);
         if (!alive) return;
@@ -76,6 +80,24 @@ export default function WorkspacesScreen() {
             label: "Ticket Management",
             description: `Manage approved events and ticket operations for ${organizerAccess.organization_name}.`,
             homeRoute: "/(organizer)/dashboard",
+          });
+        }
+
+        const currentGateAssignments = gateAssignments.filter((entry) =>
+          entry.effective_status === "invited" || entry.effective_status === "scheduled" || entry.effective_status === "active",
+        );
+        if (currentGateAssignments.length) {
+          const activeCount = currentGateAssignments.filter((entry) => entry.effective_status === "active").length;
+          const invitedCount = currentGateAssignments.filter((entry) => entry.effective_status === "invited").length;
+          visible.push({
+            key: "ticket_gate_staff",
+            label: "Gate Staff",
+            description: activeCount
+              ? `${activeCount} event scanner assignment${activeCount === 1 ? " is" : "s are"} active now.`
+              : invitedCount
+                ? `${invitedCount} Gate Staff invitation${invitedCount === 1 ? " is" : "s are"} waiting for your response.`
+                : "View your scheduled event scanner assignments and activation times.",
+            homeRoute: "/(student)/gate-staff",
           });
         }
 
@@ -111,7 +133,7 @@ export default function WorkspacesScreen() {
   }, [role, user?.email, user?.id]);
 
   const ordered = useMemo(() => {
-    const order: WorkspaceKey[] = ["student", "vendor", "landlord", "agent", "ticket_organizer", "ticket_finance", "admin"];
+    const order: WorkspaceKey[] = ["student", "vendor", "landlord", "agent", "ticket_organizer", "ticket_gate_staff", "ticket_finance", "admin"];
     return [...ready].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
   }, [ready]);
 
@@ -119,7 +141,7 @@ export default function WorkspacesScreen() {
     if (switching) return;
     try {
       setSwitching(workspace.key);
-      if (workspace.key === "ticket_organizer" || workspace.key === "ticket_finance") {
+      if (workspace.key === "ticket_organizer" || workspace.key === "ticket_gate_staff" || workspace.key === "ticket_finance") {
         router.push(workspace.homeRoute as any);
         return;
       }
@@ -158,7 +180,7 @@ export default function WorkspacesScreen() {
           <View style={styles.list}>
             {ordered.map((workspace) => {
               const Icon = workspaceIcon(workspace.key);
-              const selected = workspace.key !== "ticket_organizer" && workspace.key !== "ticket_finance" && (activeRole ?? "student") === workspace.key;
+              const selected = workspace.key !== "ticket_organizer" && workspace.key !== "ticket_gate_staff" && workspace.key !== "ticket_finance" && (activeRole ?? "student") === workspace.key;
               const busy = switching === workspace.key;
               return (
                 <Pressable
@@ -199,7 +221,7 @@ export default function WorkspacesScreen() {
           <ChevronRight size={20} color={theme.textSoft} />
         </Pressable>
 
-        <Text style={[styles.note, { color: theme.textSoft }]}>Ticket Management is Admin-granted only and appears here after EYA verifies the organizer account.</Text>
+        <Text style={[styles.note, { color: theme.textSoft }]}>Ticket Management is Admin-granted. Gate Staff appears only while your account has a current event assignment.</Text>
       </ScrollView>
     </SafeAreaView>
   );
