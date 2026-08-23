@@ -2,9 +2,9 @@
 
 Branch: `audit/reconcile-supabase-migration-history-20260822`
 
-Status: `READ-ONLY RECONCILIATION IN PROGRESS — DO NOT DB PUSH`
+Status: `RECONSTRUCTION IN PROGRESS — DO NOT DB PUSH`
 
-This document records the observed production migration history against the migration files currently present in Git. It exists to remove ambiguity before any Supabase migration file is renamed, reconstructed, quarantined, replayed, or deployed.
+This document records the observed production migration history against the migration files in Git. The goal is to make Git accurately reflect migrations that production already executed before any new Supabase migration—especially Gate Staff / event-scoped scanner work—is created or deployed.
 
 ## Safety rule
 
@@ -12,138 +12,134 @@ Until this reconciliation is completed and replay-tested on a disposable/local d
 
 - do not run a normal production `supabase db push`;
 - do not rewrite `supabase_migrations.schema_migrations` merely to make timestamps match Git;
-- do not assume two files with the same logical name/body are the same migration until the SQL body has been compared;
 - do not deploy the planned Gate Staff / event-scoped scanner schema yet;
 - do not use this reconciliation to modify Food, Marketplace, or Rooms product behavior;
-- preserve the working ticket payment path.
+- preserve the working ticket payment path;
+- treat the live database migration ledger as the authority for migrations that have already executed.
 
-The live database remains the authority for migrations that have already executed.
+## Reconciliation progress
 
-## Current observed drift
+### Completed: production-only migrations restored exactly
 
-The migration history problem is primarily a version/timestamp divergence in the 2026-08-22 work. Production contains migrations whose logical names match Git files saved under different timestamps. Git also contains a duplicate migration version.
+The following migrations existed in the live Supabase migration ledger but did not previously exist in Git under their production versions. They have now been restored from the exact SQL stored in `supabase_migrations.schema_migrations.statements`:
 
-### A. Production versions that already match Git exactly by version/name
+- `20260822140412_suspend_wallet_client_surface.sql`
+- `20260822141209_harden_notifications_and_obvious_anon_rpc_surface.sql`
+- `20260822141401_harden_vendor_catalog_and_messaging_rls.sql`
+- `20260822142439_server_authoritative_commerce_checkout_quote.sql`
 
-These are not the source of the current blocker:
+These files are historical reconstruction only. Restoring them in Git did not execute SQL in production.
 
-- `20260822112548` — `ticket_event_early_payout_and_final_settlement_foundation`
-- `20260822112703` — `add_ticket_event_advance_liability_metric`
-- `20260822113850` — `harden_ticket_event_payout_approval_boundary`
-- `20260822120307` — `ticket_organizer_stable_organization_ownership_foundation`
-- `20260822131909` — `ticket_organizer_normal_account_workspace_identity`
-- `20260822132416` — `ticket_organizer_workspace_helper_and_wording`
-- `20260822132549` — `ticket_organizer_workspace_copy_cleanup`
-- `20260822160447` — `ticket_organization_finance_ledger`
-- `20260822160755` — `admin_list_ticket_organization_finance_ledgers`
-- `20260822161133` — `serialize_ticket_liability_posting`
-- `20260822161816` — `admin_list_ticket_organization_events`
-- `20260822163849` — `fix_remaining_function_search_paths`
-- `20260822164036` — `vac_callback_nonce_replay_protection`
+### Completed: timestamp drift with equivalent SQL reconstructed
 
-### B. Same logical migration name, different production vs Git version
+The following logical migrations were proven equivalent to their live production SQL by Git-blob SHA comparison, with differences limited to filename/timestamp and in some cases trailing newline/blank-line formatting. They now also exist under the production versions:
 
-Each pair below must have its SQL body compared before the Git file is renamed/replaced.
+- `20260822091026_temporary_organizer_invites.sql`
+- `20260822091918_temporary_organizer_auth_bans.sql`
+- `20260822091957_temporary_organizer_regrant.sql`
+- `20260822092413_organizer_temporary_identity_only.sql`
+- `20260822101133_organizer_event_ticket_approval_integrity.sql`
+- `20260822101255_harden_ticket_approval_trigger_permissions.sql`
+- `20260822103343_harden_ticket_revision_trigger_context.sql`
+- `20260822112957_normalize_ticket_payout_mpamba_method.sql`
+- `20260822113203_admin_ticket_event_finance_event_list.sql`
+- `20260822151903_use_organization_finance_entitlements.sql`
+- `20260822152051_ticket_finance_workspace.sql`
+- `20260822153135_ticket_verified_payout_destinations.sql`
+- `20260822153634_bind_payout_requests_to_verified_destination.sql`
+- `20260822153700_admin_list_payout_destinations.sql`
 
-| Production version | Production name | Current Git version |
-| --- | --- | --- |
-| `20260822091026` | `temporary_organizer_invites` | `20260822112500` |
-| `20260822091918` | `temporary_organizer_auth_bans` | `20260822120500` |
-| `20260822091957` | `temporary_organizer_regrant` | `20260822122000` |
-| `20260822092413` | `organizer_temporary_identity_only` | `20260822123500` |
-| `20260822101133` | `organizer_event_ticket_approval_integrity` | `20260822101500` |
-| `20260822101255` | `harden_ticket_approval_trigger_permissions` | `20260822102500` |
-| `20260822102422` | `ticket_event_live_revision_workflow` | `20260822123500` |
-| `20260822103343` | `harden_ticket_revision_trigger_context` | `20260822124500` |
-| `20260822112957` | `normalize_ticket_payout_mpamba_method` | `20260822112630` |
-| `20260822113203` | `admin_ticket_event_finance_event_list` | `20260822112915` |
-| `20260822145731` | `restore_public_operational_rls` | `20260822180000` |
-| `20260822145812` | `lock_internal_subscription_functions` | `20260822181500` |
-| `20260822150400` | `restrict_commerce_mutations` | `20260822183000` |
-| `20260822150633` | `prevent_profile_role_escalation` | `20260822184500` |
-| `20260822151046` | `ticket_organization_finance_entitlements` | `20260822190000` |
-| `20260822151903` | `use_organization_finance_entitlements` | `20260822191500` |
-| `20260822152051` | `ticket_finance_workspace` | `20260822193000` |
-| `20260822153135` | `ticket_verified_payout_destinations` | `20260822194500` |
-| `20260822153634` | `bind_payout_requests_to_verified_destination` | `20260822200000` |
-| `20260822153700` | `admin_list_payout_destinations` | `20260822201500` |
-| `20260822154155` | `expose_finance_entitlement_status` | `20260822203000` |
+### Completed: body-different live migrations reconstructed exactly
 
-### C. Production migrations with no exact-version Git file
+Several later Git files were not merely timestamp-renamed copies: their SQL bodies differed from what production actually executed. Exact live historical files have now been reconstructed from the Supabase migration ledger and verified by Git blob SHA:
 
-These were executed in production and therefore need exact live reconstruction in Git from `supabase_migrations.schema_migrations.statements` before normal migration tooling can be trusted again:
+- `20260822145731_restore_public_operational_rls.sql`
+- `20260822145812_lock_internal_subscription_functions.sql`
+- `20260822150400_restrict_commerce_mutations.sql`
+- `20260822150633_prevent_profile_role_escalation.sql`
+- `20260822151046_ticket_organization_finance_entitlements.sql`
+- `20260822154155_expose_finance_entitlement_status.sql`
 
-- `20260822140412` — `suspend_wallet_client_surface`
-- `20260822141209` — `harden_notifications_and_obvious_anon_rpc_surface`
-- `20260822141401` — `harden_vendor_catalog_and_messaging_rls`
-- `20260822142439` — `server_authoritative_commerce_checkout_quote`
+Their re-authored Git variants are not treated as historical truth.
 
-Do not replace these with later re-authored files merely because the intent looks similar. Restore the actual executed production SQL under the actual production version.
+### Completed: duplicate active migration version removed
 
-### D. Critical duplicate Git version
-
-Git currently contains two distinct migration files using the same version:
+Git previously had two distinct active migrations using version `20260822123500`:
 
 - `20260822123500_organizer_temporary_identity_only.sql`
 - `20260822123500_ticket_event_live_revision_workflow.sql`
 
-Production did **not** execute both under `20260822123500`. Their observed production versions are:
+Production actually executed these logical migrations as:
 
 - `organizer_temporary_identity_only` -> `20260822092413`
 - `ticket_event_live_revision_workflow` -> `20260822102422`
 
-This duplicate version must be eliminated as part of reconstruction.
+The active `supabase/migrations/` directory no longer contains the duplicate `20260822123500` files.
 
-### E. Git-only migrations that must not be pushed automatically
+### Completed: unreconciled/pending variants quarantined
 
-These files are not present in the observed live migration history and must remain quarantined/pending until a deliberate decision is made:
+Substantively different or intentionally pending variants were moved out of the active push path to:
 
-- `20260822170000_suspend_wallet_attack_surface.sql`
-- `20260822172500_harden_food_payment_authority.sql`
+`supabase/migrations_pending_reconciliation/`
 
-`20260822170000_suspend_wallet_attack_surface.sql` overlaps the already-executed Wallet suspension migration but also contains additional cleanup such as dropping historical RLS policies. The live database currently blocks Wallet table access through grants and limits `wallet_checkout_campus_market` to `service_role`; therefore this file must not be treated as an already-executed migration simply because its intent overlaps production.
+This includes:
 
-`20260822172500_harden_food_payment_authority.sql` is deliberately not a current delivery priority. Food, Marketplace, and Rooms are frozen/ignored while their product future is reviewed. Do not deploy this migration as part of ticket/scanner work.
+- old Git variant `20260822123500_ticket_event_live_revision_workflow.sql`;
+- `20260822170000_suspend_wallet_attack_surface.sql`;
+- `20260822172500_harden_food_payment_authority.sql`;
+- later re-authored variants of operational RLS, internal subscription locking, commerce mutation restrictions, profile role hardening, finance entitlements, and finance-entitlement status.
 
-## Current product impact
+Quarantine preserves the SQL for review/history while preventing an accidental blanket migration push from treating those files as normal pending migrations.
 
-This reconciliation is required to safely add future ticket migrations such as the event-scoped Gate Staff scanner model. It is **not** permission to alter the working ticket purchase rails or to resume Food/Marketplace/Rooms payment work.
+Food, Marketplace, and Rooms remain frozen/ignored by product decision; their payment/custody work is not part of the ticket/scanner delivery path.
 
-Ticket invariants to preserve during reconciliation:
+## Remaining known migration-history gap
+
+Exactly one known live 2026-08-22 migration is still missing from the active Git migration history:
+
+`20260822102422_ticket_event_live_revision_workflow.sql`
+
+Important facts:
+
+- production statement size: `51,383` bytes;
+- exact production Git-blob SHA-1: `b20f43de723f7f98cd7a34001ff4896da4de7d6b`;
+- production statement plus a normal final LF would hash to `e42ff93ba8f9fdf4fa12517e55e31224fbc4a434`;
+- neither production blob exists in Git object history;
+- the quarantined old Git variant is `49,489` bytes with blob SHA `86b0b447ca5f2fc44c235b095a488426e8e314ed` and must NOT be renamed as though it were the live migration.
+
+The exact production migration must be reconstructed from the Supabase migration ledger and hash-verified before the migration history can be considered structurally repaired.
+
+## Active product invariants during reconciliation
+
+Ticket invariants to preserve:
 
 - Airtel Money remains working;
 - TNM Mpamba remains working;
 - Bank Transfer remains working;
 - Card remains working;
-- VAC Payments remains the provider-facing ticket payment authority;
-- verified callback fulfilment remains the ticket issuance authority;
+- VAC Payments remains provider-facing ticket payment authority;
+- verified callback fulfilment remains ticket issuance authority;
 - permanent ticket references remain non-admission references;
 - Gate Staff schema is not deployed until migration history is trustworthy.
 
-## Safe reconciliation sequence
+Other verticals:
 
-1. Export exact live `version`, `name`, and `statements` for every mismatched/live-only migration above.
-2. Compare each current Git SQL body with the live executed SQL body.
-3. For body-identical logical duplicates, reconstruct the migration in Git under the exact live production version and retire the re-authored version from the active migration directory.
-4. For body-different migrations, preserve the exact live migration first, then classify the Git delta as either:
-   - genuinely pending and still required;
-   - obsolete/superseded;
-   - deliberately quarantined because the product is frozen/under review.
-5. Restore the four production-only migrations exactly as executed.
-6. Resolve the duplicate `20260822123500` version by restoring both migrations at their actual live versions.
-7. Ensure the active `supabase/migrations/` directory has unique versions and reflects the full live migration history in order.
-8. Move intentionally non-deployable pending work out of the active push path rather than leaving it where a blanket push can execute it accidentally.
-9. Run a clean local/disposable database replay from migration zero.
-10. Compare the replayed schema, functions, grants, RLS, and critical ticket objects to production.
-11. Only after that comparison passes, clear the `DO NOT DB PUSH` blocker.
-12. Then create the additive Gate Staff migration/RPC work as a new migration after the reconciled live head.
+- Food: leave in place and ignore/freeze new payment-custody work;
+- Marketplace: leave in place and ignore/freeze new payment-custody work;
+- Rooms/Landlords: leave in place and ignore/freeze payment-custody work;
+- Wallet: remains suspended product-wide.
 
-## Next reconciliation batch
+## Remaining safe sequence
 
-The next implementation step should compare SQL bodies for the early mismatch group first:
+1. Reconstruct exact live `20260822102422_ticket_event_live_revision_workflow.sql` from Supabase's stored migration statement.
+2. Verify the resulting Git blob SHA exactly equals the live migration blob SHA.
+3. Compare every active Git migration version/name against live `supabase_migrations.schema_migrations` one-for-one.
+4. Confirm active migration versions are unique and quarantined files are outside the normal push path.
+5. Run a clean local/disposable Supabase replay from migration zero.
+6. Compare replayed schema, functions, grants, RLS, triggers, and critical ticket objects to production.
+7. Keep `DO NOT DB PUSH` active until that replay/schema comparison passes.
+8. After the blocker is cleared, create the Gate Staff/event-scoped scanner schema and RPCs as a new additive migration after the reconciled live head.
 
-- temporary organizer invite/auth/regrant/identity migrations;
-- organizer approval integrity/trigger migrations;
-- ticket live revision workflow/trigger migration.
+## Gate Staff dependency
 
-That batch also resolves the duplicate `20260822123500` problem and provides a repeatable method for the later finance/security timestamp mismatches.
+The event-scoped Gate Staff model is already decided/documented, but implementation intentionally waits for this reconciliation. Gate Staff will require additive schema/RPC changes and must not be layered onto a migration directory whose history does not accurately represent production.
