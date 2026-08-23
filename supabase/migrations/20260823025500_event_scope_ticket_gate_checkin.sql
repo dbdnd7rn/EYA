@@ -159,9 +159,16 @@ begin
   where issued_ticket_id=v_ticket.id and status='active';
 
   select to_jsonb(e) into v_event from (select id,title,date_label,venue,city from public.ticket_events where id=v_ticket.event_id) e;
-  select to_jsonb(t) into v_tier from (select id,name,price_mwk from public.ticket_tiers where id=v_ticket.tier_id) t;
-  select to_jsonb(o) into v_order from (select id,total_mwk,quantity,payment_status,paid_at from public.ticket_orders where id=v_ticket.order_id) o;
-  select to_jsonb(u) into v_user from (select id,full_name,email,phone from public.profiles where id=v_ticket.user_id) u;
+
+  if v_is_admin then
+    select to_jsonb(t) into v_tier from (select id,name,price_mwk from public.ticket_tiers where id=v_ticket.tier_id) t;
+    select to_jsonb(o) into v_order from (select id,total_mwk,quantity,payment_status,paid_at from public.ticket_orders where id=v_ticket.order_id) o;
+    select to_jsonb(u) into v_user from (select id,full_name,email,phone from public.profiles where id=v_ticket.user_id) u;
+  else
+    select to_jsonb(t) into v_tier from (select id,name from public.ticket_tiers where id=v_ticket.tier_id) t;
+    v_order := null;
+    select to_jsonb(u) into v_user from (select id,full_name from public.profiles where id=v_ticket.user_id) u;
+  end if;
 
   return jsonb_build_object(
     'status','success',
