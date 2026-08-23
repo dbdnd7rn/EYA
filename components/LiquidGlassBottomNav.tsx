@@ -17,12 +17,15 @@ type TabBadge = string | number | undefined;
 
 const ACTIVE_COLOR = "#102B5C";
 const INACTIVE_COLOR = "#6F7890";
-const ACTIVE_BACKGROUND = "rgba(16, 43, 92, 0.10)";
-const BAR_BACKGROUND = "rgba(255, 255, 255, 0.78)";
-const BORDER_COLOR = "rgba(255, 255, 255, 0.65)";
-const PRESS_LOCK_MS = 450;
+const ACTIVE_BACKGROUND = "rgba(74, 96, 166, 0.11)";
+const BAR_BACKGROUND = "rgba(255, 255, 255, 0.68)";
+const BORDER_COLOR = "rgba(255, 255, 255, 0.76)";
+const PRESS_LOCK_MS = 420;
+const BAR_HEIGHT = 70;
+const ACTIVE_CAPSULE_MAX_WIDTH = 84;
+const ACTIVE_CAPSULE_MIN_WIDTH = 58;
 
-export const LIQUID_GLASS_NAV_CONTENT_PADDING = 164;
+export const LIQUID_GLASS_NAV_CONTENT_PADDING = 118;
 
 type IconProps = {
   color: string;
@@ -55,20 +58,24 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
   const [barWidth, setBarWidth] = React.useState(0);
   const tabCount = items.length || 1;
   const tabWidth = barWidth > 0 ? barWidth / tabCount : 0;
+  const bubbleWidth = tabWidth > 0
+    ? Math.max(ACTIVE_CAPSULE_MIN_WIDTH, Math.min(ACTIVE_CAPSULE_MAX_WIDTH, tabWidth - 24))
+    : 0;
   const bubbleX = useSharedValue(0);
 
   React.useEffect(() => {
-    bubbleX.value = withSpring(activeIndex * tabWidth, {
-      damping: 19,
-      stiffness: 185,
-      mass: 0.86,
+    const centeredOffset = Math.max(0, (tabWidth - bubbleWidth) / 2);
+    bubbleX.value = withSpring(activeIndex * tabWidth + centeredOffset, {
+      damping: 20,
+      stiffness: 210,
+      mass: 0.78,
     });
-  }, [activeIndex, bubbleX, tabWidth]);
+  }, [activeIndex, bubbleWidth, bubbleX, tabWidth]);
 
   const bubbleStyle = useAnimatedStyle(() => ({
     opacity: tabWidth > 0 ? 1 : 0,
-    width: Math.max(tabWidth - 10, 0),
-    transform: [{ translateX: bubbleX.value + 5 }],
+    width: bubbleWidth,
+    transform: [{ translateX: bubbleX.value }],
   }));
 
   const handleItemPress = React.useCallback((item: LiquidGlassNavItem, focused: boolean) => {
@@ -82,11 +89,11 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
   }, []);
 
   return (
-    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: insets.bottom + 20 }]}> 
+    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: Math.max(8, insets.bottom + 8) }]}>
       <View style={styles.shadowWrap}>
         <BlurView
           experimentalBlurMethod="dimezisBlurView"
-          intensity={48}
+          intensity={34}
           tint="systemUltraThinMaterialLight"
           onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
           style={styles.glassShell}
@@ -94,33 +101,23 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
           <View pointerEvents="none" style={styles.glassTint} />
           <LinearGradient
             pointerEvents="none"
-            colors={["rgba(255,255,255,0.74)", "rgba(255,255,255,0.34)", "rgba(255,255,255,0.56)"]}
-            locations={[0, 0.48, 1]}
+            colors={["rgba(255,255,255,0.58)", "rgba(255,255,255,0.18)", "rgba(238,243,255,0.36)"]}
+            locations={[0, 0.52, 1]}
             start={{ x: 0.08, y: 0 }}
             end={{ x: 0.96, y: 1 }}
             style={StyleSheet.absoluteFill}
-          />
-          <LinearGradient
-            pointerEvents="none"
-            colors={["rgba(255,255,255,0.82)", "rgba(255,255,255,0.12)", "rgba(16,43,92,0.06)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0.85 }}
-            style={styles.refractionWash}
           />
           <View pointerEvents="none" style={styles.topHighlight} />
           <View pointerEvents="none" style={styles.innerBorder} />
 
           <Animated.View pointerEvents="none" style={[styles.activeBubble, bubbleStyle]}>
-            <BlurView experimentalBlurMethod="dimezisBlurView" intensity={36} tint="systemThinMaterialLight" style={styles.bubbleBlur}>
-              <View style={styles.bubbleTint} />
-              <LinearGradient
-                colors={["rgba(255,255,255,0.78)", "rgba(16,43,92,0.08)", "rgba(255,255,255,0.28)"]}
-                start={{ x: 0.08, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={styles.bubbleHighlight} />
-            </BlurView>
+            <LinearGradient
+              colors={["rgba(255,255,255,0.52)", "rgba(78,103,177,0.10)", "rgba(255,255,255,0.24)"]}
+              start={{ x: 0.1, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.bubbleHighlight} />
           </Animated.View>
 
           <View style={styles.row}>
@@ -136,8 +133,8 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
                   icon={item.renderIcon({
                     color,
                     focused,
-                    size: 24,
-                    strokeWidth: focused ? 2.7 : 2.25,
+                    size: 23,
+                    strokeWidth: focused ? 2.65 : 2.2,
                   })}
                   label={item.label}
                   onPress={() => handleItemPress(item, focused)}
@@ -174,7 +171,7 @@ function LiquidTabItem({
 
   React.useEffect(() => {
     focusProgress.value = withTiming(focused ? 1 : 0, {
-      duration: 220,
+      duration: 190,
       easing: Easing.out(Easing.cubic),
     });
   }, [focusProgress, focused]);
@@ -182,12 +179,13 @@ function LiquidTabItem({
   const itemStyle = useAnimatedStyle(() => ({
     transform: [
       { scale: pressed.value },
-      { translateY: interpolate(focusProgress.value, [0, 1], [0, -1]) },
+      { translateY: interpolate(focusProgress.value, [0, 1], [0, -1.5]) },
     ],
   }));
 
   const labelStyle = useAnimatedStyle(() => ({
     color: interpolateColor(focusProgress.value, [0, 1], [INACTIVE_COLOR, ACTIVE_COLOR]),
+    opacity: interpolate(focusProgress.value, [0, 1], [0.82, 1]),
   }));
 
   return (
@@ -198,10 +196,10 @@ function LiquidTabItem({
         onLongPress={onLongPress}
         onPress={onPress}
         onPressIn={() => {
-          pressed.value = withTiming(0.96, { duration: 90 });
+          pressed.value = withTiming(0.95, { duration: 80 });
         }}
         onPressOut={() => {
-          pressed.value = withSpring(1, { damping: 13, stiffness: 240 });
+          pressed.value = withSpring(1, { damping: 14, stiffness: 260 });
         }}
         style={styles.pressable}
       >
@@ -224,87 +222,69 @@ function LiquidTabItem({
 const styles = StyleSheet.create({
   safeArea: {
     position: "absolute",
-    left: 18,
-    right: 18,
+    left: 16,
+    right: 16,
   },
   shadowWrap: {
-    height: 92,
-    borderRadius: 42,
+    height: BAR_HEIGHT,
+    borderRadius: 28,
     shadowColor: "#102B5C",
-    shadowOpacity: 0.18,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 16 },
-    elevation: 16,
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   glassShell: {
-    height: 92,
-    borderRadius: 42,
+    height: BAR_HEIGHT,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: BORDER_COLOR,
     backgroundColor: BAR_BACKGROUND,
     overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 9,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
   },
   glassTint: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: BAR_BACKGROUND,
   },
-  refractionWash: {
-    position: "absolute",
-    left: 10,
-    right: 10,
-    top: 6,
-    height: 46,
-    borderRadius: 34,
-    opacity: 0.86,
-  },
   topHighlight: {
     position: "absolute",
-    left: 24,
-    right: 24,
-    top: 7,
+    left: 22,
+    right: 22,
+    top: 5,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.88)",
+    backgroundColor: "rgba(255,255,255,0.72)",
   },
   innerBorder: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 42,
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.36)",
+    borderColor: "rgba(255,255,255,0.28)",
   },
   activeBubble: {
     position: "absolute",
-    top: 10,
-    bottom: 10,
+    top: 8,
+    bottom: 8,
     left: 0,
-    borderRadius: 34,
+    borderRadius: 22,
     overflow: "hidden",
     backgroundColor: ACTIVE_BACKGROUND,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.58)",
+    borderColor: "rgba(255,255,255,0.48)",
     shadowColor: "#102B5C",
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 8,
-  },
-  bubbleBlur: {
-    flex: 1,
-    borderRadius: 34,
-    overflow: "hidden",
-  },
-  bubbleTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: ACTIVE_BACKGROUND,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   bubbleHighlight: {
     position: "absolute",
-    left: 16,
-    right: 16,
-    top: 8,
+    left: 14,
+    right: 14,
+    top: 5,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.82)",
+    backgroundColor: "rgba(255,255,255,0.66)",
   },
   row: {
     flex: 1,
@@ -315,36 +295,36 @@ const styles = StyleSheet.create({
   itemWrap: {
     flex: 1,
     minWidth: 0,
-    borderRadius: 34,
+    borderRadius: 22,
   },
   pressable: {
     flex: 1,
     minWidth: 0,
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: 2,
     paddingHorizontal: 2,
   },
   iconWrap: {
-    height: 26,
+    height: 24,
     alignItems: "center",
     justifyContent: "center",
   },
   label: {
-    fontSize: 11,
-    lineHeight: 13,
+    fontSize: 10.5,
+    lineHeight: 12,
     fontWeight: "900",
     letterSpacing: 0,
     textAlign: "center",
   },
   badgeWrap: {
     position: "absolute",
-    top: 9,
-    right: 16,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 5,
+    top: 5,
+    right: 13,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 8.5,
+    paddingHorizontal: 4,
     backgroundColor: "#ff3864",
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.92)",
@@ -353,7 +333,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     color: "#ffffff",
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
   },
 });
