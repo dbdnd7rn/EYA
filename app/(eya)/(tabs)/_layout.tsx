@@ -6,11 +6,12 @@ import { useStudentTheme } from "@/providers/StudentThemeProvider";
 const LIGHT_EYA_TAB_THEME = {
   activeColor: "#0f7a3a",
   inactiveColor: "#1b2433",
-  backgroundColor: "rgba(255,255,255,0.95)",
-  borderColor: "#e3ebdf",
-  indicatorColor: "rgba(15,122,58,0.16)",
+  backgroundColor: "rgba(255,255,255,0.76)",
+  borderColor: "rgba(255,255,255,0.78)",
+  indicatorColor: "rgba(15,122,58,0.10)",
   glowColor: "#0f7a3a",
   sceneBackgroundColor: "#f6f7fb",
+  blurTint: "light" as const,
 } as const;
 
 export default function StudentTabs() {
@@ -19,9 +20,9 @@ export default function StudentTabs() {
     ? {
         activeColor: "#ffffff",
         inactiveColor: "#9caac2",
-        backgroundColor: "rgba(9,15,27,0.96)",
-        borderColor: "#2a3d5c",
-        indicatorColor: "rgba(116,214,155,0.18)",
+        backgroundColor: "rgba(9,15,27,0.82)",
+        borderColor: "rgba(69,88,120,0.72)",
+        indicatorColor: "rgba(116,214,155,0.12)",
         glowColor: "#74d69b",
         sceneBackgroundColor: theme.background,
         blurTint: "dark" as const,
