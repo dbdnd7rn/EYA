@@ -170,7 +170,8 @@ export default function AccountScreen() {
               style={[styles.tile, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]}
               onPress={() => router.push("/(student)/payments")}
             >
-              <View style={[styles.iconBubble, { backgroundColor: "#e6eefb" }]}>
+              <View style={[styles.iconBubble, { backgroundColor: "#e6eefb" }]}
+              >
                 <CreditCard size={22} color="#5b6fad" />
               </View>
               <Text style={[styles.tileTitle, { color: theme.text }]}>Payments</Text>
@@ -179,14 +180,16 @@ export default function AccountScreen() {
 
           <View style={styles.rowMenu}>
             <Pressable style={[styles.menuPill, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]} onPress={() => router.push("/(student)/settings")}>
-              <View style={[styles.menuIconSoft, { backgroundColor: theme.surfaceMuted }]}>
+              <View style={[styles.menuIconSoft, { backgroundColor: theme.surfaceMuted }]}
+              >
                 <Settings size={18} color={theme.textMuted} />
               </View>
               <Text style={[styles.menuText, { color: theme.text }]}>Settings</Text>
             </Pressable>
 
             <Pressable style={[styles.menuPill, { backgroundColor: theme.surface, borderColor: theme.borderSoft }]} onPress={() => router.push("/(student)/help")}>
-              <View style={[styles.menuIconSoft, { backgroundColor: theme.surfaceMuted }]}>
+              <View style={[styles.menuIconSoft, { backgroundColor: theme.surfaceMuted }]}
+              >
                 <CircleHelp size={18} color={theme.accent} />
               </View>
               <Text style={[styles.menuText, { color: theme.text }]}>Help</Text>
@@ -199,7 +202,8 @@ export default function AccountScreen() {
               style={[styles.rolesWorkspaceBtn, styles.adminPortalBtn, { backgroundColor: theme.surfaceStrong, borderColor: "#111827" }]}
               onPress={() => void openAdminPortal()}
             >
-              <View style={[styles.rolesWorkspaceIconWrap, { backgroundColor: "#111827", borderColor: "#111827" }]}>
+              <View style={[styles.rolesWorkspaceIconWrap, { backgroundColor: "#111827", borderColor: "#111827" }]}
+              >
                 <ShieldCheck size={17} color="#ffffff" />
               </View>
               <View style={styles.rolesWorkspaceTextWrap}>
@@ -212,9 +216,10 @@ export default function AccountScreen() {
 
           <Pressable
             style={[styles.rolesWorkspaceBtn, { backgroundColor: theme.surface, borderColor: theme.accent }]}
-            onPress={() => router.push("/onboarding")}
+            onPress={() => router.push("/(student)/workspaces" as any)}
           >
-            <View style={[styles.rolesWorkspaceIconWrap, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+            <View style={[styles.rolesWorkspaceIconWrap, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}
+            >
               <Star size={17} color={theme.accent} />
             </View>
             <View style={styles.rolesWorkspaceTextWrap}>
@@ -240,7 +245,8 @@ export default function AccountScreen() {
               ])
             }
           >
-            <View style={[styles.menuIconSoft, styles.signOutIconSoft, { backgroundColor: theme.isDark ? "#4b2c38" : "#fff0f6" }]}>
+            <View style={[styles.menuIconSoft, styles.signOutIconSoft, { backgroundColor: theme.isDark ? "#4b2c38" : "#fff0f6" }]}
+            >
               <LogOut size={18} color="#cf7d84" />
             </View>
             <Text style={[styles.signOutText, { color: theme.isDark ? "#ffb3c6" : "#74494e" }]}>Sign out</Text>
