@@ -1,7 +1,65 @@
 import { supabase } from "@/lib/supabase";
-import type { AdminTicketCheckInResult } from "@/lib/adminControlApi";
 
 export type LiveTicketGateMethod = "qr" | "manual";
+
+export type TicketGateCheckInResult = {
+  status: string;
+  credential_kind?: string;
+  scanner_access_kind?: string;
+  scanner_assignment_id?: string | null;
+  gate_label?: string | null;
+  guest_pass?: {
+    id?: string;
+    guest_name?: string | null;
+    mode?: string | null;
+  } | null;
+  ticket: {
+    id: string;
+    event_id: string;
+    order_id?: string | null;
+    tier_id?: string | null;
+    user_id?: string | null;
+    ticket_code: string;
+    status: string;
+    checked_in_at: string | null;
+    event?: {
+      id: string;
+      title: string;
+      date_label?: string | null;
+      venue?: string | null;
+      city?: string | null;
+    } | null;
+    tier?: {
+      id: string;
+      name: string;
+      price_mwk?: number;
+    } | null;
+    order?: {
+      id: string;
+      total_mwk: number;
+      quantity: number;
+      payment_status: string;
+      paid_at: string | null;
+    } | null;
+    user?: {
+      id: string;
+      full_name: string | null;
+      email?: string | null;
+      phone?: string | null;
+    } | null;
+  };
+  checkin: {
+    id: string;
+    issued_ticket_id: string;
+    event_id: string;
+    checked_in_by: string | null;
+    method: string;
+    device_label: string | null;
+    created_at: string;
+    scanner_assignment_id?: string | null;
+    gate_label?: string | null;
+  };
+};
 
 const QR_PREFIXES = ["EYA-LIVE-2-", "EYA-GUEST-2-", "EYA-OFFLINE-1-"] as const;
 const MANUAL_PREFIXES = ["LIVE-", "GUEST-", "OFF-"] as const;
@@ -29,7 +87,7 @@ export async function checkInLiveTicketCredential(input: {
   method: LiveTicketGateMethod;
   eventId?: string | null;
   deviceLabel?: string | null;
-}): Promise<AdminTicketCheckInResult & { credential_kind?: string; guest_pass?: { id?: string; guest_name?: string | null; mode?: string } | null }> {
+}): Promise<TicketGateCheckInResult> {
   const credential = normalizeTicketEntryCredential(input.credential, input.method);
   if (!credential) {
     throw new Error(
@@ -48,5 +106,5 @@ export async function checkInLiveTicketCredential(input: {
 
   if (error) throw new Error(error.message || "Ticket check-in failed.");
   if (!data || typeof data !== "object") throw new Error("Ticket check-in returned no result.");
-  return data as AdminTicketCheckInResult & { credential_kind?: string; guest_pass?: { id?: string; guest_name?: string | null; mode?: string } | null };
+  return data as TicketGateCheckInResult;
 }
