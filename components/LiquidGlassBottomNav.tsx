@@ -25,7 +25,7 @@ const BAR_HEIGHT = 70;
 const ACTIVE_CAPSULE_MAX_WIDTH = 84;
 const ACTIVE_CAPSULE_MIN_WIDTH = 58;
 
-export const LIQUID_GLASS_NAV_CONTENT_PADDING = 118;
+export const LIQUID_GLASS_NAV_CONTENT_PADDING = 104;
 
 type IconProps = {
   color: string;
@@ -89,7 +89,10 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
   }, []);
 
   return (
-    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: Math.max(8, insets.bottom + 8) }]}>
+    <View
+      pointerEvents="box-none"
+      style={[styles.safeArea, { paddingBottom: Math.max(8, insets.bottom + 6) }]}
+    >
       <View style={styles.shadowWrap}>
         <BlurView
           experimentalBlurMethod="dimezisBlurView"
@@ -221,11 +224,12 @@ function LiquidTabItem({
 
 const styles = StyleSheet.create({
   safeArea: {
-    position: "absolute",
-    left: 16,
-    right: 16,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    backgroundColor: "transparent",
   },
   shadowWrap: {
+    width: "100%",
     height: BAR_HEIGHT,
     borderRadius: 28,
     shadowColor: "#102B5C",
