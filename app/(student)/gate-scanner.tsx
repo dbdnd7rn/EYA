@@ -12,22 +12,16 @@ import {
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, Camera, CheckCircle2, Keyboard, QrCode, RotateCcw, ShieldCheck, Ticket, XCircle } from "lucide-react-native";
-import type { AdminTicketCheckInResult } from "@/lib/adminControlApi";
 import {
   checkInLiveTicketCredential,
   normalizeTicketEntryCredential,
   ticketEntryCredentialKind,
   type LiveTicketGateMethod,
+  type TicketGateCheckInResult,
 } from "@/lib/ticketGateApi";
 import { getMyGateStaffAssignments, type GateStaffAssignment } from "@/lib/ticketGateStaff";
 
-type ScanPayload = AdminTicketCheckInResult & {
-  credential_kind?: string;
-  scanner_access_kind?: string;
-  scanner_assignment_id?: string | null;
-  gate_label?: string | null;
-  guest_pass?: { guest_name?: string | null; mode?: string | null } | null;
-};
+type ScanPayload = TicketGateCheckInResult;
 
 type ScanResult =
   | { state: "idle" }
@@ -99,7 +93,7 @@ export default function GateStaffScannerScreen() {
         eventId,
         deviceLabel: assignment.gate_label ? `EYA Gate Staff · ${assignment.gate_label}` : "EYA Gate Staff",
       });
-      setResult({ state: "accepted", data: data as ScanPayload, credentialLabel: ticketEntryCredentialKind(credential) });
+      setResult({ state: "accepted", data, credentialLabel: ticketEntryCredentialKind(credential) });
     } catch (e) {
       setResult({ state: "rejected", message: e instanceof Error ? e.message : "Ticket rejected.", code: ticketEntryCredentialKind(credential) });
     } finally {
@@ -170,6 +164,22 @@ export default function GateStaffScannerScreen() {
               <Pressable style={styles.permissionBtn} onPress={() => void requestPermission()}><Text style={styles.permissionBtnText}>Allow Camera</Text></Pressable>
             </View>
           )}
+
+          {hasCamera ? (
+            <>
+              <View pointerEvents="none" style={styles.scanFrame}>
+                <View style={[styles.corner, styles.cornerTopLeft]} />
+                <View style={[styles.corner, styles.cornerTopRight]} />
+                <View style={[styles.corner, styles.cornerBottomLeft]} />
+                <View style={[styles.corner, styles.cornerBottomRight]} />
+              </View>
+              <View pointerEvents="none" style={styles.liveBadge}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveBadgeText}>EVENT-LOCKED · SERVER VERIFIED</Text>
+              </View>
+            </>
+          ) : null}
+
           {working ? <View style={styles.scanOverlay}><ActivityIndicator color="#ffffff" /><Text style={styles.scanOverlayText}>Validating ticket...</Text></View> : null}
         </View>
       </View>
@@ -228,7 +238,7 @@ function Detail({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   root:{flex:1,backgroundColor:"#f5f7ff"},flexOne:{flex:1},centerPage:{flex:1,backgroundColor:"#f5f7ff",alignItems:"center",justifyContent:"center",padding:28,gap:10},centerText:{color:"#66728c",fontSize:12,lineHeight:18,fontWeight:"700",textAlign:"center"},lockedTitle:{color:"#9b2c2c",fontSize:20,fontWeight:"900"},backAction:{marginTop:8,borderRadius:16,backgroundColor:"#153465",paddingHorizontal:18,paddingVertical:12},backActionText:{color:"#fff",fontWeight:"900"},
   topBand:{backgroundColor:"#102a54",paddingHorizontal:16,paddingTop:50,paddingBottom:18,borderBottomLeftRadius:30,borderBottomRightRadius:30},headerRow:{flexDirection:"row",alignItems:"center",gap:12,marginBottom:16},backBtn:{width:44,height:44,borderRadius:22,backgroundColor:"rgba(255,255,255,.14)",alignItems:"center",justifyContent:"center"},kicker:{color:"rgba(255,255,255,.65)",fontSize:9,fontWeight:"900",letterSpacing:.8},title:{color:"#fff",fontSize:22,fontWeight:"900",marginTop:2},securityBadge:{width:44,height:44,borderRadius:22,backgroundColor:"#5c6ee6",alignItems:"center",justifyContent:"center"},
-  cameraShell:{height:320,borderRadius:28,overflow:"hidden",backgroundColor:"#0a1730"},camera:{flex:1},cameraFallback:{flex:1,backgroundColor:"#eef2ff",alignItems:"center",justifyContent:"center",padding:22,gap:10},cameraFallbackTitle:{color:"#153465",fontSize:18,fontWeight:"900"},permissionBtn:{marginTop:6,minHeight:46,borderRadius:16,backgroundColor:"#5c6ee6",paddingHorizontal:18,alignItems:"center",justifyContent:"center"},permissionBtnText:{color:"#fff",fontWeight:"900"},scanOverlay:{...StyleSheet.absoluteFillObject,backgroundColor:"rgba(10,23,48,.7)",alignItems:"center",justifyContent:"center",gap:10},scanOverlayText:{color:"#fff",fontSize:13,fontWeight:"900"},
+  cameraShell:{height:320,borderRadius:28,overflow:"hidden",backgroundColor:"#0a1730",borderWidth:1,borderColor:"rgba(255,255,255,.12)"},camera:{flex:1},cameraFallback:{flex:1,backgroundColor:"#eef2ff",alignItems:"center",justifyContent:"center",padding:22,gap:10},cameraFallbackTitle:{color:"#153465",fontSize:18,fontWeight:"900"},permissionBtn:{marginTop:6,minHeight:46,borderRadius:16,backgroundColor:"#5c6ee6",paddingHorizontal:18,alignItems:"center",justifyContent:"center"},permissionBtnText:{color:"#fff",fontWeight:"900"},scanFrame:{...StyleSheet.absoluteFillObject,margin:48},corner:{position:"absolute",width:42,height:42,borderColor:"#ffffff"},cornerTopLeft:{left:0,top:0,borderLeftWidth:3,borderTopWidth:3,borderTopLeftRadius:16},cornerTopRight:{right:0,top:0,borderRightWidth:3,borderTopWidth:3,borderTopRightRadius:16},cornerBottomLeft:{left:0,bottom:0,borderLeftWidth:3,borderBottomWidth:3,borderBottomLeftRadius:16},cornerBottomRight:{right:0,bottom:0,borderRightWidth:3,borderBottomWidth:3,borderBottomRightRadius:16},liveBadge:{position:"absolute",top:14,alignSelf:"center",flexDirection:"row",alignItems:"center",gap:7,borderRadius:999,backgroundColor:"rgba(10,23,48,.76)",paddingHorizontal:11,paddingVertical:7},liveDot:{width:7,height:7,borderRadius:3.5,backgroundColor:"#57e69a"},liveBadgeText:{color:"#fff",fontSize:8.5,fontWeight:"900",letterSpacing:.55},scanOverlay:{...StyleSheet.absoluteFillObject,backgroundColor:"rgba(10,23,48,.7)",alignItems:"center",justifyContent:"center",gap:10},scanOverlayText:{color:"#fff",fontSize:13,fontWeight:"900"},
   content:{padding:16,gap:14,paddingBottom:40},noticeCard:{backgroundColor:"#effaf4",borderRadius:18,borderWidth:1,borderColor:"#d1eddf",padding:14,flexDirection:"row",alignItems:"flex-start",gap:10},noticeText:{flex:1,color:"#315c49",fontSize:11,lineHeight:17,fontWeight:"800"},manualCard:{backgroundColor:"#fff",borderRadius:22,borderWidth:1,borderColor:"#e3e8f7",padding:14,gap:12},manualHead:{flexDirection:"row",alignItems:"center",gap:9},cardTitle:{color:"#153465",fontSize:16,fontWeight:"900"},inputRow:{flexDirection:"row",gap:10},input:{flex:1,minHeight:50,borderRadius:16,borderWidth:1,borderColor:"#dfe5f4",paddingHorizontal:13,color:"#102a54",fontSize:13,fontWeight:"900"},checkBtn:{minHeight:50,borderRadius:16,backgroundColor:"#5c6ee6",paddingHorizontal:14,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:7},checkBtnText:{color:"#fff",fontSize:12,fontWeight:"900"},disabled:{opacity:.55},
   waitingCard:{backgroundColor:"#fff",borderRadius:22,borderWidth:1,borderColor:"#e3e8f7",padding:24,alignItems:"center",gap:8},waitingTitle:{color:"#153465",fontSize:17,fontWeight:"900"},rejectedCard:{backgroundColor:"#fff5f4",borderRadius:22,borderWidth:1,borderColor:"#f2d0cc",padding:22,alignItems:"center",gap:8},rejectedTitle:{color:"#b42318",fontSize:20,fontWeight:"900"},acceptedCard:{backgroundColor:"#f1fbf6",borderRadius:22,borderWidth:1,borderColor:"#c8ead8",padding:22,alignItems:"center",gap:8},acceptedTitle:{color:"#087443",fontSize:22,fontWeight:"900"},resultCode:{color:"#8f3b34",fontSize:11,fontWeight:"900"},details:{width:"100%",marginTop:8,backgroundColor:"#fff",borderRadius:16,paddingHorizontal:12},detailRow:{minHeight:46,flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:12,borderBottomWidth:1,borderBottomColor:"#eef1f7"},detailLabel:{color:"#8290a8",fontSize:11,fontWeight:"800"},detailValue:{flex:1,color:"#203856",fontSize:11,fontWeight:"900",textAlign:"right"},resetBtn:{marginTop:8,minHeight:46,borderRadius:16,backgroundColor:"#fff",borderWidth:1,borderColor:"#dce3ef",paddingHorizontal:16,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8},resetText:{color:"#153465",fontSize:12,fontWeight:"900"},
 });
