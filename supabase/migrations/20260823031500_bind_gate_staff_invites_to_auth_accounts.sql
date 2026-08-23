@@ -42,10 +42,11 @@ begin
   select u.id into v_user_id
   from auth.users u
   where lower(btrim(coalesce(u.email,'')))=v_email
+    and u.email_confirmed_at is not null
   limit 1;
 
   if v_user_id is null then
-    raise exception 'No EYA account was found for this email. Ask the person to create and verify their EYA account first.';
+    raise exception 'No verified EYA account was found for this email. Ask the person to create and verify their EYA account first.';
   end if;
 
   if exists (
