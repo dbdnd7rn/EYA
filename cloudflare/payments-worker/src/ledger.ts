@@ -26,7 +26,8 @@ export type PaymentsEnv = {
   PAYMENTS_DB: D1DatabaseLike;
 };
 
-export type PaymentMethod = "airtel_money" | "mpamba" | "bank_transfer" | "card";
+export type PaymentCurrency = "MWK" | "USD";
+export type PaymentMethod = "airtel_money" | "mpamba" | "bank_transfer" | "card" | "hosted_checkout";
 
 export type CreatePaymentIntentInput = {
   appId: string;
@@ -34,7 +35,8 @@ export type CreatePaymentIntentInput = {
   appUserId?: string | null;
   purpose: string;
   method: PaymentMethod;
-  amountMwk: number;
+  currency: PaymentCurrency;
+  amountMinor: number;
   customerEmail: string;
   customerPhone?: string | null;
   title?: string | null;
@@ -52,9 +54,11 @@ type PaymentIntentRow = {
   method: string;
   merchant_reference: string;
   provider_reference: string | null;
-  expected_amount_mwk: number;
+  expected_amount_mwk: number | null;
   paid_amount_mwk: number | null;
-  currency: "MWK";
+  expected_amount_minor: number;
+  paid_amount_minor: number | null;
+  currency: PaymentCurrency;
   status: string;
   customer_email: string | null;
   customer_phone: string | null;
@@ -69,6 +73,9 @@ type PaymentIntentRow = {
 };
 
 export type PaymentIntentRecord = Omit<PaymentIntentRow, "metadata_json" | "provider_payload_json"> & {
+  // Legacy EYA direct-charge helpers still read this field. It is 0 for USD
+  // hosted-checkout intents and must never be used as generic payment truth.
+  expected_amount_mwk: number;
   metadata: Record<string, unknown>;
   provider_payload: Record<string, unknown>;
 };
@@ -88,8 +95,10 @@ function mapPaymentIntent(row: PaymentIntentRow): PaymentIntentRecord {
   const { metadata_json: metadataJson, provider_payload_json: providerPayloadJson, ...rest } = row;
   return {
     ...rest,
-    expected_amount_mwk: Number(rest.expected_amount_mwk),
+    expected_amount_mwk: rest.expected_amount_mwk == null ? 0 : Number(rest.expected_amount_mwk),
     paid_amount_mwk: rest.paid_amount_mwk == null ? null : Number(rest.paid_amount_mwk),
+    expected_amount_minor: Number(rest.expected_amount_minor),
+    paid_amount_minor: rest.paid_amount_minor == null ? null : Number(rest.paid_amount_minor),
     metadata: parseJsonObject(metadataJson),
     provider_payload: parseJsonObject(providerPayloadJson),
   };
@@ -113,6 +122,8 @@ const PAYMENT_INTENT_SELECT = `select
    provider_reference,
    expected_amount_mwk,
    paid_amount_mwk,
+   expected_amount_minor,
+   paid_amount_minor,
    currency,
    status,
    customer_email,
@@ -155,7 +166,8 @@ async function findPaymentIntentById(env: PaymentsEnv, id: string): Promise<Paym
 
 function assertIdempotentMatch(existing: PaymentIntentRecord, input: CreatePaymentIntentInput): void {
   if (
-    Number(existing.expected_amount_mwk) !== input.amountMwk ||
+    Number(existing.expected_amount_minor) !== input.amountMinor ||
+    existing.currency !== input.currency ||
     existing.method !== input.method ||
     existing.purpose !== input.purpose ||
     existing.app_user_id !== (input.appUserId || null)
@@ -177,15 +189,16 @@ export async function createPaymentIntent(
   const id = crypto.randomUUID();
   const merchantReference = createMerchantReference(input.appId);
   const now = new Date().toISOString();
+  const legacyExpectedAmountMwk = input.currency === "MWK" ? input.amountMinor : null;
   const result = await env.PAYMENTS_DB.prepare(
     `insert or ignore into payment_intents (
        id, app_id, app_payment_id, app_user_id, purpose, provider, method,
-       merchant_reference, expected_amount_mwk, currency, status,
+       merchant_reference, expected_amount_mwk, expected_amount_minor, currency, status,
        customer_email, customer_phone, title, description, metadata_json,
        created_at, updated_at
      ) values (
-       ?1, ?2, ?3, ?4, ?5, 'paychangu', ?6, ?7, ?8, 'MWK', 'created',
-       ?9, ?10, ?11, ?12, ?13, ?14, ?14
+       ?1, ?2, ?3, ?4, ?5, 'paychangu', ?6, ?7, ?8, ?9, ?10, 'created',
+       ?11, ?12, ?13, ?14, ?15, ?16, ?16
      )`,
   )
     .bind(
@@ -196,7 +209,9 @@ export async function createPaymentIntent(
       input.purpose,
       input.method,
       merchantReference,
-      input.amountMwk,
+      legacyExpectedAmountMwk,
+      input.amountMinor,
+      input.currency,
       input.customerEmail,
       input.customerPhone || null,
       input.title || null,
