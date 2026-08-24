@@ -1,0 +1,39 @@
+name: VAC Payments Check
+
+on:
+  push:
+    paths:
+      - 'cloudflare/payments-worker/**'
+      - '.github/workflows/vac-payments-check.yml'
+  pull_request:
+    paths:
+      - 'cloudflare/payments-worker/**'
+      - '.github/workflows/vac-payments-check.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: cloudflare/payments-worker
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cloudflare/payments-worker/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck Worker
+        run: npm run typecheck
+
+      - name: Replay D1 migrations locally
+        run: npm run db:migrate:local
