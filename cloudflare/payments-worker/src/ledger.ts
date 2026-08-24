@@ -105,56 +105,102 @@ function mapPaymentIntent(row: PaymentIntentRow): PaymentIntentRecord {
   };
 }
 
-function nowIso(): string {
-  return new Date().toISOString();
+export function createMerchantReference(appId: string): string {
+  const safeAppId = appId.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12) || "app";
+  const random = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+  return `${safeAppId}_${Date.now()}_${random}`;
 }
 
-function paymentIntentId(): string {
-  return `pay_${crypto.randomUUID()}`;
+const PAYMENT_INTENT_SELECT = `select
+   id,
+   app_id,
+   app_payment_id,
+   app_user_id,
+   purpose,
+   provider,
+   method,
+   merchant_reference,
+   provider_reference,
+   expected_amount_mwk,
+   paid_amount_mwk,
+   expected_amount_minor,
+   paid_amount_minor,
+   currency,
+   status,
+   customer_email,
+   customer_phone,
+   title,
+   description,
+   metadata_json,
+   provider_payload_json,
+   checkout_url,
+   failure_reason,
+   created_at,
+   updated_at
+ from payment_intents`;
+
+export async function findPaymentIntent(
+  env: PaymentsEnv,
+  appId: string,
+  appPaymentId: string,
+): Promise<PaymentIntentRecord | null> {
+  const row = await env.PAYMENTS_DB.prepare(
+    `${PAYMENT_INTENT_SELECT}
+     where app_id = ?1 and app_payment_id = ?2
+     limit 1`,
+  )
+    .bind(appId, appPaymentId)
+    .first<PaymentIntentRow>();
+  return row ? mapPaymentIntent(row) : null;
 }
 
-function merchantReference(appId: string): string {
-  return `vac_${appId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${crypto.randomUUID()}`;
+async function findPaymentIntentById(env: PaymentsEnv, id: string): Promise<PaymentIntentRecord | null> {
+  const row = await env.PAYMENTS_DB.prepare(
+    `${PAYMENT_INTENT_SELECT}
+     where id = ?1
+     limit 1`,
+  )
+    .bind(id)
+    .first<PaymentIntentRow>();
+  return row ? mapPaymentIntent(row) : null;
+}
+
+function assertIdempotentMatch(existing: PaymentIntentRecord, input: CreatePaymentIntentInput): void {
+  if (
+    Number(existing.expected_amount_minor) !== input.amountMinor ||
+    existing.currency !== input.currency ||
+    existing.method !== input.method ||
+    existing.purpose !== input.purpose ||
+    existing.app_user_id !== (input.appUserId || null)
+  ) {
+    throw new Error("The supplied app payment id already belongs to a different payment request.");
+  }
 }
 
 export async function createPaymentIntent(
   env: PaymentsEnv,
   input: CreatePaymentIntentInput,
 ): Promise<{ intent: PaymentIntentRecord; created: boolean }> {
-  const existing = await env.PAYMENTS_DB.prepare(
-    `select * from payment_intents where app_id = ?1 and app_payment_id = ?2 limit 1`,
-  )
-    .bind(input.appId, input.appPaymentId)
-    .first<PaymentIntentRow>();
-
+  const existing = await findPaymentIntent(env, input.appId, input.appPaymentId);
   if (existing) {
-    const intent = mapPaymentIntent(existing);
-    if (intent.expected_amount_minor !== input.amountMinor || intent.currency !== input.currency) {
-      throw new Error("An existing payment intent has a different amount or currency.");
-    }
-    if (intent.method !== input.method || intent.purpose !== input.purpose) {
-      throw new Error("An existing payment intent has different payment parameters.");
-    }
-    return { intent, created: false };
+    assertIdempotentMatch(existing, input);
+    return { intent: existing, created: false };
   }
 
-  const id = paymentIntentId();
-  const reference = merchantReference(input.appId);
-  const now = nowIso();
-  const amountMwk = input.currency === "MWK" ? input.amountMinor : null;
-
-  await env.PAYMENTS_DB.prepare(
-    `insert into payment_intents (
-      id, app_id, app_payment_id, app_user_id, purpose, provider, method,
-      merchant_reference, expected_amount_mwk, expected_amount_minor, currency,
-      status, customer_email, customer_phone, title, description, metadata_json,
-      provider_payload_json, created_at, updated_at
-    ) values (
-      ?1, ?2, ?3, ?4, ?5, 'paychangu', ?6,
-      ?7, ?8, ?9, ?10,
-      'created', ?11, ?12, ?13, ?14, ?15,
-      '{}', ?16, ?16
-    )`,
+  const id = crypto.randomUUID();
+  const merchantReference = createMerchantReference(input.appId);
+  const now = new Date().toISOString();
+  const legacyExpectedAmountMwk = input.currency === "MWK" ? input.amountMinor : null;
+  const result = await env.PAYMENTS_DB.prepare(
+    `insert or ignore into payment_intents (
+       id, app_id, app_payment_id, app_user_id, purpose, provider, method,
+       merchant_reference, expected_amount_mwk, expected_amount_minor, currency, status,
+       customer_email, customer_phone, title, description, metadata_json,
+       created_at, updated_at
+     ) values (
+       ?1, ?2, ?3, ?4, ?5, 'paychangu', ?6, ?7, ?8, ?9, ?10, 'created',
+       ?11, ?12, ?13, ?14, ?15, ?16, ?16
+     )`,
   )
     .bind(
       id,
@@ -163,8 +209,8 @@ export async function createPaymentIntent(
       input.appUserId || null,
       input.purpose,
       input.method,
-      reference,
-      amountMwk,
+      merchantReference,
+      legacyExpectedAmountMwk,
       input.amountMinor,
       input.currency,
       input.customerEmail,
@@ -176,11 +222,14 @@ export async function createPaymentIntent(
     )
     .run();
 
-  const inserted = await env.PAYMENTS_DB.prepare(`select * from payment_intents where id = ?1`)
-    .bind(id)
-    .first<PaymentIntentRow>();
-  if (!inserted) throw new Error("Payment intent could not be created.");
-  return { intent: mapPaymentIntent(inserted), created: true };
+  if (!result.success) throw new Error("D1 could not create the payment intent.");
+  const intent = await findPaymentIntent(env, input.appId, input.appPaymentId);
+  if (!intent) throw new Error("D1 did not return the payment intent after creation.");
+  if ((result.meta?.changes || 0) === 0) {
+    assertIdempotentMatch(intent, input);
+    return { intent, created: false };
+  }
+  return { intent, created: true };
 }
 
 export async function savePayChanguCheckout(
@@ -188,69 +237,98 @@ export async function savePayChanguCheckout(
   intent: PaymentIntentRecord,
   checkout: { checkoutUrl: string; providerReference: string; providerPayload: Record<string, unknown> },
 ): Promise<PaymentIntentRecord> {
-  const now = nowIso();
-  await env.PAYMENTS_DB.prepare(
+  if (intent.checkout_url || intent.provider_reference) {
+    if (intent.checkout_url !== checkout.checkoutUrl || intent.provider_reference !== checkout.providerReference) {
+      throw new Error("The payment intent already has a different provider checkout session.");
+    }
+    return intent;
+  }
+
+  const now = new Date().toISOString();
+  const result = await env.PAYMENTS_DB.prepare(
     `update payment_intents
-     set provider_reference = ?1,
-         checkout_url = ?2,
-         provider_payload_json = ?3,
+     set provider_reference = ?2,
+         checkout_url = ?3,
+         provider_payload_json = ?4,
          status = 'pending',
-         updated_at = ?4
-     where id = ?5`,
+         failure_reason = null,
+         updated_at = ?5
+     where id = ?1
+       and merchant_reference = ?6
+       and provider_reference is null
+       and checkout_url is null
+       and status = 'created'`,
   )
-    .bind(
-      checkout.providerReference,
-      checkout.checkoutUrl,
-      JSON.stringify(checkout.providerPayload || {}),
-      now,
-      intent.id,
-    )
+    .bind(intent.id, checkout.providerReference, checkout.checkoutUrl, JSON.stringify(checkout.providerPayload), now, intent.merchant_reference)
     .run();
 
-  const updated = await env.PAYMENTS_DB.prepare(`select * from payment_intents where id = ?1`)
-    .bind(intent.id)
-    .first<PaymentIntentRow>();
-  if (!updated) throw new Error("Payment intent could not be updated after checkout creation.");
-  return mapPaymentIntent(updated);
+  if (!result.success) throw new Error("D1 could not store the PayChangu checkout session.");
+  const stored = await findPaymentIntentById(env, intent.id);
+  if (!stored) throw new Error("D1 did not return the payment intent after checkout creation.");
+  if (stored.checkout_url !== checkout.checkoutUrl || stored.provider_reference !== checkout.providerReference) {
+    throw new Error("The payment intent checkout session conflicts with the stored provider session.");
+  }
+  return stored;
 }
 
 export async function savePayChanguDirectCharge(
   env: PaymentsEnv,
   intent: PaymentIntentRecord,
-  charge: { providerReference: string; providerPayload: Record<string, unknown>; status: string },
+  charge: { providerReference: string; providerPayload: Record<string, unknown> },
 ): Promise<PaymentIntentRecord> {
-  const now = nowIso();
-  await env.PAYMENTS_DB.prepare(
+  if (intent.provider_reference) {
+    if (intent.provider_reference !== charge.providerReference) {
+      throw new Error("The payment intent already has a different direct charge session.");
+    }
+    return intent;
+  }
+
+  const now = new Date().toISOString();
+  const result = await env.PAYMENTS_DB.prepare(
     `update payment_intents
-     set provider_reference = ?1,
-         provider_payload_json = ?2,
-         status = ?3,
+     set provider_reference = ?2,
+         provider_payload_json = ?3,
+         status = 'pending',
+         failure_reason = null,
          updated_at = ?4
-     where id = ?5`,
+     where id = ?1
+       and merchant_reference = ?5
+       and provider_reference is null
+       and checkout_url is null
+       and status = 'created'`,
   )
-    .bind(charge.providerReference, JSON.stringify(charge.providerPayload || {}), charge.status, now, intent.id)
+    .bind(intent.id, charge.providerReference, JSON.stringify(charge.providerPayload), now, intent.merchant_reference)
     .run();
 
-  const updated = await env.PAYMENTS_DB.prepare(`select * from payment_intents where id = ?1`)
-    .bind(intent.id)
-    .first<PaymentIntentRow>();
-  if (!updated) throw new Error("Payment intent could not be updated after direct charge creation.");
-  return mapPaymentIntent(updated);
+  if (!result.success) throw new Error("D1 could not store the PayChangu direct charge session.");
+  const stored = await findPaymentIntentById(env, intent.id);
+  if (!stored) throw new Error("D1 did not return the payment intent after direct charge creation.");
+  if (stored.provider_reference !== charge.providerReference || stored.checkout_url) {
+    throw new Error("The payment intent direct charge session conflicts with the stored provider session.");
+  }
+  return stored;
 }
 
 export async function recordPaymentProviderFailure(
   env: PaymentsEnv,
-  paymentIntentId: string,
-  failureReason: string,
+  intentId: string,
+  reason: string,
   providerPayload: unknown,
 ): Promise<void> {
+  const payload = providerPayload && typeof providerPayload === "object" && !Array.isArray(providerPayload)
+    ? providerPayload
+    : {};
+  const now = new Date().toISOString();
   await env.PAYMENTS_DB.prepare(
     `update payment_intents
-     set failure_reason = ?1,
-         provider_payload_json = ?2,
-         updated_at = ?3
-     where id = ?4`,
+     set failure_reason = ?2,
+         provider_payload_json = ?3,
+         updated_at = ?4
+     where id = ?1
+       and provider_reference is null
+       and checkout_url is null
+       and status = 'created'`,
   )
-    .bind(failureReason, JSON.stringify(providerPayload || {}), nowIso(), paymentIntentId)
+    .bind(intentId, reason.slice(0, 1000), JSON.stringify(payload), now)
     .run();
 }
