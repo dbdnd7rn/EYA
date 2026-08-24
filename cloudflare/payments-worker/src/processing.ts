@@ -29,7 +29,7 @@ export type ProcessedPaymentVerification = {
 
 function hasPersistedProviderSession(intent: PaymentIntentRecord): boolean {
   if (!intent.provider_reference?.trim()) return false;
-  if (intent.method === "card" && !intent.checkout_url?.trim()) return false;
+  if ((intent.method === "card" || intent.method === "hosted_checkout") && !intent.checkout_url?.trim()) return false;
   return true;
 }
 
@@ -43,10 +43,6 @@ export async function verifyAndRecordPayChanguPayment(
   const intent = await findPaymentIntentByMerchantReference(env, normalizedTxRef);
   if (!intent) throw new PaymentIntentNotFoundError();
 
-  // Never fulfil a provider-side transaction that VAC did not successfully
-  // persist as the payment intent's provider session. This protects against
-  // late webhooks for provider calls that failed before VAC could safely bind
-  // the provider session to the app payment/order.
   if (!hasPersistedProviderSession(intent)) {
     throw new PaymentVerificationMismatchError(
       "The payment provider session was not recorded for this payment intent.",
@@ -67,10 +63,10 @@ export async function verifyAndRecordPayChanguPayment(
     );
   }
 
-  // PayChangu can add provider fees to the customer-facing amount. EYA's
-  // authoritative order value is the minimum acceptable paid amount; any
-  // underpayment remains a hard verification failure.
-  if (verification.amountMwk < intent.expected_amount_mwk) {
+  // PayChangu may include provider fees in the customer-facing amount. VAC
+  // therefore treats the app-authoritative intent amount as the minimum
+  // acceptable verified amount in that currency's integer minor units.
+  if (verification.amountMinor < intent.expected_amount_minor) {
     throw new PaymentVerificationMismatchError(
       "PayChangu verification amount is below the payment intent amount.",
     );
@@ -78,7 +74,7 @@ export async function verifyAndRecordPayChanguPayment(
 
   const stored = await recordVerifiedPaymentState(env, intent, {
     status: verification.status,
-    paidAmountMwk: verification.amountMwk,
+    paidAmountMinor: verification.amountMinor,
     providerReference: verification.providerReference,
     providerPayload: verification.providerPayload,
   });
