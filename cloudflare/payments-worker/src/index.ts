@@ -50,6 +50,19 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function applicationSecretsJson(env: PaymentsEnv): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(env.APP_SECRETS_JSON || "{}");
+  } catch {
+    throw new Error("APP_SECRETS_JSON is not valid JSON.");
+  }
+  if (!isPlainObject(parsed)) throw new Error("APP_SECRETS_JSON must be a JSON object.");
+  const tourismSecret = env.ONLINE_TOURISM_APP_SECRET?.trim();
+  if (tourismSecret) parsed["online-tourism"] = tourismSecret;
+  return JSON.stringify(parsed);
+}
+
 function requiredString(value: unknown, field: string, maxLength = 255): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${field} is required.`);
   const normalized = value.trim();
@@ -147,7 +160,8 @@ async function handleReadiness(env: PaymentsEnv): Promise<Response> {
     hosted_checkout_currencies: ["MWK", "USD"],
     direct_charge_configured: Boolean(env.PAYCHANGU_SECRET_KEY?.trim()),
     webhook_configured: Boolean(env.PAYCHANGU_WEBHOOK_SECRET?.trim()),
-    callbacks_configured: Boolean(env.APP_CALLBACKS_JSON?.trim()),
+    callbacks_configured: Boolean(env.APP_CALLBACKS_JSON?.trim() || env.ONLINE_TOURISM_CALLBACK_URL?.trim()),
+    online_tourism_configured: Boolean(env.ONLINE_TOURISM_APP_SECRET?.trim() && env.ONLINE_TOURISM_CALLBACK_URL?.trim()),
     environment: env.ENVIRONMENT || "unknown",
   });
 }
@@ -182,7 +196,7 @@ async function handleCreatePaymentIntent(
 ): Promise<Response> {
   validateFoundationEnvironment(env);
   const rawBody = await readBoundedBody(request);
-  const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON, env.PAYMENTS_DB);
+  const auth = await authenticateAppRequest(request, rawBody, applicationSecretsJson(env), env.PAYMENTS_DB);
   let parsed: unknown;
   try {
     parsed = rawBody ? JSON.parse(rawBody) : null;
@@ -356,7 +370,7 @@ async function handlePayChanguWebhook(request: Request, env: PaymentsEnv): Promi
 async function handleDeliverOutbox(request: Request, env: PaymentsEnv): Promise<Response> {
   validateFoundationEnvironment(env);
   const rawBody = await readBoundedBody(request);
-  const auth = await authenticateAppRequest(request, rawBody, env.APP_SECRETS_JSON, env.PAYMENTS_DB);
+  const auth = await authenticateAppRequest(request, rawBody, applicationSecretsJson(env), env.PAYMENTS_DB);
   if (auth.appId !== "eya") throw new Error("Only EYA may trigger this outbox delivery endpoint.");
   let limit = 10;
   if (rawBody.trim()) {
@@ -379,7 +393,7 @@ async function handleDeliverOutbox(request: Request, env: PaymentsEnv): Promise<
 }
 
 function scheduleOutboxDelivery(env: PaymentsEnv, context?: WorkerExecutionContextLike): void {
-  if (!context || !env.APP_CALLBACKS_JSON?.trim()) return;
+  if (!context || (!env.APP_CALLBACKS_JSON?.trim() && !env.ONLINE_TOURISM_CALLBACK_URL?.trim())) return;
   context.waitUntil(
     deliverDueOutboxEvents(env)
       .then((summary) => {
