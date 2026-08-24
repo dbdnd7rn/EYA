@@ -53,7 +53,14 @@ function parseJsonObject(value: string, field: string): Record<string, unknown> 
   return parsed as Record<string, unknown>;
 }
 
-function readAppCallbacks(raw: string | undefined): Record<string, string> {
+function applicationSecretsJson(env: PaymentsEnv): string {
+  const parsed = parseJsonObject(env.APP_SECRETS_JSON || "{}", "APP_SECRETS_JSON");
+  const tourismSecret = env.ONLINE_TOURISM_APP_SECRET?.trim();
+  if (tourismSecret) parsed["online-tourism"] = tourismSecret;
+  return JSON.stringify(parsed);
+}
+
+function readAppCallbacks(raw: string | undefined, tourismCallbackUrl?: string): Record<string, string> {
   const parsed = parseJsonObject(raw || "{}", "APP_CALLBACKS_JSON");
   const callbacks: Record<string, string> = {};
 
@@ -66,6 +73,14 @@ function readAppCallbacks(raw: string | undefined): Record<string, string> {
     }
 
     callbacks[appId] = callbackUrl.toString();
+  }
+
+  if (tourismCallbackUrl?.trim()) {
+    const callbackUrl = new URL(tourismCallbackUrl.trim());
+    if (callbackUrl.protocol !== "https:") {
+      throw new Error("Online Tourism callback URL must use HTTPS.");
+    }
+    callbacks["online-tourism"] = callbackUrl.toString();
   }
 
   return callbacks;
@@ -231,7 +246,7 @@ async function deliverOutboxEvent(
     nonce,
     callbackUrl.pathname,
     rawBody,
-    env.APP_SECRETS_JSON,
+    applicationSecretsJson(env),
   );
 
   const controller = new AbortController();
@@ -287,9 +302,11 @@ export async function deliverDueOutboxEvents(
   env: PaymentsEnv,
   requestedLimit = MAX_BATCH_SIZE,
 ): Promise<OutboxDeliverySummary> {
-  if (!env.APP_SECRETS_JSON?.trim()) throw new Error("APP_SECRETS_JSON is not configured.");
+  if (!env.APP_SECRETS_JSON?.trim() && !env.ONLINE_TOURISM_APP_SECRET?.trim()) {
+    throw new Error("Application payment secrets are not configured.");
+  }
 
-  const callbacks = readAppCallbacks(env.APP_CALLBACKS_JSON);
+  const callbacks = readAppCallbacks(env.APP_CALLBACKS_JSON, env.ONLINE_TOURISM_CALLBACK_URL);
   const limit = Math.max(1, Math.min(Math.trunc(requestedLimit), MAX_BATCH_SIZE));
   const summary: OutboxDeliverySummary = { attempted: 0, delivered: 0, failed: 0, skipped: 0 };
 
