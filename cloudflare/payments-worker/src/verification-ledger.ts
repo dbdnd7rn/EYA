@@ -1,6 +1,7 @@
 import type {
   D1PreparedStatementLike,
   D1RunResult,
+  PaymentCurrency,
   PaymentIntentRecord,
   PaymentsEnv,
 } from "./ledger";
@@ -15,9 +16,11 @@ type PaymentIntentRow = {
   method: string;
   merchant_reference: string;
   provider_reference: string | null;
-  expected_amount_mwk: number;
+  expected_amount_mwk: number | null;
   paid_amount_mwk: number | null;
-  currency: "MWK";
+  expected_amount_minor: number;
+  paid_amount_minor: number | null;
+  currency: PaymentCurrency;
   status: string;
   customer_email: string | null;
   customer_phone: string | null;
@@ -67,8 +70,10 @@ function mapPaymentIntent(row: PaymentIntentRow): PaymentIntentRecord {
 
   return {
     ...rest,
-    expected_amount_mwk: Number(rest.expected_amount_mwk),
+    expected_amount_mwk: rest.expected_amount_mwk == null ? 0 : Number(rest.expected_amount_mwk),
     paid_amount_mwk: rest.paid_amount_mwk == null ? null : Number(rest.paid_amount_mwk),
+    expected_amount_minor: Number(rest.expected_amount_minor),
+    paid_amount_minor: rest.paid_amount_minor == null ? null : Number(rest.paid_amount_minor),
     metadata: parseJsonObject(metadataJson),
     provider_payload: parseJsonObject(providerPayloadJson),
   } as PaymentIntentRecord;
@@ -86,6 +91,8 @@ const PAYMENT_INTENT_SELECT = `select
    provider_reference,
    expected_amount_mwk,
    paid_amount_mwk,
+   expected_amount_minor,
+   paid_amount_minor,
    currency,
    status,
    customer_email,
@@ -196,7 +203,7 @@ export async function recordVerifiedPaymentState(
   intent: PaymentIntentRecord,
   verification: {
     status: "success" | "pending" | "failed" | "cancelled" | "expired";
-    paidAmountMwk: number;
+    paidAmountMinor: number;
     providerReference: string | null;
     providerPayload: Record<string, unknown>;
   },
@@ -205,7 +212,7 @@ export async function recordVerifiedPaymentState(
 
   if (verification.status === "success") {
     if (intent.status === "paid") {
-      if (intent.paid_amount_mwk !== verification.paidAmountMwk) {
+      if (intent.paid_amount_minor !== verification.paidAmountMinor) {
         throw new Error("The verified payment amount conflicts with the stored paid amount.");
       }
       return intent;
@@ -219,40 +226,42 @@ export async function recordVerifiedPaymentState(
       app_user_id: intent.app_user_id,
       purpose: intent.purpose,
       merchant_reference: intent.merchant_reference,
-      // Fulfil EYA against its server-authoritative order value. The provider's
-      // gross paid amount (which may include PayChangu charges) is retained in
-      // payment_intents.paid_amount_mwk and the provider payload for auditing.
-      amount_mwk: intent.expected_amount_mwk,
+      amount_minor: intent.expected_amount_minor,
+      amount_mwk: intent.currency === "MWK" ? intent.expected_amount_minor : null,
       currency: intent.currency,
       verified_at: now,
       metadata: intent.metadata,
     };
 
     const db = env.PAYMENTS_DB as D1DatabaseWithBatch;
+    const legacyPaidAmountMwk = intent.currency === "MWK" ? verification.paidAmountMinor : null;
     const statements = [
       db.prepare(
         `update payment_intents
          set status = 'paid',
-             paid_amount_mwk = ?2,
-             provider_reference = coalesce(?3, provider_reference),
-             provider_payload_json = ?4,
+             paid_amount_minor = ?2,
+             paid_amount_mwk = ?3,
+             provider_reference = coalesce(?4, provider_reference),
+             provider_payload_json = ?5,
              failure_reason = null,
-             paid_at = coalesce(paid_at, ?5),
-             verified_at = ?5,
-             updated_at = ?5
+             paid_at = coalesce(paid_at, ?6),
+             verified_at = ?6,
+             updated_at = ?6
          where id = ?1
-           and merchant_reference = ?6
-           and expected_amount_mwk = ?7
-           and currency = 'MWK'
+           and merchant_reference = ?7
+           and expected_amount_minor = ?8
+           and currency = ?9
            and status in ('created', 'pending', 'failed', 'cancelled', 'expired')`,
       ).bind(
         intent.id,
-        verification.paidAmountMwk,
+        verification.paidAmountMinor,
+        legacyPaidAmountMwk,
         verification.providerReference,
         JSON.stringify(verification.providerPayload),
         now,
         intent.merchant_reference,
-        intent.expected_amount_mwk,
+        intent.expected_amount_minor,
+        intent.currency,
       ),
       db.prepare(
         `insert or ignore into payment_outbox_events (
@@ -292,6 +301,7 @@ export async function recordVerifiedPaymentState(
     const result = await env.PAYMENTS_DB.prepare(
       `update payment_intents
        set status = ?2,
+           paid_amount_minor = null,
            paid_amount_mwk = null,
            provider_reference = coalesce(?3, provider_reference),
            provider_payload_json = ?4,
