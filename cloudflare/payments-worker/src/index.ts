@@ -6,6 +6,7 @@ import {
   savePayChanguCheckout,
   savePayChanguDirectCharge,
   type CreatePaymentIntentInput,
+  type PaymentCurrency,
   type PaymentsEnv,
 } from "./ledger";
 import { initiatePayChanguCheckout, PaymentProviderError } from "./paychangu";
@@ -25,7 +26,9 @@ import { paymentResultPage as html } from "./payment-page";
 import { deliverDueOutboxEvents } from "./outbox-delivery";
 import { verifyDuePendingPayments } from "./pending-verification";
 
-const PAYMENT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer", "card"]);
+const PAYMENT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer", "card", "hosted_checkout"]);
+const DIRECT_METHODS = new Set(["airtel_money", "mpamba", "bank_transfer"]);
+const HOSTED_METHODS = new Set(["card", "hosted_checkout"]);
 const TERMINAL_PAYMENT_STATUSES = new Set(["failed", "cancelled", "expired"]);
 
 type WorkerExecutionContextLike = { waitUntil(promise: Promise<unknown>): void };
@@ -62,10 +65,17 @@ function optionalString(value: unknown, field: string, maxLength = 500): string 
   return normalized || null;
 }
 
-function normalizeAmount(value: unknown): number {
+function normalizePositiveInteger(value: unknown, field: string): number {
   const amount = Number(value);
-  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error("amountMwk must be a positive whole number.");
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error(`${field} must be a positive whole number.`);
   return amount;
+}
+
+function normalizeCurrency(value: unknown, hasLegacyAmountMwk: boolean): PaymentCurrency {
+  const normalized = String(value || (hasLegacyAmountMwk ? "MWK" : "")).trim().toUpperCase();
+  if (normalized === "MK" || normalized === "MWK") return "MWK";
+  if (normalized === "USD") return "USD";
+  throw new Error("currency must be MWK or USD.");
 }
 
 function normalizePhone(value: string | null): string | null {
@@ -79,20 +89,35 @@ function normalizePhone(value: string | null): string | null {
 function parsePaymentIntentInput(appId: string, body: unknown): CreatePaymentIntentInput {
   if (!isPlainObject(body)) throw new Error("A JSON request body is required.");
   const method = requiredString(body.method, "method", 40);
-  if (!PAYMENT_METHODS.has(method)) throw new Error("method must be airtel_money, mpamba, bank_transfer, or card.");
+  if (!PAYMENT_METHODS.has(method)) {
+    throw new Error("method must be airtel_money, mpamba, bank_transfer, card, or hosted_checkout.");
+  }
+
+  const hasLegacyAmountMwk = body.amountMwk != null;
+  const currency = normalizeCurrency(body.currency, hasLegacyAmountMwk);
+  const amountMinor = body.amountMinor != null
+    ? normalizePositiveInteger(body.amountMinor, "amountMinor")
+    : normalizePositiveInteger(body.amountMwk, "amountMwk");
+
+  if (DIRECT_METHODS.has(method) && currency !== "MWK") {
+    throw new Error("Direct Airtel Money, Mpamba, and bank-transfer payments require MWK.");
+  }
+
   const metadata = body.metadata == null ? {} : body.metadata;
   if (!isPlainObject(metadata)) throw new Error("metadata must be a JSON object.");
   const customerPhone = normalizePhone(optionalString(body.customerPhone, "customerPhone", 40));
   if ((method === "airtel_money" || method === "mpamba") && !customerPhone) {
     throw new Error("customerPhone is required for mobile money.");
   }
+
   return {
     appId,
     appPaymentId: requiredString(body.appPaymentId, "appPaymentId", 180),
     appUserId: optionalString(body.appUserId, "appUserId", 180),
     purpose: requiredString(body.purpose, "purpose", 100),
     method: method as CreatePaymentIntentInput["method"],
-    amountMwk: normalizeAmount(body.amountMwk),
+    currency,
+    amountMinor,
     customerEmail: requiredString(body.customerEmail, "customerEmail", 320).toLowerCase(),
     customerPhone,
     title: optionalString(body.title, "title", 160),
@@ -119,6 +144,7 @@ async function handleReadiness(env: PaymentsEnv): Promise<Response> {
     hosted_checkout_configured: Boolean(
       env.PAYCHANGU_SECRET_KEY?.trim() && env.PAYCHANGU_CALLBACK_URL?.trim() && env.PAYCHANGU_RETURN_URL?.trim(),
     ),
+    hosted_checkout_currencies: ["MWK", "USD"],
     direct_charge_configured: Boolean(env.PAYCHANGU_SECRET_KEY?.trim()),
     webhook_configured: Boolean(env.PAYCHANGU_WEBHOOK_SECRET?.trim()),
     callbacks_configured: Boolean(env.APP_CALLBACKS_JSON?.trim()),
@@ -174,7 +200,7 @@ async function handleCreatePaymentIntent(
   }
 
   try {
-    if (intent.method === "card") {
+    if (HOSTED_METHODS.has(intent.method)) {
       if (!intent.checkout_url) {
         const checkout = await initiatePayChanguCheckout(env, intent);
         intent = await savePayChanguCheckout(env, intent, checkout);
@@ -192,7 +218,7 @@ async function handleCreatePaymentIntent(
     throw error;
   }
 
-  if (intent.method !== "card" && intent.provider_reference) {
+  if (DIRECT_METHODS.has(intent.method) && intent.provider_reference) {
     scheduleInitialVerification(env, intent.merchant_reference, context);
   }
 
@@ -208,7 +234,8 @@ async function handleCreatePaymentIntent(
         app_payment_id: intent.app_payment_id,
         merchant_reference: intent.merchant_reference,
         provider_reference: intent.provider_reference,
-        expected_amount_mwk: intent.expected_amount_mwk,
+        expected_amount_minor: intent.expected_amount_minor,
+        expected_amount_mwk: intent.currency === "MWK" ? intent.expected_amount_minor : null,
         currency: intent.currency,
         method: intent.method,
         status: intent.status,
@@ -245,12 +272,19 @@ async function readPublicReference(request: Request, url: URL): Promise<string |
   return form.get("tx_ref")?.trim() || form.get("charge_id")?.trim() || null;
 }
 
-function paymentStatusPage(status: string): Response {
-  if (status === "paid") return html("Payment confirmed", "Your payment was verified successfully. You may return to EYA.");
+function applicationLabel(appId: string): string {
+  if (appId === "online-tourism") return "Online Tourism";
+  if (appId === "eya") return "EYA";
+  return "the application";
+}
+
+function paymentStatusPage(status: string, appId: string): Response {
+  const appLabel = applicationLabel(appId);
+  if (status === "paid") return html("Payment confirmed", `Your payment was verified successfully. You may return to ${appLabel}.`);
   if (status === "failed" || status === "cancelled" || status === "expired") {
-    return html("Payment not completed", "No payment was confirmed. You may return to EYA and try again.");
+    return html("Payment not completed", `No payment was confirmed. You may return to ${appLabel} and try again.`);
   }
-  return html("Payment verification pending", "Your payment is still being verified. You may return to EYA; the order will update after confirmation.");
+  return html("Payment verification pending", `Your payment is still being verified. You may return to ${appLabel}; access will update after confirmation.`);
 }
 
 async function handlePublicPaymentResult(request: Request, env: PaymentsEnv): Promise<Response> {
@@ -259,16 +293,16 @@ async function handlePublicPaymentResult(request: Request, env: PaymentsEnv): Pr
   if (!reference) return html("Invalid payment response", "The transaction reference is missing.", 400);
   try {
     const result = await verifyAndRecordPayChanguPayment(env, reference);
-    return paymentStatusPage(result.intent.status);
+    return paymentStatusPage(result.intent.status, result.intent.app_id);
   } catch (error) {
     if (error instanceof PaymentIntentNotFoundError) return html("Payment not found", "This payment reference is not recognized.", 404);
     if (error instanceof PaymentVerificationMismatchError) {
       console.error("[vac-payments] payment verification mismatch", { reference, message: error.message });
-      return html("Payment requires review", "The payment could not be confirmed automatically. No order has been fulfilled.", 409);
+      return html("Payment requires review", "The payment could not be confirmed automatically. No access has been granted.", 409);
     }
     if (error instanceof PaymentProviderError) {
       console.error("[vac-payments] provider verification unavailable", { reference, providerStatusCode: error.providerStatusCode });
-      return html("Verification temporarily unavailable", "Your payment has not been lost. Please return to EYA while verification continues.", 200);
+      return html("Verification temporarily unavailable", "Your payment has not been lost. Please return to the application while verification continues.", 200);
     }
     throw error;
   }
@@ -386,7 +420,7 @@ export default {
       const unauthorized = /signature|signed application|unknown or inactive application|expired|nonce|request timestamp|only eya/i.test(message);
       const rateLimited = /rate limit exceeded/i.test(message);
       const tooLarge = /request body is too large/i.test(message);
-      const invalidRequest = /required|must be|too long|different payment request|limit must be|valid malawi/i.test(message);
+      const invalidRequest = /required|must be|too long|different payment request|limit must be|valid malawi|require mwk/i.test(message);
       const conflict = /payment attempt is closed|different provider|session conflicts|cannot transition/i.test(message);
       const notFound = error instanceof PaymentIntentNotFoundError;
       const mismatch = error instanceof PaymentVerificationMismatchError;
@@ -427,4 +461,3 @@ export default {
     );
   },
 };
-
