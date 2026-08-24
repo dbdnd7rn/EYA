@@ -24,6 +24,8 @@ export type PaymentsEnv = {
   APP_SECRETS_JSON: string;
   APP_CALLBACKS_JSON?: string;
   APP_RETURN_URLS_JSON?: string;
+  ONLINE_TOURISM_APP_SECRET?: string;
+  ONLINE_TOURISM_CALLBACK_URL?: string;
   PAYMENTS_DB: D1DatabaseLike;
 };
 
