@@ -5,7 +5,7 @@ import { StudentBadgeProvider, useStudentBadges } from "@/providers/StudentBadge
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 const STUDENT_VISIBLE_TABS = ["home", "orders", "messages", "account"];
-const SECTION_ONLY_TABS = new Set(["tickets", "rooms", "saved", "room-messages", "marketplace", "food"]);
+const SECTION_ONLY_TABS = new Set(["tickets", "rooms", "saved", "room-messages", "marketplace", "food", "profile"]);
 
 function StudentTabsNavigator() {
   const { messages, orders } = useStudentBadges();
