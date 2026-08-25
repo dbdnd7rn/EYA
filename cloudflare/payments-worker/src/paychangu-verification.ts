@@ -1,5 +1,5 @@
-import type { PaymentIntentRecord, PaymentsEnv } from "./ledger";
-import { PaymentProviderError } from "./paychangu";
+import type { PaymentCurrency, PaymentIntentRecord, PaymentsEnv } from "./ledger";
+import { PaymentProviderError, providerAmountToMinor } from "./paychangu";
 
 const DEFAULT_PAYCHANGU_API_BASE_URL = "https://api.paychangu.com";
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -11,8 +11,8 @@ export type PayChanguVerificationResult = {
   txRef: string;
   providerReference: string | null;
   status: "success" | "pending" | "failed" | "cancelled" | "expired";
-  currency: string;
-  amountMwk: number;
+  currency: PaymentCurrency;
+  amountMinor: number;
   providerPayload: JsonObject;
 };
 
@@ -62,9 +62,11 @@ function normalizeTransactionStatus(value: unknown): PayChanguVerificationResult
   throw new PaymentProviderError("PayChangu returned an unsupported transaction status.", 502, {});
 }
 
-function normalizeCurrency(value: unknown): string {
+function normalizeCurrency(value: unknown): PaymentCurrency | null {
   const currency = String(value || "").trim().toUpperCase();
-  return currency === "MK" ? "MWK" : currency;
+  if (currency === "MK" || currency === "MWK") return "MWK";
+  if (currency === "USD") return "USD";
+  return null;
 }
 
 async function fetchPayChanguJson(env: PaymentsEnv, path: string): Promise<JsonObject> {
@@ -104,15 +106,14 @@ function parseVerification(
   providerPayload: JsonObject,
   intent: PaymentIntentRecord,
 ): PayChanguVerificationResult {
-  if (intent.method === "card") {
+  if (intent.method === "card" || intent.method === "hosted_checkout") {
     if (asNonEmptyString(providerPayload.status)?.toLowerCase() !== "success") {
       throw new PaymentProviderError(asNonEmptyString(providerPayload.message) || "PayChangu could not verify the transaction.", 502, providerPayload);
     }
     const data = asObject(providerPayload.data) || {};
     const txRef = asNonEmptyString(data.tx_ref);
     const currency = normalizeCurrency(data.currency);
-    const amount = Number(data.amount);
-    if (!txRef || !currency || !Number.isSafeInteger(amount) || amount < 0) {
+    if (!txRef || !currency) {
       throw new PaymentProviderError("PayChangu returned incomplete hosted-checkout verification data.", 502, providerPayload);
     }
     return {
@@ -120,21 +121,20 @@ function parseVerification(
       providerReference: asNonEmptyString(data.reference ?? data.ref_id),
       status: normalizeTransactionStatus(data.status),
       currency,
-      amountMwk: amount,
+      amountMinor: providerAmountToMinor(currency, data.amount),
       providerPayload,
     };
   }
 
   if (intent.method === "bank_transfer") {
-    if (!['success', 'successful'].includes(String(providerPayload.status || '').toLowerCase())) {
+    if (!["success", "successful"].includes(String(providerPayload.status || "").toLowerCase())) {
       throw new PaymentProviderError(asNonEmptyString(providerPayload.message) || "PayChangu could not verify the bank transfer.", 502, providerPayload);
     }
     const data = asObject(providerPayload.data) || {};
     const transaction = asObject(data.transaction) || data;
     const txRef = asNonEmptyString(transaction.charge_id ?? transaction.chargeId);
     const currency = normalizeCurrency(transaction.currency);
-    const amount = Number(transaction.amount);
-    if (!txRef || !currency || !Number.isSafeInteger(amount) || amount < 0) {
+    if (!txRef || currency !== "MWK") {
       throw new PaymentProviderError("PayChangu returned incomplete bank-transfer verification data.", 502, providerPayload);
     }
     return {
@@ -142,21 +142,20 @@ function parseVerification(
       providerReference: asNonEmptyString(transaction.ref_id ?? transaction.reference),
       status: normalizeTransactionStatus(transaction.status),
       currency,
-      amountMwk: amount,
+      amountMinor: providerAmountToMinor("MWK", transaction.amount),
       providerPayload,
     };
   }
 
-  const outerStatus = String(providerPayload.status || '').toLowerCase();
-  if (!['success', 'successful'].includes(outerStatus)) {
+  const outerStatus = String(providerPayload.status || "").toLowerCase();
+  if (!["success", "successful"].includes(outerStatus)) {
     throw new PaymentProviderError(asNonEmptyString(providerPayload.message) || "PayChangu could not verify the mobile-money charge.", 502, providerPayload);
   }
   const data = asObject(providerPayload.data) || {};
   const transaction = asObject(data.transaction) || data;
   const txRef = asNonEmptyString(transaction.charge_id ?? transaction.chargeId);
   const currency = normalizeCurrency(transaction.currency);
-  const amount = Number(transaction.amount);
-  if (!txRef || !currency || !Number.isSafeInteger(amount) || amount < 0) {
+  if (!txRef || currency !== "MWK") {
     throw new PaymentProviderError("PayChangu returned incomplete mobile-money verification data.", 502, providerPayload);
   }
   return {
@@ -164,7 +163,7 @@ function parseVerification(
     providerReference: asNonEmptyString(transaction.ref_id ?? transaction.reference),
     status: normalizeTransactionStatus(transaction.status ?? providerPayload.status),
     currency,
-    amountMwk: amount,
+    amountMinor: providerAmountToMinor("MWK", transaction.amount),
     providerPayload,
   };
 }
@@ -174,7 +173,7 @@ export async function verifyPayChanguTransaction(
   intent: PaymentIntentRecord,
 ): Promise<PayChanguVerificationResult> {
   const ref = encodeURIComponent(intent.merchant_reference);
-  const path = intent.method === "card"
+  const path = intent.method === "card" || intent.method === "hosted_checkout"
     ? `/verify-payment/${ref}`
     : intent.method === "bank_transfer"
       ? `/direct-charge/transactions/${ref}/details`

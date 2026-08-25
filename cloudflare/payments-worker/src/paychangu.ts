@@ -1,4 +1,4 @@
-import type { PaymentIntentRecord, PaymentsEnv } from "./ledger";
+import type { PaymentCurrency, PaymentIntentRecord, PaymentsEnv } from "./ledger";
 
 const DEFAULT_PAYCHANGU_API_BASE_URL = "https://api.paychangu.com";
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -87,21 +87,49 @@ function parseProviderJson(text: string): JsonObject {
   }
 }
 
+export function providerAmountFromMinor(currency: PaymentCurrency, amountMinor: number): number {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new Error("Payment amount is invalid.");
+  return currency === "USD" ? Number((amountMinor / 100).toFixed(2)) : amountMinor;
+}
+
+export function providerAmountToMinor(currency: PaymentCurrency, value: unknown): number {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new PaymentProviderError("PayChangu returned an invalid amount.", 502, {});
+  }
+  if (currency === "MWK") {
+    if (!Number.isSafeInteger(amount)) throw new PaymentProviderError("PayChangu returned a fractional MWK amount.", 502, {});
+    return amount;
+  }
+  const cents = Math.round(amount * 100);
+  if (!Number.isSafeInteger(cents) || Math.abs(amount * 100 - cents) > 0.000001) {
+    throw new PaymentProviderError("PayChangu returned an invalid USD amount.", 502, {});
+  }
+  return cents;
+}
+
+function normalizeCurrency(value: unknown): PaymentCurrency | null {
+  const currency = String(value || "").trim().toUpperCase();
+  if (currency === "MK" || currency === "MWK") return "MWK";
+  if (currency === "USD") return "USD";
+  return null;
+}
+
 function extractCheckoutResult(
   payload: PayChanguCheckoutPayload,
   expectedReference: string,
-  expectedAmountMwk: number,
+  expectedCurrency: PaymentCurrency,
+  expectedAmountMinor: number,
 ): PayChanguCheckoutResult {
   const root = asObject(payload);
   const outerData = asObject(root?.data);
   const transaction = asObject(outerData?.data);
 
-  const status = asNonEmptyString(root?.status);
+  const status = asNonEmptyString(root?.status)?.toLowerCase();
   const checkoutUrlValue = asNonEmptyString(outerData?.checkout_url);
   const providerReference = asNonEmptyString(transaction?.tx_ref);
-  const currency = asNonEmptyString(transaction?.currency);
-  const transactionStatus = asNonEmptyString(transaction?.status);
-  const amount = Number(transaction?.amount);
+  const currency = normalizeCurrency(transaction?.currency);
+  const transactionStatus = asNonEmptyString(transaction?.status)?.toLowerCase();
 
   if (status !== "success") {
     throw new PaymentProviderError(
@@ -126,11 +154,11 @@ function extractCheckoutResult(
     throw new PaymentProviderError("PayChangu returned an unexpected transaction reference.", 200, root || {});
   }
 
-  if (currency !== "MWK") {
+  if (currency !== expectedCurrency) {
     throw new PaymentProviderError("PayChangu returned an unexpected currency.", 200, root || {});
   }
 
-  if (!Number.isSafeInteger(amount) || amount !== expectedAmountMwk) {
+  if (providerAmountToMinor(expectedCurrency, transaction?.amount) !== expectedAmountMinor) {
     throw new PaymentProviderError("PayChangu returned an unexpected checkout amount.", 200, root || {});
   }
 
@@ -161,8 +189,8 @@ export async function initiatePayChanguCheckout(
   const apiBaseUrl = normalizeApiBaseUrl(env.PAYCHANGU_API_BASE_URL);
 
   const requestBody: JsonObject = {
-    amount: intent.expected_amount_mwk,
-    currency: "MWK",
+    amount: providerAmountFromMinor(intent.currency, intent.expected_amount_minor),
+    currency: intent.currency,
     tx_ref: intent.merchant_reference,
     callback_url: callbackUrl,
     return_url: returnUrl,
@@ -177,6 +205,8 @@ export async function initiatePayChanguCheckout(
       app_payment_id: intent.app_payment_id,
       purpose: intent.purpose,
       requested_method: intent.method,
+      amount_minor: intent.expected_amount_minor,
+      currency: intent.currency,
     },
   };
 
@@ -220,6 +250,7 @@ export async function initiatePayChanguCheckout(
   return extractCheckoutResult(
     providerPayload,
     intent.merchant_reference,
-    intent.expected_amount_mwk,
+    intent.currency,
+    intent.expected_amount_minor,
   );
 }

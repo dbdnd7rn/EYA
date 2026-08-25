@@ -1,5 +1,10 @@
 type PaymentPageTone = "success" | "pending" | "warning" | "danger" | "neutral";
 
+type PaymentPageOptions = {
+  appLabel?: string;
+  returnUrl?: string | null;
+};
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -44,11 +49,32 @@ function toneContent(tone: PaymentPageTone): {
   }
 }
 
-export function paymentResultPage(title: string, message: string, status = 200): Response {
+function inferApplicationReturnUrl(message: string, tone: PaymentPageTone): string | null {
+  if (tone === "success" && message.includes("Online Tourism")) {
+    return "https://online-tourism-malawi.vercel.app/premium?payment=success";
+  }
+  return null;
+}
+
+export function paymentResultPage(
+  title: string,
+  message: string,
+  status = 200,
+  options: PaymentPageOptions = {},
+): Response {
   const tone = inferTone(title);
   const content = toneContent(tone);
   const safeTitle = escapeHtml(title);
   const safeMessage = escapeHtml(message);
+  const appLabel = escapeHtml(options.appLabel?.trim() || (message.includes("Online Tourism") ? "Online Tourism" : "the application"));
+  const returnUrl = options.returnUrl || inferApplicationReturnUrl(message, tone);
+  const safeReturnUrl = returnUrl ? escapeHtml(returnUrl) : null;
+  const redirectMeta = safeReturnUrl && tone === "success"
+    ? `<meta http-equiv="refresh" content="3;url=${safeReturnUrl}">`
+    : "";
+  const returnAction = safeReturnUrl
+    ? `<a class="return-button" href="${safeReturnUrl}">Return to ${appLabel}</a>${tone === "success" ? `<small class="return-note">Returning automatically in a few seconds…</small>` : ""}`
+    : "";
 
   const document = `<!doctype html>
 <html lang="en">
@@ -57,7 +83,8 @@ export function paymentResultPage(title: string, message: string, status = 200):
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#10172a">
   <meta name="robots" content="noindex,nofollow,noarchive">
-  <title>${safeTitle} · EYA Secure Payments</title>
+  ${redirectMeta}
+  <title>${safeTitle} · VAC Secure Payments</title>
   <style>
     :root { color-scheme: light; --accent: ${content.accent}; --soft: ${content.soft}; }
     * { box-sizing: border-box; }
@@ -146,6 +173,26 @@ export function paymentResultPage(title: string, message: string, status = 200):
       font-size: 15.5px;
       line-height: 1.65;
     }
+    .return-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      margin-top: 24px;
+      padding: 0 20px;
+      border-radius: 13px;
+      background: #111a2c;
+      color: #fff;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .return-note {
+      display: block;
+      margin-top: 9px;
+      color: #7a8392;
+      font-size: 11.5px;
+    }
     .notice {
       display: flex;
       align-items: flex-start;
@@ -182,7 +229,7 @@ export function paymentResultPage(title: string, message: string, status = 200):
 </head>
 <body>
   <div class="shell">
-    <div class="brand"><span class="brand-mark">E</span><span>EYA SECURE PAYMENTS</span></div>
+    <div class="brand"><span class="brand-mark">V</span><span>VAC SECURE PAYMENTS</span></div>
     <main>
       <div class="top-line"></div>
       <section class="content">
@@ -190,9 +237,10 @@ export function paymentResultPage(title: string, message: string, status = 200):
         <div class="status-label">${content.label}</div>
         <h1>${safeTitle}</h1>
         <p>${safeMessage}</p>
-        <div class="notice"><span class="lock">▣</span><span>This result is confirmed securely between EYA, VAC Payments and PayChangu. You can safely return to the EYA app.</span></div>
+        ${returnAction}
+        <div class="notice"><span class="lock">▣</span><span>This payment result is verified by VAC Payments with PayChangu before ${appLabel} grants access.</span></div>
       </section>
-      <footer><span>Protected payment processing</span><span>Powered by <strong>VAC Systems</strong></span></footer>
+      <footer><span>Protected payment processing</span><span>Powered by <strong>VAC Payments</strong></span></footer>
     </main>
   </div>
 </body>
