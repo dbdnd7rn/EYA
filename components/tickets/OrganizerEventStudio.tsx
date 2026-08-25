@@ -26,7 +26,6 @@ import {
   ChevronRight,
   Clock3,
   ImagePlus,
-  MapPin,
   Search,
   Send,
   ShieldAlert,
@@ -395,7 +394,8 @@ export default function OrganizerEventStudio() {
     setMediaSheet(null);
   }
 
-  function setStart(value: Date) {
+  function setStart(value: Date | null) {
+    if (!value) return;
     setStartsAt(value);
     setEndsAt((current) => (!current || current.getTime() <= value.getTime() ? addHours(value, 3) : current));
     markDirty();
