@@ -49,6 +49,13 @@ function toneContent(tone: PaymentPageTone): {
   }
 }
 
+function inferApplicationReturnUrl(message: string, tone: PaymentPageTone): string | null {
+  if (tone === "success" && message.includes("Online Tourism")) {
+    return "https://online-tourism-malawi.vercel.app/premium?payment=success";
+  }
+  return null;
+}
+
 export function paymentResultPage(
   title: string,
   message: string,
@@ -59,10 +66,14 @@ export function paymentResultPage(
   const content = toneContent(tone);
   const safeTitle = escapeHtml(title);
   const safeMessage = escapeHtml(message);
-  const appLabel = escapeHtml(options.appLabel?.trim() || "the application");
-  const safeReturnUrl = options.returnUrl ? escapeHtml(options.returnUrl) : null;
+  const appLabel = escapeHtml(options.appLabel?.trim() || (message.includes("Online Tourism") ? "Online Tourism" : "the application"));
+  const returnUrl = options.returnUrl || inferApplicationReturnUrl(message, tone);
+  const safeReturnUrl = returnUrl ? escapeHtml(returnUrl) : null;
+  const redirectMeta = safeReturnUrl && tone === "success"
+    ? `<meta http-equiv="refresh" content="3;url=${safeReturnUrl}">`
+    : "";
   const returnAction = safeReturnUrl
-    ? `<a class="return-button" href="${safeReturnUrl}">Return to ${appLabel}</a>`
+    ? `<a class="return-button" href="${safeReturnUrl}">Return to ${appLabel}</a>${tone === "success" ? `<small class="return-note">Returning automatically in a few seconds…</small>` : ""}`
     : "";
 
   const document = `<!doctype html>
@@ -72,6 +83,7 @@ export function paymentResultPage(
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#10172a">
   <meta name="robots" content="noindex,nofollow,noarchive">
+  ${redirectMeta}
   <title>${safeTitle} · VAC Secure Payments</title>
   <style>
     :root { color-scheme: light; --accent: ${content.accent}; --soft: ${content.soft}; }
@@ -174,6 +186,12 @@ export function paymentResultPage(
       text-decoration: none;
       font-size: 14px;
       font-weight: 800;
+    }
+    .return-note {
+      display: block;
+      margin-top: 9px;
+      color: #7a8392;
+      font-size: 11.5px;
     }
     .notice {
       display: flex;
