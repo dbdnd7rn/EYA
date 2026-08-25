@@ -1,11 +1,12 @@
 import { Tabs } from "expo-router";
 import { ClipboardList, House, MessageCircle, UserRound } from "lucide-react-native";
-import { AnimatedTabBar, createTabScreenOptions } from "@/components/AnimatedTabBar";
+import { createTabScreenOptions } from "@/components/AnimatedTabBar";
+import StudentTabBar from "@/components/navigation/StudentTabBar";
 import { StudentBadgeProvider, useStudentBadges } from "@/providers/StudentBadgeProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 const STUDENT_VISIBLE_TABS = ["home", "orders", "messages", "account"];
-const SECTION_ONLY_TABS = new Set(["tickets", "rooms", "saved", "room-messages", "marketplace", "food", "profile"]);
+const SECTION_ONLY_TABS = new Set(["tickets", "wallet", "rooms", "saved", "room-messages", "marketplace", "food", "profile"]);
 
 function StudentTabsNavigator() {
   const { messages, orders } = useStudentBadges();
@@ -18,7 +19,7 @@ function StudentTabsNavigator() {
       tabBar={(props) => {
         const activeRouteName = props.state.routes[props.state.index]?.name;
         if (activeRouteName && SECTION_ONLY_TABS.has(activeRouteName)) return null;
-        return <AnimatedTabBar {...props} theme={tabTheme} visibleTabNames={STUDENT_VISIBLE_TABS} />;
+        return <StudentTabBar {...props} theme={tabTheme} visibleTabNames={STUDENT_VISIBLE_TABS} />;
       }}
     >
       <Tabs.Screen name="home" options={{ title: "Home", tabBarIcon: ({ color }) => <House color={color} /> }} />
