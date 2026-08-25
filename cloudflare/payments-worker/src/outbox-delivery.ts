@@ -24,7 +24,7 @@ type OutboxRow = {
   event_type: string;
   idempotency_key: string;
   payload_json: string;
-  status: "pending" | "delivering" | "delivered" | "failed";
+  status: "pending" | "delivering" | "delivered" | "failed" | "suppressed";
   attempts: number;
   next_attempt_at: string;
   last_error: string | null;
