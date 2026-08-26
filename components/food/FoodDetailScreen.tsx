@@ -5,7 +5,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowLeft,
   BadgeCheck,
-  Bike,
   ChevronRight,
   Clock3,
   MapPin,
@@ -39,7 +38,6 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
   const isStudentView = fallbackRoute === "/(student)/(tabs)/food";
   const params = useLocalSearchParams<{ id?: string }>();
   const [item, setItem] = React.useState<FoodCard | null>(null);
-  const [deliver, setDeliver] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
   const [selectionMap, setSelectionMap] = React.useState<FoodMenuSelectionMap>({});
 
@@ -92,8 +90,6 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
   }
 
   const selectionSummary = buildFoodSelectionSummary(item.meal, item.mealPrice, item.menuConfig, selectionMap);
-  const total = selectionSummary.unitPrice + (deliver ? item.deliveryFee : 0);
-  const missingRequiredChoices = selectionSummary.missingRequiredSectionIds.length > 0;
 
   const toggleOption = (sectionId: string, optionId: string, selection: "single" | "multiple") => {
     setSelectionMap((current) => {
@@ -155,7 +151,7 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
           {item.menuConfig?.sections?.length ? (
             <View style={styles.customizerCard}>
               <Text style={styles.customizerTitle}>Build your plate</Text>
-              <Text style={styles.customizerSub}>Choose your preferred base meal and add any extras before checkout.</Text>
+              <Text style={styles.customizerSub}>Choose your preferred base meal and extras, then contact the restaurant.</Text>
 
               {item.menuConfig.sections.map((section) => {
                 const selectedIds = selectionMap[section.id] ?? [];
@@ -238,58 +234,8 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
               </Pressable>
             ) : null}
           </View>
-
-          <Pressable style={[styles.deliveryToggle, deliver && styles.deliveryToggleActive]} onPress={() => setDeliver((current) => !current)}>
-            <View style={styles.deliveryToggleLeft}>
-              <Bike size={18} color={deliver ? "#ffffff" : "#0f6d80"} />
-              <View>
-                <Text style={[styles.deliveryToggleTitle, deliver && styles.deliveryToggleTitleActive]}>
-                  {deliver ? "Door delivery selected" : "Add door delivery"}
-                </Text>
-                <Text style={[styles.deliveryToggleSub, deliver && styles.deliveryToggleSubActive]}>
-                  {deliver ? `${kwacha(item.deliveryFee)} included in total` : "Pickup only if left off"}
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={18} color={deliver ? "#ffffff" : "#0f6d80"} />
-          </Pressable>
         </View>
       </ScrollView>
-
-      <View style={styles.footer}>
-        <View>
-          <Text style={styles.footerLabel}>Total</Text>
-          <Text style={styles.footerTotal}>{kwacha(total)}</Text>
-        </View>
-        <Pressable
-          style={[styles.cta, (!item.isOpen || missingRequiredChoices) && styles.ctaDisabled]}
-          disabled={!item.isOpen || missingRequiredChoices}
-          onPress={() =>
-            item.isOpen &&
-            router.push({
-              pathname: "/(student)/checkout",
-              params: {
-                mode: "food",
-                title: selectionSummary.itemTitle,
-                base: String(selectionSummary.unitPrice),
-                delivery: String(deliver ? item.deliveryFee : 0),
-                item_id: item.id,
-                vendor_id: item.vendorId,
-                channel: "food",
-                delivery_mode: deliver ? "doorstep" : "pickup",
-                food_selection: JSON.stringify(selectionMap),
-                food_summary: selectionSummary.summaryText,
-                food_base_title: item.meal,
-              },
-            })
-          }
-        >
-          <Text style={styles.ctaText}>
-            {!item.isOpen ? "Currently closed" : missingRequiredChoices ? "Complete your plate" : "Proceed to checkout"}
-          </Text>
-          {item.isOpen && !missingRequiredChoices ? <ChevronRight size={20} color="#ffffff" /> : null}
-        </Pressable>
-      </View>
     </SafeAreaView>
   );
 }
@@ -317,7 +263,7 @@ function InfoCard({ icon, text, title }: { icon: React.ReactNode; text: string; 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#eef6f8" },
-  content: { padding: 16, paddingBottom: 132, gap: 16 },
+  content: { padding: 16, paddingBottom: 32, gap: 16 },
   skeletonWrap: { padding: 16, gap: 12 },
   skeletonHero: { height: 280, borderRadius: 30, backgroundColor: "#d8e8ef" },
   skeletonCard: { height: 140, borderRadius: 28, backgroundColor: "#d8e8ef" },
@@ -481,50 +427,4 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   messageBtnText: { color: "#16315f", fontWeight: "900", fontSize: 14 },
-  deliveryToggle: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#d2e1e7",
-    backgroundColor: "#f8fcfd",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  deliveryToggleActive: { backgroundColor: "#0f6d80", borderColor: "#0f6d80" },
-  deliveryToggleLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
-  deliveryToggleTitle: { color: "#0f6d80", fontWeight: "900", fontSize: 15 },
-  deliveryToggleTitleActive: { color: "#ffffff" },
-  deliveryToggleSub: { color: "#5b7380", fontWeight: "600", fontSize: 12, marginTop: 2 },
-  deliveryToggleSubActive: { color: "#d7f7ff" },
-  footer: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 100,
-    borderRadius: 28,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#dbe6eb",
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  footerLabel: { color: "#58707e", fontWeight: "700", fontSize: 12, textTransform: "uppercase" },
-  footerTotal: { color: "#16315f", fontWeight: "900", fontSize: 22, marginTop: 2 },
-  cta: {
-    borderRadius: 999,
-    backgroundColor: "#0f6d80",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  ctaDisabled: { backgroundColor: "#a0b6bd" },
-  ctaText: { color: "#ffffff", fontWeight: "900", fontSize: 14 },
 });
