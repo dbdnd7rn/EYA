@@ -46,7 +46,6 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
   const params = useLocalSearchParams<{ id?: string }>();
   const [item, setItem] = React.useState<MarketCard | null>(null);
   const [similar, setSimilar] = React.useState<MarketCard[]>([]);
-  const [deliver, setDeliver] = React.useState(true);
   const [liked, setLiked] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = React.useState(0);
@@ -100,7 +99,6 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
     );
   }
 
-  const total = item.price + (deliver ? item.deliveryFee : 0);
   const photos = item.images?.length ? item.images : [item.image];
   const activePhotoIndex = Math.min(selectedPhotoIndex, Math.max(photos.length - 1, 0));
   const selectedPhoto = photos[activePhotoIndex] ?? item.image;
@@ -184,7 +182,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
 
           <View style={styles.statRow}>
             <InfoLine icon={<Star size={14} color="#f5b940" fill="#f5b940" />} text={`Condition: New - ${item.rating.toFixed(1)} rated`} />
-            <InfoLine icon={<Truck size={14} color="#0f6d80" />} text={`Delivery: Fast - ${deliver ? "30 mins" : "Pickup only"}`} />
+            <InfoLine icon={<Truck size={14} color="#0f6d80" />} text="Delivery: Arrange directly with the seller" />
             <InfoLine icon={<MapPin size={14} color="#0f6d80" />} text={`Location: ${item.area}, ${item.campus}`} />
             <InfoLine icon={<CalendarClock size={14} color="#102a54" />} text={`Listed on ${formatDateLabel(item.listedAt)} | refreshed ${formatDateLabel(item.refreshedAt)}`} />
             <InfoLine icon={<ShieldCheck size={14} color="#0d7a37" />} text={`Seller: ${item.vendor} - Verified`} />
@@ -273,13 +271,6 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
               </Pressable>
             </View>
           ) : null}
-
-          <Pressable style={[styles.deliveryPill, deliver && styles.deliveryPillActive]} onPress={() => setDeliver((current) => !current)}>
-            <Truck size={15} color={deliver ? "#fff" : "#0f6d80"} />
-            <Text style={[styles.deliveryPillText, deliver && styles.deliveryPillTextActive]}>
-              {deliver ? `Delivery added - ${kwacha(item.deliveryFee)}` : "Add doorstep delivery"}
-            </Text>
-          </Pressable>
         </View>
 
         {similar.length ? (
@@ -301,33 +292,6 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
           </View>
         ) : null}
       </ScrollView>
-
-      <View style={styles.footer}>
-        <View>
-          <Text style={styles.footerLabel}>Total</Text>
-          <Text style={styles.footerPrice}>{kwacha(total)}</Text>
-        </View>
-        <Pressable
-          style={styles.cta}
-          onPress={() =>
-            router.push({
-              pathname: "/(student)/checkout",
-              params: {
-                mode: "market",
-                title: item.name,
-                base: String(item.price),
-                delivery: String(deliver ? item.deliveryFee : 0),
-                item_id: item.id,
-                vendor_id: item.vendorId,
-                channel: "market",
-                delivery_mode: deliver ? "doorstep" : "pickup",
-              },
-            })
-          }
-        >
-          <Text style={styles.ctaText}>Checkout</Text>
-        </Pressable>
-      </View>
 
       <Modal visible={photoViewerOpen} animationType="fade" transparent onRequestClose={() => setPhotoViewerOpen(false)}>
         <SafeAreaView style={styles.photoViewer}>
@@ -384,7 +348,7 @@ function InfoLine({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#eaf7f9" },
-  content: { padding: 16, paddingBottom: 128, gap: 14 },
+  content: { padding: 16, paddingBottom: 32, gap: 14 },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   screenTitle: { flex: 1, textAlign: "center", color: "#0b3d4f", fontWeight: "900", fontSize: 16 },
   iconBtn: {
@@ -559,22 +523,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pickupBtnText: { color: "#102a54", fontSize: 13, fontWeight: "900" },
-  deliveryPill: {
-    marginTop: 4,
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#a8c8d2",
-    backgroundColor: "#f7fdff",
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  deliveryPillActive: { backgroundColor: "#0f6d80", borderColor: "#0f6d80" },
-  deliveryPillText: { color: "#0f6d80", fontWeight: "900", fontSize: 13 },
-  deliveryPillTextActive: { color: "#fff" },
   similarCard: {
     borderRadius: 22,
     backgroundColor: "#fcfeff",
@@ -588,40 +536,6 @@ const styles = StyleSheet.create({
   similarImage: { width: "100%", height: 110, borderRadius: 16, backgroundColor: "#dbeef3" },
   similarName: { color: "#0b3d4f", fontWeight: "800", fontSize: 14, minHeight: 38 },
   similarPrice: { color: "#0f6d80", fontWeight: "900", fontSize: 18 },
-  footer: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 100,
-    borderRadius: 22,
-    backgroundColor: "#fcfeff",
-    borderWidth: 1,
-    borderColor: "#d3e5eb",
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    shadowColor: "#0b3d4f",
-    shadowOpacity: 0.09,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  footerLabel: { color: "#7c99a2", fontWeight: "800", fontSize: 11, textTransform: "uppercase" },
-  footerPrice: { color: "#0b3d4f", fontWeight: "900", fontSize: 30 },
-  cta: {
-    borderRadius: 999,
-    backgroundColor: "#0f6d80",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    shadowColor: "#0f6d80",
-    shadowOpacity: 0.26,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  ctaText: { color: "#fff", fontWeight: "900", fontSize: 14 },
   emptyCard: {
     flex: 1,
     margin: 16,
