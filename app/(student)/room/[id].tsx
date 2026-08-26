@@ -1004,11 +1004,11 @@ export default function RoomDetailsScreen() {
 
             <Animated.View style={[styles.card, sectionAnim(7)]}>
               <Text style={styles.sectionTitle}>Move-in readiness</Text>
-              <Text style={styles.sectionSub}>Checklist to protect yourself before payment.</Text>
+              <Text style={styles.sectionSub}>Checklist to protect yourself before committing to a room.</Text>
               <View style={{ gap: 6, marginTop: 8 }}>
                 <Text style={styles.meta}>- Visit the room physically or by live video call first.</Text>
                 <Text style={styles.meta}>- Confirm landlord identity and exact room terms in writing.</Text>
-                <Text style={styles.meta}>- Keep payment proof and signed agreement copy.</Text>
+                <Text style={styles.meta}>- Keep a signed agreement and any receipts.</Text>
                 <Text style={styles.meta}>- Take move-in photos for inventory and damage records.</Text>
               </View>
             </Animated.View>
@@ -1037,27 +1037,6 @@ export default function RoomDetailsScreen() {
                   <View style={styles.btnRow}>
                     <MessageCircle size={15} color="#fff" />
                     <Text style={styles.btnText}>Ask landlord</Text>
-                  </View>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.btnNavy, styles.btnSecondary]}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(student)/checkout",
-                      params: {
-                        mode: "stay",
-                        title: listing.title,
-                        base: String(listing.price_from ?? 0),
-                        delivery: "0",
-                        escrow: "1",
-                      },
-                    })
-                  }
-                >
-                  <View style={styles.btnRow}>
-                    <ShieldCheck size={15} color="#fff" />
-                    <Text style={styles.btnText}>Reserve with escrow</Text>
                   </View>
                 </Pressable>
 
@@ -1379,6 +1358,5 @@ const styles = StyleSheet.create({
   modalRow: { flexDirection: "row", gap: 10, justifyContent: "flex-end" },
   modalTitle: { color: "#0e2756", fontWeight: "900", fontSize: 18 },
 });
-
 
 
