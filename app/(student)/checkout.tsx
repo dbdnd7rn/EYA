@@ -353,6 +353,11 @@ export default function CheckoutScreen() {
       return;
     }
 
+    if (isMobileMoneyMethod && !options?.fromMobileMoneyModal) {
+      openMobileMoney();
+      return;
+    }
+
     const cleanPhone = mobileNumber.trim().replace(/\s+/g, "");
     if (requiresPhone && cleanPhone.length < 8) {
       Alert.alert("Phone required", "Enter a valid mobile money number for this payment method.");
@@ -374,11 +379,6 @@ export default function CheckoutScreen() {
           savedAt: Date.now(),
         });
       Alert.alert("Offline", "Payment needs internet. Your checkout draft was saved so you can resume quickly.");
-      return;
-    }
-
-    if (isMobileMoneyMethod && !options?.fromMobileMoneyModal) {
-      openMobileMoney();
       return;
     }
 
@@ -636,7 +636,12 @@ export default function CheckoutScreen() {
       </Animated.ScrollView>
 
       <View style={styles.footer}>
-        <Text style={styles.footerTotal} numberOfLines={1}>{formatMwk(total)}</Text>
+        <View style={styles.footerAmountWrap}>
+          <Text style={styles.footerLabel}>Total</Text>
+          <Text style={styles.footerTotal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>
+            {formatMwk(total)}
+          </Text>
+        </View>
         <Animated.View style={[styles.payBtnWrap, { transform: [{ scale: payPressScale }] }]}>
           <Pressable
             style={[styles.payBtn, (submitting || verifyingPayment) && styles.payBtnDisabled]}
@@ -645,10 +650,10 @@ export default function CheckoutScreen() {
             onPressOut={onPayPressOut}
             onPress={() => void payNow()}
           >
-            <Text style={styles.payBtnText} numberOfLines={1}>
+            <Text style={styles.payBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
               {submitting ? "Starting payment..." : verifyingPayment ? "Verifying payment..." : "Proceed to Checkout"}
             </Text>
-            <ChevronRight size={24} color="#ffffff" />
+            <ChevronRight size={20} color="#ffffff" />
           </Pressable>
         </Animated.View>
       </View>
@@ -1262,49 +1267,58 @@ const styles = StyleSheet.create({
   },
   footer: {
     position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 10,
-    borderRadius: 24,
+    left: 12,
+    right: 12,
+    bottom: 8,
+    borderRadius: 20,
     backgroundColor: "#fbfbff",
     borderWidth: 1,
     borderColor: "#e3e6f2",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    alignItems: "stretch",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     shadowColor: "#97a4ca",
     shadowOpacity: 0.18,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
-  },
-  footerTotal: {
-    color: "#13285f",
-    fontWeight: "900",
-    fontSize: 20,
-    lineHeight: 24,
-    letterSpacing: -0.5,
-    textAlign: "center",
-  },
-  payBtnWrap: { width: "100%" },
-  payBtn: {
-    minHeight: 56,
-    borderRadius: 22,
-    backgroundColor: "#0d7285",
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    shadowColor: "#0d7285",
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
     elevation: 6,
   },
+  footerAmountWrap: {
+    minWidth: 108,
+    maxWidth: "40%",
+    flexShrink: 0,
+    gap: 2,
+  },
+  footerLabel: { color: "#7a84a0", fontWeight: "800", fontSize: 10, textTransform: "uppercase" },
+  footerTotal: {
+    color: "#13285f",
+    fontWeight: "900",
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: -0.5,
+    textAlign: "left",
+    flexShrink: 0,
+  },
+  payBtnWrap: { flex: 1, minWidth: 0 },
+  payBtn: {
+    minHeight: 52,
+    borderRadius: 18,
+    backgroundColor: "#0d7285",
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    shadowColor: "#0d7285",
+    shadowOpacity: 0.24,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
   payBtnDisabled: { opacity: 0.68 },
-  payBtnText: { color: "#ffffff", fontWeight: "900", fontSize: 16, flexShrink: 1, textAlign: "center" },
+  payBtnText: { color: "#ffffff", fontWeight: "900", fontSize: 15, flexShrink: 1, textAlign: "center" },
   checkoutRoot: { flex: 1, backgroundColor: "#eef6f8" },
   checkoutHeader: {
     paddingHorizontal: 16,
