@@ -56,6 +56,7 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
   const tabCount = items.length || 1;
   const tabWidth = barWidth > 0 ? barWidth / tabCount : 0;
   const bubbleX = useSharedValue(0);
+  const bottomOffset = Math.max(insets.bottom + 6, 10);
 
   React.useEffect(() => {
     bubbleX.value = withSpring(activeIndex * tabWidth, {
@@ -82,7 +83,7 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
   }, []);
 
   return (
-    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: insets.bottom + 20 }]}> 
+    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: bottomOffset }]}> 
       <View style={styles.shadowWrap}>
         <BlurView
           experimentalBlurMethod="dimezisBlurView"
