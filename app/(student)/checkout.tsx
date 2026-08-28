@@ -398,6 +398,17 @@ export default function CheckoutScreen() {
           mode,
           title,
           user_id: user.id,
+          delivery_fee_mwk: delivery,
+          service_fee_mwk: serviceFee,
+          escrow_enabled: escrowEnabled,
+          item_id: itemId,
+          vendor_id: vendorId,
+          channel,
+          delivery_mode: deliveryMode,
+          quantity,
+          food_selection: foodSelection,
+          food_summary: foodSummary || null,
+          food_base_title: foodBaseTitle || null,
           purpose: campusMarketOrderDraft ? "campus_market_order" : "stay_reservation",
           order: campusMarketOrderDraft ?? undefined,
         },
@@ -636,8 +647,8 @@ export default function CheckoutScreen() {
       </Animated.ScrollView>
 
       <View style={styles.footer}>
-        <Text style={styles.footerTotal}>{formatMwk(total)}</Text>
-        <Animated.View style={{ transform: [{ scale: payPressScale }] }}>
+        <Text style={styles.footerTotal} numberOfLines={1}>{formatMwk(total)}</Text>
+        <Animated.View style={[styles.payBtnWrap, { transform: [{ scale: payPressScale }] }]}>
           <Pressable
             style={[styles.payBtn, (submitting || verifyingPayment) && styles.payBtnDisabled]}
             disabled={submitting || verifyingPayment}
@@ -645,7 +656,7 @@ export default function CheckoutScreen() {
             onPressOut={onPayPressOut}
             onPress={() => void payNow()}
           >
-            <Text style={styles.payBtnText}>
+            <Text style={styles.payBtnText} numberOfLines={1}>
               {submitting ? "Starting payment..." : verifyingPayment ? "Verifying payment..." : "Proceed to Checkout"}
             </Text>
             <ChevronRight size={24} color="#ffffff" />
@@ -1262,34 +1273,40 @@ const styles = StyleSheet.create({
   },
   footer: {
     position: "absolute",
-    left: 22,
-    right: 22,
-    bottom: 98,
-    minHeight: 88,
-    borderRadius: 30,
+    left: 16,
+    right: 16,
+    bottom: 10,
+    borderRadius: 24,
     backgroundColor: "#fbfbff",
     borderWidth: 1,
     borderColor: "#e3e6f2",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    alignItems: "stretch",
+    gap: 10,
     shadowColor: "#97a4ca",
     shadowOpacity: 0.18,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
     elevation: 6,
   },
-  footerTotal: { color: "#13285f", fontWeight: "900", fontSize: 22, letterSpacing: -0.7, flexShrink: 1 },
+  footerTotal: {
+    color: "#13285f",
+    fontWeight: "900",
+    fontSize: 20,
+    lineHeight: 24,
+    letterSpacing: -0.5,
+    textAlign: "center",
+  },
+  payBtnWrap: { width: "100%" },
   payBtn: {
-    minHeight: 60,
-    borderRadius: 999,
+    minHeight: 56,
+    borderRadius: 22,
     backgroundColor: "#0d7285",
-    paddingHorizontal: 24,
+    paddingHorizontal: 18,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 10,
     shadowColor: "#0d7285",
     shadowOpacity: 0.28,
@@ -1298,7 +1315,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   payBtnDisabled: { opacity: 0.68 },
-  payBtnText: { color: "#ffffff", fontWeight: "900", fontSize: 18 },
+  payBtnText: { color: "#ffffff", fontWeight: "900", fontSize: 16, flexShrink: 1, textAlign: "center" },
   checkoutRoot: { flex: 1, backgroundColor: "#eef6f8" },
   checkoutHeader: {
     paddingHorizontal: 16,
@@ -1595,4 +1612,3 @@ const styles = StyleSheet.create({
   },
   mobileMoneySecureText: { color: "#6c7592", fontWeight: "700", fontSize: 13 },
 });
-
