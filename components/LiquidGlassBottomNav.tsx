@@ -287,7 +287,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 7 },
-    elevation: 8,
+    zIndex: 1,
+    elevation: 0,
   },
   bubbleBlur: {
     flex: 1,
@@ -311,6 +312,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "stretch",
     zIndex: 2,
+    elevation: 2,
   },
   itemWrap: {
     flex: 1,
