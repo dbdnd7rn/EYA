@@ -499,8 +499,9 @@ export default function RoomDetailsScreen() {
   };
 
   const toggleSave = async () => {
-    if (!uid || role !== "student") {
-      Alert.alert("Login as a student to save rooms");
+    const userId = user?.id ?? uid;
+    if (!userId) {
+      Alert.alert("Please sign in to save rooms");
       return;
     }
     if (!id) {
@@ -513,7 +514,7 @@ export default function RoomDetailsScreen() {
     if (!isOnline) {
       const nextSaved = !saved;
       await queueOfflineSaveToggle({
-        studentId: uid,
+        studentId: userId,
         listingId: id,
         nextSaved,
         snapshot: listing
@@ -540,7 +541,7 @@ export default function RoomDetailsScreen() {
     }
 
     if (saved) {
-      const { error } = await supabase.from("saved_rooms").delete().eq("student_id", uid).eq("listing_id", id);
+      const { error } = await supabase.from("saved_rooms").delete().eq("student_id", userId).eq("listing_id", id);
       if (error) {
         Alert.alert(error.message);
         setSaving(false);
@@ -548,7 +549,7 @@ export default function RoomDetailsScreen() {
       }
       setSaved(false);
     } else {
-      const { error } = await supabase.from("saved_rooms").insert({ student_id: uid, listing_id: id });
+      const { error } = await supabase.from("saved_rooms").insert({ student_id: userId, listing_id: id });
       if (error) {
         Alert.alert(error.message);
         setSaving(false);
