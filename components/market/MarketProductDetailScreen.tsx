@@ -303,11 +303,13 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
       </ScrollView>
 
       <View style={styles.footer}>
-        <View>
+        <View style={styles.footerTotal}>
           <Text style={styles.footerLabel}>Total</Text>
-          <Text style={styles.footerPrice}>{kwacha(total)}</Text>
+          <Text style={styles.footerPrice} numberOfLines={1} adjustsFontSizeToFit>{kwacha(total)}</Text>
         </View>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Proceed to checkout"
           style={styles.cta}
           onPress={() =>
             router.push({
@@ -326,6 +328,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
           }
         >
           <Text style={styles.ctaText}>Checkout</Text>
+          <ChevronRight size={18} color="#ffffff" />
         </Pressable>
       </View>
 
@@ -384,7 +387,7 @@ function InfoLine({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#eaf7f9" },
-  content: { padding: 16, paddingBottom: 128, gap: 14 },
+  content: { padding: 16, paddingBottom: 132, gap: 14 },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   screenTitle: { flex: 1, textAlign: "center", color: "#0b3d4f", fontWeight: "900", fontSize: 16 },
   iconBtn: {
@@ -592,34 +595,44 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 100,
-    borderRadius: 22,
+    bottom: 12,
+    minHeight: 72,
+    borderRadius: 20,
     backgroundColor: "#fcfeff",
     borderWidth: 1,
     borderColor: "#d3e5eb",
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
     shadowColor: "#0b3d4f",
-    shadowOpacity: 0.09,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 5,
   },
-  footerLabel: { color: "#7c99a2", fontWeight: "800", fontSize: 11, textTransform: "uppercase" },
-  footerPrice: { color: "#0b3d4f", fontWeight: "900", fontSize: 30 },
+  footerTotal: { flex: 1, minWidth: 0 },
+  footerLabel: { color: "#7c99a2", fontWeight: "800", fontSize: 10, textTransform: "uppercase" },
+  footerPrice: { color: "#0b3d4f", fontWeight: "900", fontSize: 25, lineHeight: 30 },
   cta: {
-    borderRadius: 999,
+    minWidth: 132,
+    minHeight: 48,
+    borderRadius: 16,
     backgroundColor: "#0f6d80",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    flexShrink: 0,
     shadowColor: "#0f6d80",
-    shadowOpacity: 0.26,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
   },
   ctaText: { color: "#fff", fontWeight: "900", fontSize: 14 },
   emptyCard: {
