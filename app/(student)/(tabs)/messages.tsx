@@ -479,7 +479,7 @@ export default function StudentMessagesScreen({
               <View style={styles.emptyIconWrap}>
                 <MessageCircle size={24} color="#0f6d80" />
               </View>
-              <Text style={[styles.emptyTitle, { color: theme.text }]}>{roomsOnly ? "No room chats yet" : "No chats yet"}</Text>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>No chats yet</Text>
               <Text style={[styles.emptySub, { color: theme.textMuted }]}>
                 {roomsOnly ? "Start a room enquiry and landlord chats will appear here." : "Start a hostel enquiry or message a seller and it will appear here."}
               </Text>
