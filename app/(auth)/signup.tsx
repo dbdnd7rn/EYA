@@ -171,7 +171,7 @@ export default function SignupScreen() {
                     <UserRound size={20} color="#627196" />
                     <TextInput
                       style={styles.textInput}
-                      placeholder="First Name"
+                      placeholder="F. Name"
                       placeholderTextColor="#7381a3"
                       value={firstName}
                       onChangeText={setFirstName}
@@ -182,7 +182,7 @@ export default function SignupScreen() {
                     <UserRound size={20} color="#627196" />
                     <TextInput
                       style={styles.textInput}
-                      placeholder="Last Name"
+                      placeholder="L. Name"
                       placeholderTextColor="#7381a3"
                       value={lastName}
                       onChangeText={setLastName}
@@ -257,7 +257,7 @@ export default function SignupScreen() {
                         <Stop offset="100%" stopColor="#234dd6" />
                       </LinearGradient>
                     </Defs>
-                    <Rect x="0" y="0" width="100%" height="100%" rx="999" fill="url(#signup-gradient)" />
+                    <Rect x="0" y="0" width="100%" height="100%" rx="18" fill="url(#signup-gradient)" />
                   </Svg>
                   <Text style={styles.primaryButtonText}>{loading ? "Creating..." : "Create User Account"}</Text>
                 </View>
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
   successText: { color: "#0a6b3d", fontSize: 13, fontWeight: "700" },
   primaryButton: {
     marginTop: 18,
-    borderRadius: 999,
+    borderRadius: 18,
     overflow: "hidden",
     shadowColor: "#4a6fd6",
     shadowOpacity: 0.28,
