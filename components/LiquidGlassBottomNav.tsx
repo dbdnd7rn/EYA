@@ -11,7 +11,6 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type TabBadge = string | number | undefined;
 
@@ -46,7 +45,6 @@ type LiquidGlassBottomNavProps = {
 };
 
 export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavProps) {
-  const insets = useSafeAreaInsets();
   const lastPressAtRef = React.useRef(0);
   const activeIndex = Math.max(
     0,
@@ -56,7 +54,7 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
   const tabCount = items.length || 1;
   const tabWidth = barWidth > 0 ? barWidth / tabCount : 0;
   const bubbleX = useSharedValue(0);
-  const bottomOffset = Math.max(insets.bottom + 6, 10);
+  const bottomOffset = 6;
 
   React.useEffect(() => {
     bubbleX.value = withSpring(activeIndex * tabWidth, {
