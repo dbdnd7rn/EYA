@@ -8,7 +8,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/eya-logo-transparent.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -45,6 +45,15 @@
       "expo-notifications",
       "expo-camera",
       "expo-web-browser",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/eya-logo-transparent.png",
+          "imageWidth": 170,
+          "resizeMode": "contain"
+        }
+      ],
       [
         "expo-location",
         {
