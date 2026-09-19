@@ -255,14 +255,14 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f2fb" },
   content: {
     padding: 16,
-    paddingBottom: 118,
+    paddingBottom: 148,
     backgroundColor: "#f4f2fb",
   },
   shell: {
     borderRadius: 36,
     backgroundColor: "#f7f5fd",
     padding: 16,
-    gap: 14,
+    gap: 18,
     overflow: "hidden",
     shadowColor: "#8a99c1",
     shadowOpacity: 0.06,
@@ -343,7 +343,12 @@ const styles = StyleSheet.create({
   },
   editBtnText: { color: "#0e2756", fontSize: 17, fontWeight: "800" },
 
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 14 },
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 18,
+  },
   tile: {
     width: "48%",
     minHeight: 170,
