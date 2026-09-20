@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import {
   BadgeCheck,
@@ -110,6 +111,7 @@ function unreadCountFromThread(status: string, messages: MessageRow[], hasFallba
 }
 
 export default function LandlordEnquiriesScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -258,7 +260,7 @@ export default function LandlordEnquiriesScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
         <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbLeft]} />
         <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbRight]} />
         <View style={styles.center}>
@@ -269,12 +271,12 @@ export default function LandlordEnquiriesScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbLeft]} />
       <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbRight]} />
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load({ silent: true }); }} tintColor="#ff0f64" />}
         showsVerticalScrollIndicator={false}
       >
@@ -446,7 +448,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 18,
     paddingTop: 14,
-    paddingBottom: 150,
     gap: 16,
   },
   heroCard: {
