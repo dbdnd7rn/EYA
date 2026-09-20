@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import { Bell, CalendarClock, ChefHat, Clock3, Search } from "lucide-react-native";
 import { useSellerWorkspace } from "@/components/seller/useSellerWorkspace";
@@ -18,6 +19,7 @@ function money(value: number) {
 }
 
 export default function RestaurantSessionsPage() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const { workspace, metrics, updateVendorProfile } = useSellerWorkspace("food");
   const { unreadCount } = useNotificationInbox();
@@ -64,7 +66,7 @@ export default function RestaurantSessionsPage() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>Today</Text>
@@ -200,7 +202,7 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f1eff9" },
-  content: { padding: 18, paddingBottom: 120, gap: 14 },
+  content: { padding: 18, gap: 14 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   headerCopy: { gap: 4 },
   title: { color: "#232c54", fontSize: 38, fontWeight: "900" },
