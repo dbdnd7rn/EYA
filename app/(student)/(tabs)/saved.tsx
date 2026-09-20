@@ -27,6 +27,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
+import { LIQUID_GLASS_NAV_HEIGHT, useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 
 type ListingRow = {
   id: string;
@@ -59,6 +60,7 @@ export default function SavedRoomsScreen() {
   const { user, loading: authLoading } = useAuth();
   const { isOnline } = useNetwork();
   const { theme } = useStudentTheme();
+  const contentBottomPadding = useFloatingNavContentPadding(LIQUID_GLASS_NAV_HEIGHT);
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -239,7 +241,7 @@ export default function SavedRoomsScreen() {
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView
         style={styles.scroller}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}
       >
         <RoomsSectionHeader />
@@ -351,7 +353,7 @@ export default function SavedRoomsScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
   scroller: { flex: 1 },
-  content: { padding: 16, paddingBottom: 164, gap: 12 },
+  content: { padding: 16, gap: 12 },
   headerWrap: { padding: 16, paddingBottom: 0 },
   loadingWrap: { padding: 16, gap: 12 },
   skeletonCard: { height: 220, borderRadius: 24, backgroundColor: "#dde6ff" },
