@@ -7,6 +7,7 @@ import { kwacha } from "@/lib/currency";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
 import { listMarketCards, type MarketCard } from "@/lib/newApp/browse";
 import MarketBottomNav from "@/components/market/MarketBottomNav";
+import { LIQUID_GLASS_NAV_HEIGHT, useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useLiveProximity } from "@/lib/liveProximity";
 import {
   diversifyMarketListings,
@@ -49,6 +50,7 @@ function listingAreaLabel(item: MarketCard) {
 
 export default function AllProductsScreen({ detailRoute }: Props) {
   const router = useRouter();
+  const bottomNavPadding = useFloatingNavContentPadding(LIQUID_GLASS_NAV_HEIGHT);
   const isStudentBrowse = detailRoute === "/(student)/market/[id]";
   const [query, setQuery] = React.useState("");
   const [items, setItems] = React.useState<MarketCard[]>([]);
@@ -110,7 +112,7 @@ export default function AllProductsScreen({ detailRoute }: Props) {
         data={filtered}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        contentContainerStyle={[styles.listContent, isStudentBrowse && styles.listContentWithBottomNav]}
+        contentContainerStyle={[styles.listContent, isStudentBrowse && { paddingBottom: bottomNavPadding }]}
         columnWrapperStyle={styles.gridRow}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
@@ -192,7 +194,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f7fb", paddingHorizontal: 16, paddingTop: 10 },
   list: { flex: 1 },
   listContent: { paddingBottom: 22 },
-  listContentWithBottomNav: { paddingBottom: 164 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 },
   backBtn: {
     width: 42,
