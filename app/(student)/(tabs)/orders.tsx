@@ -10,6 +10,7 @@ import { supabaseNewApp } from "@/lib/supabaseNewApp";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 
 type OrderFilter = "all" | "active" | "completed";
 type DbOrderStatus = "pending" | "accepted" | "preparing" | "picked_up" | "on_the_way" | "delivered" | "cancelled";
@@ -103,6 +104,7 @@ export default function OrdersScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { theme } = useStudentTheme();
+  const contentBottomPadding = useFloatingNavContentPadding();
   const { isOnline } = useNetwork();
   const [filter, setFilter] = useState<OrderFilter>("active");
   const [loading, setLoading] = useState(true);
@@ -253,7 +255,7 @@ export default function OrdersScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <Text style={[styles.title, { color: theme.text }]}>Your Orders</Text>
 
         <View style={[styles.filterWrap, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
@@ -424,7 +426,7 @@ function MetaPill({ label, positive = false }: { label: string; positive?: boole
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f2fb" },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 16, paddingBottom: 156, gap: 18 },
+  content: { padding: 16, gap: 18 },
   title: { color: "#2d3170", fontSize: 28, fontWeight: "900" },
   filterWrap: {
     borderRadius: 999,
