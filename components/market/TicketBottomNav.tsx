@@ -3,12 +3,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Heart, Home, Ticket } from "lucide-react-native";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
+import { useFloatingNavBottomOffset } from "@/lib/floatingNavLayout";
 
 type TicketNavKey = "home" | "my-tickets" | "favorites";
 
 export default function TicketBottomNav({ active }: { active: TicketNavKey }) {
   const router = useRouter();
   const { theme } = useStudentTheme();
+  const bottomOffset = useFloatingNavBottomOffset();
   const navItems = [
     { key: "home", label: "Home", Icon: Home, onPress: () => router.replace("/(student)/market/tickets" as any) },
     { key: "my-tickets", label: "My Tickets", Icon: Ticket, onPress: () => router.push("/(student)/market/my-tickets" as any) },
@@ -16,7 +18,7 @@ export default function TicketBottomNav({ active }: { active: TicketNavKey }) {
   ] as const;
 
   return (
-    <View style={styles.ticketNavOuter}>
+    <View style={[styles.ticketNavOuter, { bottom: bottomOffset }]}>
       <View style={[styles.ticketNav, { backgroundColor: theme.tabTheme.backgroundColor, borderColor: theme.border, shadowColor: theme.tabTheme.glowColor }]}>
         {navItems.map(({ key, label, Icon, onPress }) => {
           const isActive = active === key;
@@ -34,7 +36,7 @@ export default function TicketBottomNav({ active }: { active: TicketNavKey }) {
 }
 
 const styles = StyleSheet.create({
-  ticketNavOuter: { position: "absolute", left: 14, right: 14, bottom: 12 },
+  ticketNavOuter: { position: "absolute", left: 14, right: 14 },
   ticketNav: {
     minHeight: 70,
     borderRadius: 26,
