@@ -87,7 +87,7 @@ export default function AccountScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
         <View style={styles.skeletonWrap}>
           <View style={[styles.skeletonCard, { height: 74, backgroundColor: theme.surfaceMuted }]} />
           <View style={[styles.skeletonCard, { height: 172, backgroundColor: theme.surfaceMuted }]} />
@@ -99,7 +99,7 @@ export default function AccountScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+    <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
       <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
       <ScrollView contentContainerStyle={[styles.content, { backgroundColor: theme.background, paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={[styles.shell, { backgroundColor: theme.shell }]}>
