@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowLeft,
@@ -94,6 +94,9 @@ function previewOptions(item: FoodCard) {
 
 export default function FoodRestaurantExperienceScreen({ fallbackRoute }: Props) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const basketDockBottomPadding = Math.max(insets.bottom, 14);
+  const basketContentBottomPadding = 74 + insets.bottom + 44;
   const params = useLocalSearchParams<{ vendorId?: string }>();
   const [restaurant, setRestaurant] = React.useState<Awaited<ReturnType<typeof getFoodRestaurantByVendorId>>>(null);
   const [loading, setLoading] = React.useState(true);
@@ -268,7 +271,7 @@ export default function FoodRestaurantExperienceScreen({ fallbackRoute }: Props)
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <ScrollView
-        contentContainerStyle={[styles.content, basket ? styles.contentWithBasket : null]}
+        contentContainerStyle={[styles.content, basket ? { paddingBottom: basketContentBottomPadding } : null]}
         showsVerticalScrollIndicator={false}
         stickyHeaderIndices={[2]}
       >
@@ -453,7 +456,7 @@ export default function FoodRestaurantExperienceScreen({ fallbackRoute }: Props)
       </ScrollView>
 
       {basket && basketSummary ? (
-        <View style={styles.basketDock}>
+        <View style={[styles.basketDock, { paddingBottom: basketDockBottomPadding }]}>
           <Pressable style={styles.basketButton} onPress={checkoutBasket}>
             <View style={styles.basketIcon}>
               <ShoppingBag size={20} color="#ffffff" />
@@ -659,7 +662,6 @@ const styles = StyleSheet.create({
   loadingRoot: { flex: 1, backgroundColor: COLORS.background, alignItems: "center", justifyContent: "center", padding: 24, gap: 14 },
   loadingText: { color: COLORS.muted, fontSize: 14, fontWeight: "700" },
   content: { paddingBottom: 36 },
-  contentWithBasket: { paddingBottom: 132 },
   hero: { height: 250, overflow: "hidden", backgroundColor: COLORS.navy },
   heroImage: { width: "100%", height: "100%" },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7,18,42,0.44)" },
@@ -730,7 +732,7 @@ const styles = StyleSheet.create({
   detailIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.tealSoft, alignItems: "center", justifyContent: "center" },
   detailLabel: { color: COLORS.muted, fontSize: 11, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.8 },
   detailValue: { color: COLORS.text, fontSize: 14, fontWeight: "800", marginTop: 2 },
-  basketDock: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: "rgba(245,243,251,0.96)", paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14 },
+  basketDock: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: "rgba(245,243,251,0.96)", paddingHorizontal: 16, paddingTop: 10 },
   basketButton: { minHeight: 74, borderRadius: 25, backgroundColor: COLORS.navy, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12, shadowColor: COLORS.navy, shadowOpacity: 0.28, shadowRadius: 18, shadowOffset: { width: 0, height: 9 }, elevation: 8 },
   basketIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.teal, alignItems: "center", justifyContent: "center" },
   basketCopy: { flex: 1 },
