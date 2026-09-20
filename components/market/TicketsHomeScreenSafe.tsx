@@ -1,5 +1,5 @@
 import React from "react";
-import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +20,8 @@ function matchesCategory(event: TicketEvent, category: Category) {
 export default function TicketsHomeScreenSafe() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const compactHeader = width < 380;
   const [events, setEvents] = React.useState<TicketEvent[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [query, setQuery] = React.useState("");
@@ -59,7 +61,7 @@ export default function TicketsHomeScreenSafe() {
       <SafeAreaView edges={["top"]} style={styles.safeArea}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: Math.max(188, insets.bottom + 154) }]}>
           <View style={styles.header}>
-            <EyaTicketsWordmark width={210} height={50} />
+            <EyaTicketsWordmark width={compactHeader ? 158 : 210} height={compactHeader ? 38 : 50} />
             <Pressable style={styles.myTicketsBtn} onPress={() => router.push("/(student)/market/my-tickets" as any)}>
               <Ticket size={17} color="#ffffff" />
               <Text style={styles.myTicketsText}>My tickets</Text>
@@ -142,7 +144,7 @@ function FeaturedEventCard({ event }: { event: TicketEvent }) {
           <Text style={styles.featuredTitle} numberOfLines={2}>{event.title}</Text>
           <InfoLine icon={<CalendarDays size={16} color="#ffffff" />} text={eventDateLabel(event)} light />
           <InfoLine icon={<MapPin size={16} color="#ffffff" />} text={eventLocation(event)} light />
-          <View style={styles.featuredActionRow}><Text style={styles.featuredPrice}>{eventPriceLabel(event)}</Text><View style={styles.viewEventBtn}><Text style={styles.viewEventText}>View Event</Text><ChevronRight size={18} color="#ffffff" /></View></View>
+          <View style={styles.featuredActionRow}><Text style={styles.featuredPrice} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.76}>{eventPriceLabel(event)}</Text><View style={styles.viewEventBtn}><Text style={styles.viewEventText}>View Event</Text><ChevronRight size={18} color="#ffffff" /></View></View>
         </View>
       </ImageBackground>
     </Pressable>
@@ -176,7 +178,7 @@ const styles = StyleSheet.create({
   searchRow: { flexDirection: "row", alignItems: "center", gap: 12 }, searchBox: { flex: 1, minHeight: 58, borderRadius: 22, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16 }, searchInput: { flex: 1, minWidth: 0, color: TEXT, fontSize: 15, fontWeight: "800", paddingVertical: 0 },
   categoryRow: { gap: 10, paddingRight: 20 }, categoryChip: { minHeight: 38, borderRadius: 999, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD, justifyContent: "center", paddingHorizontal: 15 }, categoryChipActive: { backgroundColor: ACCENT, borderColor: ACCENT }, categoryText: { color: MUTED, fontSize: 13, fontWeight: "900" }, categoryTextActive: { color: "#ffffff" },
   stateCard: { minHeight: 190, borderRadius: 28, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD, alignItems: "center", justifyContent: "center", gap: 10, padding: 24 }, stateTitle: { color: TEXT, fontSize: 20, fontWeight: "900", textAlign: "center" },
-  featuredCard: { borderRadius: 30, overflow: "hidden", shadowColor: "#13285f", shadowOpacity: 0.14, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 6 }, featuredImage: { minHeight: 390, justifyContent: "space-between", padding: 16, backgroundColor: "#111827" }, featuredImageRadius: { borderRadius: 30 }, categoryBadge: { alignSelf: "flex-start", minHeight: 36, borderRadius: 18, backgroundColor: ACCENT, justifyContent: "center", paddingHorizontal: 14 }, categoryBadgeText: { color: "#ffffff", fontSize: 12, fontWeight: "900", letterSpacing: 1.2 }, featuredBottom: { gap: 10 }, featuredTitle: { color: "#ffffff", fontSize: 30, lineHeight: 35, fontWeight: "900" }, infoLine: { flexDirection: "row", alignItems: "center", gap: 8 }, infoText: { flex: 1, color: MUTED, fontSize: 13, fontWeight: "800" }, infoTextLight: { color: "#ffffff" }, featuredActionRow: { marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, featuredPrice: { color: "#ffffff", fontSize: 25, fontWeight: "900" }, viewEventBtn: { minHeight: 46, borderRadius: 23, backgroundColor: ACCENT, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 4 }, viewEventText: { color: "#ffffff", fontSize: 13, fontWeight: "900" },
+  featuredCard: { borderRadius: 30, overflow: "hidden", shadowColor: "#13285f", shadowOpacity: 0.14, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 6 }, featuredImage: { minHeight: 390, justifyContent: "space-between", padding: 16, backgroundColor: "#111827" }, featuredImageRadius: { borderRadius: 30 }, categoryBadge: { alignSelf: "flex-start", minHeight: 36, borderRadius: 18, backgroundColor: ACCENT, justifyContent: "center", paddingHorizontal: 14 }, categoryBadgeText: { color: "#ffffff", fontSize: 12, fontWeight: "900", letterSpacing: 1.2 }, featuredBottom: { gap: 10 }, featuredTitle: { color: "#ffffff", fontSize: 30, lineHeight: 35, fontWeight: "900" }, infoLine: { flexDirection: "row", alignItems: "center", gap: 8 }, infoText: { flex: 1, color: MUTED, fontSize: 13, fontWeight: "800" }, infoTextLight: { color: "#ffffff" }, featuredActionRow: { marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, featuredPrice: { flex: 1, minWidth: 0, color: "#ffffff", fontSize: 25, fontWeight: "900" }, viewEventBtn: { flexShrink: 0, minHeight: 46, borderRadius: 23, backgroundColor: ACCENT, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 4 }, viewEventText: { color: "#ffffff", fontSize: 13, fontWeight: "900" },
   sectionHead: { marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, sectionTitle: { color: TEXT, fontSize: 24, lineHeight: 29, fontWeight: "900" }, sectionSub: { color: MUTED, fontSize: 13, fontWeight: "700", marginTop: 2 }, seeAllBtn: { borderRadius: 999, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 13, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 2 }, seeAllText: { color: ACCENT, fontSize: 13, fontWeight: "900" }, eventList: { gap: 13 }, eventRow: { minHeight: 140, borderRadius: 24, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 10, flexDirection: "row", gap: 12 }, rowImage: { width: 112, borderRadius: 18, overflow: "hidden", backgroundColor: "#111827" }, rowImageRadius: { borderRadius: 18 }, rowBody: { flex: 1, minWidth: 0, justifyContent: "center", gap: 7 }, rowTitle: { color: TEXT, fontSize: 18, lineHeight: 23, fontWeight: "900" }, rowFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 2 }, rowPrice: { flex: 1, color: TEXT, fontSize: 15, fontWeight: "900" }, rowArrow: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" },
   bottomNavOuter: { position: "absolute", left: 22, right: 22 }, bottomNav: { minHeight: 88, borderRadius: 28, backgroundColor: "#ffffff", borderWidth: 1, borderColor: BORDER, flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingHorizontal: 8, shadowColor: "#13285f", shadowOpacity: 0.12, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 9 }, bottomItem: { flex: 1, minHeight: 72, alignItems: "center", justifyContent: "center", gap: 4 }, bottomLabel: { color: MUTED, fontSize: 13, fontWeight: "900" }, bottomLabelActive: { color: ACCENT }, bottomLine: { width: 42, height: 4, borderRadius: 2, backgroundColor: "transparent", marginTop: 2 }, bottomLineActive: { backgroundColor: ACCENT },
 });
