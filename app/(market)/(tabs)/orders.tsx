@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CirclePlus, Clock3, MapPin, Truck } from "lucide-react-native";
 import type { OrderStatus } from "@/lib/newApp/types";
@@ -75,6 +76,7 @@ function laneFromStatus(status: OrderStatus): SessionLane {
 }
 
 export default function RestaurantSessionPage() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const params = useLocalSearchParams<{ session?: SessionParam }>();
   const { workspace, metrics, setOrderStatus } = useSellerWorkspace("food");
@@ -134,7 +136,7 @@ export default function RestaurantSessionPage() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>{sessionConfig.title}</Text>
@@ -282,7 +284,7 @@ function EmptyCard({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f1eff9" },
-  content: { padding: 18, paddingBottom: 126, gap: 14 },
+  content: { padding: 18, gap: 14 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   title: { color: "#232c54", fontSize: 35, fontWeight: "900" },
   headerSub: { color: "#7a84aa", fontSize: 13, fontWeight: "800", marginTop: 2 },
