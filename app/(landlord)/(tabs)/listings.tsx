@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import {
   ChevronDown,
@@ -151,6 +152,7 @@ function ListingAction({
 }
 
 export default function LandlordListingsScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -273,7 +275,7 @@ export default function LandlordListingsScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
         <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbLeft]} />
         <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbRight]} />
         <View style={styles.center}>
@@ -284,10 +286,10 @@ export default function LandlordListingsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbLeft]} />
       <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbRight]} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}>
         <View style={styles.heroCard}>
           <View style={styles.headerRow}>
             <View style={styles.headerTextWrap}>
@@ -521,7 +523,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 18,
     paddingTop: 14,
-    paddingBottom: 170,
     gap: 16,
   },
   heroCard: {
