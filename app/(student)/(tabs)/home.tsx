@@ -11,6 +11,7 @@ import { supabaseNewApp } from "@/lib/supabaseNewApp";
 import { useAuth } from "@/providers/AuthProvider";
 import { locationMatchScore, usePreferredLocation } from "@/providers/PreferredLocationProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 
 type Mode = "stay" | "market" | "food";
 
@@ -242,6 +243,7 @@ export default function StudentHomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { theme } = useStudentTheme();
+  const contentBottomPadding = useFloatingNavContentPadding();
   const preferredLocation = usePreferredLocation().location;
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
@@ -399,7 +401,7 @@ export default function StudentHomeScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
             <View style={styles.greetingBlock}>
@@ -576,7 +578,7 @@ function EmptyHomeCard({ text, title }: { text: string; title: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f2fb" },
-  content: { padding: 16, paddingBottom: 118, gap: 16 },
+  content: { padding: 16, gap: 16 },
   skeletonWrap: { padding: 16, gap: 12 },
   skeletonCard: { borderRadius: 24, backgroundColor: "#dde6ff" },
 
