@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import { Clock3, Search, WalletCards } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
@@ -18,6 +19,7 @@ function formatRoute(from: string, to: string) {
 }
 
 export default function AgentEarningsScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { workspace, metrics, loading, error } = useAgentWorkspace();
@@ -52,7 +54,7 @@ export default function AgentEarningsScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
         <SoftPageGlow variant="orders" />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color="#2c3068" />
@@ -62,9 +64,9 @@ export default function AgentEarningsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <SoftPageGlow variant="orders" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Earnings</Text>
           <Pressable style={styles.circleAction} onPress={() => router.push("/(agent)/notifications")}>
@@ -162,7 +164,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f3eefb" },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 18, paddingBottom: 130, gap: 16 },
+  content: { padding: 18, gap: 16 },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { color: "#262a63", fontSize: 25, fontWeight: "900" },
   circleAction: {
