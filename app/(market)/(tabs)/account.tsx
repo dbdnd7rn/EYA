@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import { Bell, ChevronRight, Clock3, Mail, MapPin, PencilLine, Phone, Search, ShieldCheck, Star, UserRound } from "lucide-react-native";
 import { useAuth } from "@/providers/AuthProvider";
@@ -18,6 +19,7 @@ function initials(name: string) {
 }
 
 export default function RestaurantProfilePage() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const { user, role, setActiveRole } = useAuth();
   const { workspace, metrics, updateVendorProfile } = useSellerWorkspace("food");
@@ -109,7 +111,7 @@ export default function RestaurantProfilePage() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>Profile</Text>
@@ -251,7 +253,7 @@ function StatRow({ icon, label, value }: { icon?: React.ReactNode; label: string
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f1eff9" },
-  content: { padding: 18, paddingBottom: 126, gap: 14 },
+  content: { padding: 18, gap: 14 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   headerCopy: { flexDirection: "row", alignItems: "center", gap: 8 },
   title: { color: "#232c54", fontSize: 38, fontWeight: "900" },
