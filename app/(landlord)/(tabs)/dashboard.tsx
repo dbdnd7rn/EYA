@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import { Building2, CircleDollarSign, MessageCircle, Plus } from "lucide-react-native";
 import TopNav from "@/components/TopNav";
@@ -11,6 +12,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
 
 export default function LandlordDashboardScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const { user, loading: authLoading } = useAuth();
   const { unreadCount } = useNotificationInbox();
   const router = useRouter();
@@ -131,7 +133,7 @@ export default function LandlordDashboardScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
         <TopNav title="Dashboard" />
         <View style={styles.center}><ActivityIndicator size="large" color="#ff0f64" /></View>
       </SafeAreaView>
@@ -139,9 +141,9 @@ export default function LandlordDashboardScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <TopNav title="Dashboard" />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}>
         {err ? <View style={styles.errBox}><Text style={styles.errText}>{err}</Text></View> : null}
 
         <View style={styles.grid}>
@@ -225,7 +227,7 @@ function StatCard({ label, value, icon }: { label: string; value: number; icon: 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 16, gap: 12, paddingBottom: 30 },
+  content: { padding: 16, gap: 12 },
   errBox: { borderWidth: 1, borderColor: "#ffd4e3", backgroundColor: "#fff0f6", borderRadius: 16, padding: 12 },
   errText: { color: "#b0003a", fontWeight: "900" },
   grid: { gap: 10 },
