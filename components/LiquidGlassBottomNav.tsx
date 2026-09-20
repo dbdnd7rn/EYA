@@ -22,8 +22,6 @@ const BAR_BACKGROUND = "rgba(255, 255, 255, 0.78)";
 const BORDER_COLOR = "rgba(255, 255, 255, 0.65)";
 const PRESS_LOCK_MS = 450;
 
-export const LIQUID_GLASS_NAV_CONTENT_PADDING = 164;
-
 type IconProps = {
   color: string;
   focused: boolean;
