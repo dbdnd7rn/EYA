@@ -122,7 +122,7 @@ export default function SelectTicketsScreen() {
     <View style={styles.root}>
       <SafeAreaView edges={["top"]} style={styles.safeArea}>
         <Header />
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }]}>
           <EventHeroCard event={event} />
           <BookingSteps />
 
@@ -362,7 +362,7 @@ function StickyCheckoutBar({ event, quantity, selectedTier, total }: { event: Ti
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const disabled = !selectedTier || quantity <= 0 || total <= 0;
-  const bottom = Math.max(14, insets.bottom + 8);
+  const bottom = Math.max(insets.bottom, 14);
 
   return (
     <View style={[styles.checkoutOuter, { bottom }]}>
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: TEXT, fontSize: 27, lineHeight: 32, fontWeight: "900" },
   headerSub: { color: MUTED, fontSize: 12, fontWeight: "800", marginTop: 2 },
   secureBadge: { width: 48, height: 48, borderRadius: 18, backgroundColor: "#eaf8f0", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#d8f0df" },
-  scrollContent: { paddingHorizontal: 18, paddingBottom: 168, gap: 18 },
+  scrollContent: { paddingHorizontal: 18, gap: 18 },
   eventHero: { minHeight: 268, borderRadius: 30, overflow: "hidden", justifyContent: "space-between", padding: 16, backgroundColor: "#111827", shadowColor: "#13285f", shadowOpacity: 0.14, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 6 },
   eventHeroImage: { borderRadius: 30 },
   eventHeroTop: { flexDirection: "row", justifyContent: "flex-start" },
