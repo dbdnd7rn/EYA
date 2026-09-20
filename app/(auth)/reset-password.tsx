@@ -36,7 +36,7 @@ export default function ResetPasswordScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#f6f7fb]">
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1">
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 12} className="flex-1">
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
           <View className="flex-1 items-center justify-center px-6 py-12">
             <View className="w-full max-w-xl rounded-[40px] bg-white px-8 py-10 shadow-xl">
