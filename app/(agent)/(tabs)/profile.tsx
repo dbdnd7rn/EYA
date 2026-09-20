@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Bell, Camera, ChevronRight, Search, Star, Truck, User2, WalletCards } from "lucide-react-native";
@@ -47,6 +48,7 @@ async function uploadAvatar(asset: { uri: string; fileName?: string | null; mime
 }
 
 export default function AgentProfileScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const { user, role, loading: authLoading, setActiveRole } = useAuth();
   const { workspace, metrics, loading, error, saveProfile, setOnlineStatus } = useAgentWorkspace();
@@ -165,7 +167,7 @@ export default function AgentProfileScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
         <SoftPageGlow variant="account" />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color="#2c3068" />
@@ -175,9 +177,9 @@ export default function AgentProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <SoftPageGlow variant="account" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>Profile</Text>
@@ -318,7 +320,7 @@ function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f3eefb" },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 18, paddingBottom: 130, gap: 16 },
+  content: { padding: 18, gap: 16 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   headerCopy: { flexDirection: "row", alignItems: "center", gap: 14 },
   title: { color: "#262a63", fontSize: 25, fontWeight: "900" },
