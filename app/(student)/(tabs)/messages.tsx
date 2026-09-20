@@ -14,6 +14,7 @@ import RoomsSectionHeader from "@/components/rooms/RoomsSectionHeader";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
+import { LIQUID_GLASS_NAV_HEIGHT, useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 
 export type StudentMessagesScope = "all" | "rooms";
 
@@ -239,7 +240,7 @@ async function loadVendorEntries(userId: string): Promise<ChatInboxEntry[]> {
 }
 
 export default function StudentMessagesScreen({
-  contentBottomPadding = 120,
+  contentBottomPadding,
   scope = "all",
   showRoomsNav = false,
 }: {
@@ -251,6 +252,9 @@ export default function StudentMessagesScreen({
   const { user, loading: authLoading } = useAuth();
   const { isOnline } = useNetwork();
   const { theme } = useStudentTheme();
+  const tabContentBottomPadding = useFloatingNavContentPadding();
+  const roomsContentBottomPadding = useFloatingNavContentPadding(LIQUID_GLASS_NAV_HEIGHT);
+  const resolvedContentBottomPadding = contentBottomPadding ?? (showRoomsNav ? roomsContentBottomPadding : tabContentBottomPadding);
   const roomsOnly = scope === "rooms";
   const [rows, setRows] = useState<ChatInboxEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -391,7 +395,7 @@ export default function StudentMessagesScreen({
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }, showRoomsNav && styles.contentWithRoomsNav]}
+        contentContainerStyle={[styles.content, { paddingBottom: resolvedContentBottomPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void refreshInbox({ silent: true }); }} tintColor="#0f6d80" />}
         showsVerticalScrollIndicator={false}
       >
@@ -504,7 +508,6 @@ function MetricCard({ label, value, tint, textColor }: { label: string; value: s
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
   content: { padding: 16, gap: 14 },
-  contentWithRoomsNav: { paddingBottom: 164 },
   skeletonWrap: { padding: 16, gap: 12 },
   skeletonRow: { height: 96, borderRadius: 26 },
   heroCard: {
