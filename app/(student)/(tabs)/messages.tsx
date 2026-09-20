@@ -382,7 +382,7 @@ export default function StudentMessagesScreen({
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
         <View style={styles.skeletonWrap}>
           {Array.from({ length: 5 }).map((_, index) => (
             <View key={index} style={[styles.skeletonRow, { backgroundColor: theme.surfaceMuted }]} />
@@ -393,7 +393,7 @@ export default function StudentMessagesScreen({
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+    <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: resolvedContentBottomPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void refreshInbox({ silent: true }); }} tintColor="#0f6d80" />}
