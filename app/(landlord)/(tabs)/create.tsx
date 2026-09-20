@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -131,6 +132,7 @@ async function uploadListingImageExpo(localUri: string) {
 }
 
 export default function CreateListingScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const { user } = useAuth();
 
@@ -313,9 +315,9 @@ export default function CreateListingScreen() {
   };
   
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <TopNav title="Create listing" />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}>
         <SectionCard title="Access">
           {errorMsg ? <Notice tone="error" text={errorMsg} /> : null}
           <View style={{ gap: 4 }}>
@@ -476,7 +478,7 @@ function TickChip({ label, active, onPress }: { label: string; active: boolean; 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f6f7fb" },
-  content: { padding: 16, paddingBottom: 30, gap: 12 },
+  content: { padding: 16, gap: 12 },
   card: { backgroundColor: "#fff", borderRadius: 18, padding: 14, gap: 10 },
   sectionTitle: { color: "#0e2756", fontWeight: "900", fontSize: 16 },
   label: { color: "#0e2756", fontWeight: "800", marginTop: 2 },
