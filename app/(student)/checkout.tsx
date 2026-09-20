@@ -423,7 +423,7 @@ export default function CheckoutScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <View style={styles.bgOrbOne} />
       <View style={styles.bgOrbTwo} />
 
