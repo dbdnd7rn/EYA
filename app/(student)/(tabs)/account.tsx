@@ -36,6 +36,7 @@ export default function AccountScreen() {
   const router = useRouter();
   const { user, role, signOut, setActiveRole } = useAuth();
   const { theme } = useStudentTheme();
+  const contentBottomPadding = useFloatingNavContentPadding();
   const { orders } = useStudentBadges();
   const { unreadCount } = useNotificationInbox();
   const notificationCount = unreadCount;
@@ -99,7 +100,7 @@ export default function AccountScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
-      <ScrollView contentContainerStyle={[styles.content, { backgroundColor: theme.background }]} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { backgroundColor: theme.background, paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={[styles.shell, { backgroundColor: theme.shell }]}>
           <View style={styles.headerRow}>
             <Pressable style={[styles.circleBtn, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} onPress={() => router.push("/(student)/(tabs)/home")}>
@@ -255,7 +256,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f2fb" },
   content: {
     padding: 16,
-    paddingBottom: 148,
     backgroundColor: "#f4f2fb",
   },
   shell: {
