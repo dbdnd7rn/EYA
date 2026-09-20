@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import { ArrowLeft, Bell, Heart, PiggyBank, Scale, Search, User2 } from "lucide-react-native";
 import { getCachedJson, setCachedJson } from "@/lib/offlineCache";
@@ -175,6 +176,7 @@ function TopPickCard({
 }
 
 export default function RoomsBrowseScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const { isOnline } = useNetwork();
   const { user } = useAuth();
@@ -339,7 +341,7 @@ export default function RoomsBrowseScreen() {
         data={topPicks}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f7a3a" />}
         ListHeaderComponent={
           <>
@@ -438,7 +440,7 @@ export default function RoomsBrowseScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f7fb" },
-  content: { paddingHorizontal: 16, paddingBottom: 120, gap: 14 },
+  content: { paddingHorizontal: 16, gap: 14 },
 
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, paddingBottom: 10 },
   topBarSpacer: { flex: 1 },
