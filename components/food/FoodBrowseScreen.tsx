@@ -286,7 +286,7 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
         <View style={styles.skeletonWrap}>
           <View style={[styles.skeletonHero, { backgroundColor: theme.surfaceMuted }]} />
           <View style={[styles.skeletonSearch, { backgroundColor: theme.surfaceMuted }]} />
@@ -298,7 +298,7 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+    <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.topSection}>
           <View style={styles.brandRow}>
