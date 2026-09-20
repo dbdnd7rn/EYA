@@ -15,5 +15,5 @@ export function useFloatingNavContentPadding(
   extraGap = FLOATING_NAV_CONTENT_GAP,
 ) {
   const insets = useSafeAreaInsets();
-  return navHeight + insets.bottom + extraGap;
+  return navHeight + Math.max(insets.bottom, FLOATING_NAV_MIN_GAP) + extraGap;
 }
