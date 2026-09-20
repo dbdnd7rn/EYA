@@ -3,6 +3,7 @@ import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, 
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFloatingNavBottomOffset } from "@/lib/floatingNavLayout";
 import { CalendarDays, ChevronRight, Home, MapPin, Search, SlidersHorizontal, Ticket } from "lucide-react-native";
 import EyaTicketsWordmark from "@/components/brand/EyaTicketsWordmark";
 import { listTicketEvents, type TicketEvent } from "@/lib/tickets";
@@ -221,8 +222,9 @@ function InfoLine({ icon, light, text }: { icon: React.ReactNode; light?: boolea
 
 function TicketsBottomNav({ active }: { active: "home" | "tickets" }) {
   const router = useRouter();
+  const bottomOffset = useFloatingNavBottomOffset();
   return (
-    <View style={styles.bottomNavOuter}>
+    <View style={[styles.bottomNavOuter, { bottom: bottomOffset }]}>
       <View style={styles.bottomNav}>
         <Pressable style={styles.bottomItem} onPress={() => undefined}>
           <Home size={24} color={active === "home" ? ACCENT : MUTED} fill={active === "home" ? ACCENT : "transparent"} />
@@ -292,7 +294,7 @@ const styles = StyleSheet.create({
   rowFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 2 },
   rowPrice: { flex: 1, color: TEXT, fontSize: 15, fontWeight: "900" },
   rowArrow: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#eef1ff", alignItems: "center", justifyContent: "center" },
-  bottomNavOuter: { position: "absolute", left: 22, right: 22, bottom: 18 },
+  bottomNavOuter: { position: "absolute", left: 22, right: 22 },
   bottomNav: { minHeight: 88, borderRadius: 28, backgroundColor: "#ffffff", borderWidth: 1, borderColor: BORDER, flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingHorizontal: 8, shadowColor: "#13285f", shadowOpacity: 0.12, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 9 },
   bottomItem: { flex: 1, minHeight: 72, alignItems: "center", justifyContent: "center", gap: 4 },
   bottomLabel: { color: MUTED, fontSize: 13, fontWeight: "900" },
