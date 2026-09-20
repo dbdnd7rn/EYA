@@ -336,7 +336,7 @@ export default function RoomsBrowseScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <FlatList
         data={topPicks}
         keyExtractor={(item) => item.id}
