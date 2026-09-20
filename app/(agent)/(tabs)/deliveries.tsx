@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import { Clock3, MapPin, Package2, Search, Truck, WalletCards } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
@@ -28,6 +29,7 @@ function timeLabel(iso: string) {
 }
 
 export default function AgentDeliveriesScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { workspace, metrics, loading, error, setOnlineStatus, dismissRequest, acceptRequest } = useAgentWorkspace();
@@ -76,7 +78,7 @@ export default function AgentDeliveriesScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
         <SoftPageGlow variant="orders" />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color="#2c3068" />
@@ -86,9 +88,9 @@ export default function AgentDeliveriesScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <SoftPageGlow variant="orders" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>Deliveries</Text>
@@ -260,7 +262,7 @@ function MetaChip({ label }: { label: string }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f3eefb" },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 18, paddingBottom: 130, gap: 16 },
+  content: { padding: 18, gap: 16 },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   headerCopy: { flexDirection: "row", alignItems: "center", gap: 14 },
   title: { color: "#262a63", fontSize: 25, fontWeight: "900" },
