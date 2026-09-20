@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { usePathname, useRouter } from "expo-router";
 import { CirclePlus, PencilLine, RefreshCw, Search, Trash2 } from "lucide-react-native";
 import { useSellerWorkspace } from "@/components/seller/useSellerWorkspace";
@@ -29,6 +30,7 @@ function shortDate(value: string) {
 }
 
 export default function RestaurantMenuPage() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const pathname = usePathname();
   const isOpenFlow = pathname.startsWith("/sell/");
@@ -119,7 +121,7 @@ export default function RestaurantMenuPage() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={styles.title}>{isRestaurantFlow ? "Menu" : "Products"}</Text>
           <Pressable style={styles.addIcon} onPress={addItem}>
@@ -238,7 +240,7 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f1eff9" },
-  content: { padding: 18, paddingBottom: 126, gap: 14 },
+  content: { padding: 18, gap: 14 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   title: { color: "#232c54", fontSize: 38, fontWeight: "900" },
   addIcon: {
