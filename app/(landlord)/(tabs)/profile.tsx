@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import {
   Bell,
@@ -89,6 +90,7 @@ function Notice({ tone, text }: { tone: "error" | "ok"; text: string }) {
 }
 
 export default function LandlordProfileScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const { user, role, setActiveRole } = useAuth();
   const { unreadCount } = useNotificationInbox();
   const router = useRouter();
@@ -270,7 +272,7 @@ export default function LandlordProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
         <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbLeft]} />
         <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbRight]} />
         <View style={styles.center}>
@@ -281,11 +283,11 @@ export default function LandlordProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbLeft]} />
       <View pointerEvents="none" style={[styles.backgroundOrb, styles.backgroundOrbRight]} />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Text style={styles.h1}>Profile</Text>
           <Pressable style={styles.menuBtn} onPress={openQuickActions}>
@@ -465,7 +467,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 18,
     paddingTop: 14,
-    paddingBottom: 150,
     gap: 16,
   },
   headerRow: {
