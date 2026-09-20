@@ -1,6 +1,6 @@
 import React from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowLeft,
@@ -36,6 +36,9 @@ function buildSellerSubject(item: FoodCard) {
 
 export default function FoodDetailScreen({ fallbackRoute }: Props) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const footerBottom = Math.max(insets.bottom, 10);
+  const contentBottomPadding = 76 + insets.bottom + 24;
   const isStudentView = fallbackRoute === "/(student)/(tabs)/food";
   const params = useLocalSearchParams<{ id?: string }>();
   const [item, setItem] = React.useState<FoodCard | null>(null);
@@ -109,8 +112,8 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <Pressable style={styles.backBtn} onPress={() => goBackOrFallback(router, fallbackRoute)}>
           <ArrowLeft size={18} color="#16315f" />
           <Text style={styles.backText}>Back</Text>
@@ -256,10 +259,10 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <View>
+      <View style={[styles.footer, { bottom: footerBottom }]}>
+        <View style={styles.footerCopy}>
           <Text style={styles.footerLabel}>Total</Text>
-          <Text style={styles.footerTotal}>{kwacha(total)}</Text>
+          <Text style={styles.footerTotal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{kwacha(total)}</Text>
         </View>
         <Pressable
           style={[styles.cta, (!item.isOpen || missingRequiredChoices) && styles.ctaDisabled]}
@@ -284,7 +287,7 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
             })
           }
         >
-          <Text style={styles.ctaText}>
+          <Text style={styles.ctaText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>
             {!item.isOpen ? "Currently closed" : missingRequiredChoices ? "Complete your plate" : "Proceed to checkout"}
           </Text>
           {item.isOpen && !missingRequiredChoices ? <ChevronRight size={20} color="#ffffff" /> : null}
@@ -317,7 +320,7 @@ function InfoCard({ icon, text, title }: { icon: React.ReactNode; text: string; 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#eef6f8" },
-  content: { padding: 16, paddingBottom: 132, gap: 16 },
+  content: { padding: 16, gap: 16 },
   skeletonWrap: { padding: 16, gap: 12 },
   skeletonHero: { height: 280, borderRadius: 30, backgroundColor: "#d8e8ef" },
   skeletonCard: { height: 140, borderRadius: 28, backgroundColor: "#d8e8ef" },
@@ -503,7 +506,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 100,
     borderRadius: 28,
     backgroundColor: "#ffffff",
     borderWidth: 1,
@@ -514,9 +516,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
+  footerCopy: { flex: 1, minWidth: 0 },
   footerLabel: { color: "#58707e", fontWeight: "700", fontSize: 12, textTransform: "uppercase" },
-  footerTotal: { color: "#16315f", fontWeight: "900", fontSize: 22, marginTop: 2 },
+  footerTotal: { color: "#16315f", fontWeight: "900", fontSize: 22, marginTop: 2, flexShrink: 1 },
   cta: {
+    flexShrink: 0,
+    maxWidth: "62%",
     borderRadius: 999,
     backgroundColor: "#0f6d80",
     paddingHorizontal: 18,
@@ -526,5 +531,5 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   ctaDisabled: { backgroundColor: "#a0b6bd" },
-  ctaText: { color: "#ffffff", fontWeight: "900", fontSize: 14 },
+  ctaText: { color: "#ffffff", fontWeight: "900", fontSize: 14, flexShrink: 1, textAlign: "center" },
 });
