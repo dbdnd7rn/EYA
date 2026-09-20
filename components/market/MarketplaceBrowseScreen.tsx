@@ -34,6 +34,7 @@ import { locationMatchScore, usePreferredLocationOptional } from "@/providers/Pr
 import { useAuth } from "@/providers/AuthProvider";
 import { useSellerWorkspace } from "@/components/seller/useSellerWorkspace";
 import MarketBottomNav from "@/components/market/MarketBottomNav";
+import { LIQUID_GLASS_NAV_HEIGHT, useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useLiveProximity } from "@/lib/liveProximity";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
 import {
@@ -135,6 +136,7 @@ function deriveTopSellers(cards: MarketCard[]): SellerCard[] {
 
 export default function MarketplaceBrowseScreen({ detailRoute, showModeSwitch = false }: Props) {
   const router = useRouter();
+  const bottomNavPadding = useFloatingNavContentPadding(LIQUID_GLASS_NAV_HEIGHT);
   const { theme } = useStudentTheme();
   const isStudentBrowse = detailRoute === "/(student)/market/[id]";
   const showMarketNav = isStudentBrowse && showModeSwitch;
@@ -301,7 +303,7 @@ export default function MarketplaceBrowseScreen({ detailRoute, showModeSwitch = 
 
   return (
     <SafeAreaView edges={safeAreaEdges} style={[styles.root, { backgroundColor: theme.background }]}>
-      <ScrollView style={styles.scroller} contentContainerStyle={[styles.content, showMarketNav && styles.contentWithBottomNav]} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroller} contentContainerStyle={[styles.content, showMarketNav && { paddingBottom: bottomNavPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.topSection}>
           <View style={styles.brandRow}>
             <BackHomeButton onPress={() => router.replace(homeRoute as any)} />
@@ -567,7 +569,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#edf7f8" },
   scroller: { flex: 1 },
   content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 110, gap: 16 },
-  contentWithBottomNav: { paddingBottom: 164 },
   skeleton: { margin: 16, height: 280, borderRadius: 28, backgroundColor: "#d8edf2" },
   topSection: { gap: 16 },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 2 },
