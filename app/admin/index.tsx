@@ -1552,7 +1552,7 @@ export default function AdminPortalPage() {
   const bottomActive: Exclude<AdminTab, "moderation"> = activeTab === "moderation" ? "dashboard" : activeTab;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8f8ff" />
       <View style={styles.backdrop}>
         <View style={styles.glowTopRight} />
