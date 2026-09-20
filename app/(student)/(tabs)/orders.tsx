@@ -424,7 +424,7 @@ function MetaPill({ label, positive = false }: { label: string; positive?: boole
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f2fb" },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 16, paddingBottom: 118, gap: 18 },
+  content: { padding: 16, paddingBottom: 156, gap: 18 },
   title: { color: "#2d3170", fontSize: 28, fontWeight: "900" },
   filterWrap: {
     borderRadius: 999,
