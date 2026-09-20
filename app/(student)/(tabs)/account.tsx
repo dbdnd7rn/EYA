@@ -9,6 +9,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useNotificationInbox } from "@/providers/NotificationInboxProvider";
 import { useStudentBadges } from "@/providers/StudentBadgeProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { formatPreferredLocation, usePreferredLocation } from "@/providers/PreferredLocationProvider";
 
 type ProfileRow = {
