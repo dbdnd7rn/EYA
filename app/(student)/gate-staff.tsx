@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ArrowLeft, CalendarClock, CheckCircle2, QrCode, ShieldCheck, XCircle } from "lucide-react-native";
 import {
@@ -38,6 +39,7 @@ function statusLabel(assignment: GateStaffAssignment) {
 }
 
 export default function GateStaffWorkspaceScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [assignments, setAssignments] = React.useState<GateStaffAssignment[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -75,7 +77,7 @@ export default function GateStaffWorkspaceScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable style={styles.back} onPress={() => router.back()}><ArrowLeft size={20} color="#ffffff" /></Pressable>
         <View style={styles.headerCopy}>
           <Text style={styles.kicker}>EYA GATE OPERATIONS</Text>
@@ -85,7 +87,7 @@ export default function GateStaffWorkspaceScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} />}
       >
         <View style={styles.introCard}>
@@ -150,11 +152,11 @@ function Info({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   root:{flex:1,backgroundColor:"#f5f7ff"},
   flexOne:{flex:1},
-  header:{backgroundColor:"#102a54",paddingTop:52,paddingHorizontal:16,paddingBottom:20,flexDirection:"row",alignItems:"center",gap:12},
+  header:{backgroundColor:"#102a54",paddingHorizontal:16,paddingBottom:20,flexDirection:"row",alignItems:"center",gap:12},
   back:{width:44,height:44,borderRadius:22,backgroundColor:"rgba(255,255,255,.13)",alignItems:"center",justifyContent:"center"},
   headerCopy:{flex:1},kicker:{color:"rgba(255,255,255,.62)",fontSize:10,fontWeight:"900",letterSpacing:1.2},title:{color:"#fff",fontSize:28,fontWeight:"900"},
   shield:{width:44,height:44,borderRadius:22,backgroundColor:"#5c6ee6",alignItems:"center",justifyContent:"center"},
-  content:{padding:16,gap:14,paddingBottom:40},
+  content:{padding:16,gap:14,paddingBottom:24},
   introCard:{backgroundColor:"#eef2ff",borderRadius:22,padding:16,borderWidth:1,borderColor:"#dce3ff"},introTitle:{color:"#153465",fontSize:16,fontWeight:"900"},introText:{color:"#66728c",fontSize:12,lineHeight:18,fontWeight:"700",marginTop:5},
   center:{padding:28,alignItems:"center",gap:10},muted:{color:"#6d7891",fontSize:12,lineHeight:18,fontWeight:"700",textAlign:"center"},
   errorCard:{backgroundColor:"#fff5f4",borderRadius:22,padding:18,borderWidth:1,borderColor:"#f2d0cc"},errorTitle:{color:"#b42318",fontSize:16,fontWeight:"900"},errorText:{color:"#7f4a45",fontSize:12,lineHeight:18,fontWeight:"700",marginTop:5},
