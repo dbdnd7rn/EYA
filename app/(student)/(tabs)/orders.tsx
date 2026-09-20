@@ -243,7 +243,7 @@ export default function OrdersScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
         <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={theme.accent} />
@@ -253,7 +253,7 @@ export default function OrdersScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+    <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
       <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <Text style={[styles.title, { color: theme.text }]}>Your Orders</Text>
