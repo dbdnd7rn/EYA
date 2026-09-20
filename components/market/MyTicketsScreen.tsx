@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFloatingNavBottomOffset } from "@/lib/floatingNavLayout";
 import {
   Calendar,
   CheckCircle2,
@@ -436,8 +437,9 @@ function SafetyNote() {
 
 function BottomNav() {
   const router = useRouter();
+  const bottomOffset = useFloatingNavBottomOffset();
   return (
-    <View style={styles.bottomNavOuter}>
+    <View style={[styles.bottomNavOuter, { bottom: bottomOffset }]}>
       <View style={styles.bottomNav}>
         <Pressable style={styles.bottomItem} onPress={() => router.replace("/(student)/market/tickets" as any)}>
           <Home size={22} color={MUTED} />
@@ -552,7 +554,7 @@ const styles = StyleSheet.create({
   safetyTitle: { color: TEXT, fontSize: 13, fontWeight: "900" },
   safetyText: { color: MUTED, fontSize: 10, lineHeight: 16, fontWeight: "600", marginTop: 3 },
 
-  bottomNavOuter: { position: "absolute", left: 16, right: 16, bottom: 14 },
+  bottomNavOuter: { position: "absolute", left: 16, right: 16 },
   bottomNav: { minHeight: 70, borderRadius: 25, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, flexDirection: "row", alignItems: "center", padding: 6, shadowColor: "#13285f", shadowOpacity: 0.11, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
   bottomItem: { flex: 1, minHeight: 56, borderRadius: 19, alignItems: "center", justifyContent: "center", gap: 4 },
   bottomItemActive: { backgroundColor: "#eef1ff" },
