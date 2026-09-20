@@ -14,7 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
@@ -631,6 +631,8 @@ async function loadAdminSource<T>(promise: PromiseLike<T>, fallback: T): Promise
 
 export default function AdminPortalPage() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const adminNavContentPadding = 82 + Math.max(insets.bottom, 8) + 24;
   const { width } = useWindowDimensions();
   const { user, session, signOut } = useAuth();
   const { unreadCount } = useNotificationInbox();
@@ -1537,7 +1539,7 @@ export default function AdminPortalPage() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor="#f8f8ff" />
         <View style={styles.loadingBox}>
           <ActivityIndicator color={COLORS.navy} size="large" />
@@ -1560,7 +1562,7 @@ export default function AdminPortalPage() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load()} tintColor={COLORS.purple} />}
-        contentContainerStyle={[styles.scrollContent, isWide && styles.scrollContentWide]}
+        contentContainerStyle={[styles.scrollContent, isWide && styles.scrollContentWide, { paddingBottom: adminNavContentPadding }]}
       >
         {message ? (
           <Pressable style={styles.notice} onPress={() => setMessage(null)}>
@@ -3823,6 +3825,7 @@ function StatusPill({ label, tone, icon: Icon }: { label: string; tone: Tone; ic
 }
 
 function BottomNav({ active, onChange }: { active: Exclude<AdminTab, "moderation">; onChange: (tab: AdminTab) => void }) {
+  const insets = useSafeAreaInsets();
   const items: { id: Exclude<AdminTab, "moderation">; label: string; icon: IconComponent }[] = [
     { id: "dashboard", label: "Home", icon: Home },
     { id: "orders", label: "Orders", icon: ClipboardList },
@@ -3832,7 +3835,7 @@ function BottomNav({ active, onChange }: { active: Exclude<AdminTab, "moderation
   ];
 
   return (
-    <View pointerEvents="box-none" style={styles.bottomNavWrap}>
+    <View pointerEvents="box-none" style={[styles.bottomNavWrap, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       <View style={styles.bottomNav}>
         {items.map((item) => {
           const selected = active === item.id;
@@ -3893,7 +3896,6 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingHorizontal: 20,
     paddingTop: 28,
-    paddingBottom: 126,
   },
   scrollContentWide: {
     maxWidth: 460,
@@ -6333,7 +6335,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: "center",
     paddingHorizontal: 11,
-    paddingBottom: 8,
   },
   bottomNav: {
     width: "100%",
