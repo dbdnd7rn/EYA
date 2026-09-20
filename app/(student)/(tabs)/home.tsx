@@ -387,7 +387,7 @@ export default function StudentHomeScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
         <View style={styles.skeletonWrap}>
           <View style={[styles.skeletonCard, { height: 120, backgroundColor: theme.surfaceMuted }]} />
           <View style={[styles.skeletonCard, { height: 72, backgroundColor: theme.surfaceMuted }]} />
@@ -399,7 +399,7 @@ export default function StudentHomeScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+    <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
       <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
