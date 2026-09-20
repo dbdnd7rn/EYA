@@ -8,6 +8,7 @@ import SoftPageGlow from "@/components/SoftPageGlow";
 import { listTicketEvents, type TicketEvent } from "@/lib/tickets";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
 import { eventDateLabel, eventImageUrl, eventLocation, eventPriceLabel, eventTimeLabel } from "@/components/market/ticketingUi";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 
 type TicketFilter = "all" | "music" | "party" | "festival" | "sports" | "networking";
 
@@ -27,6 +28,7 @@ function matchesFilter(event: TicketEvent, filter: TicketFilter) {
 
 export default function StudentTicketsTabPage() {
   const router = useRouter();
+  const contentBottomPadding = useFloatingNavContentPadding();
   const { theme } = useStudentTheme();
   const [events, setEvents] = React.useState<TicketEvent[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -70,7 +72,7 @@ export default function StudentTicketsTabPage() {
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}> 
       <SoftPageGlow topColor={theme.glowTop} middleColor={theme.glowMiddle} bottomColor={theme.glowBottom} />
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -241,7 +243,7 @@ function TicketListCard({ event }: { event: TicketEvent }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 172, gap: 14 },
+  content: { paddingHorizontal: 16, paddingTop: 8, gap: 14 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   headerCopy: { flex: 1, minWidth: 0 },
   eyebrow: { fontSize: 12, fontWeight: "900", letterSpacing: 1.2 },
