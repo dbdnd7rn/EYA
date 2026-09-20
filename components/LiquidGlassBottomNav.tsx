@@ -105,7 +105,6 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
             end={{ x: 1, y: 0.85 }}
             style={styles.refractionWash}
           />
-          <View pointerEvents="none" style={styles.topHighlight} />
           <View pointerEvents="none" style={styles.innerBorder} />
 
           <Animated.View pointerEvents="none" style={[styles.activeBubble, bubbleStyle]}>
@@ -117,7 +116,6 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
-              <View style={styles.bubbleHighlight} />
             </BlurView>
           </Animated.View>
 
@@ -257,14 +255,6 @@ const styles = StyleSheet.create({
     borderRadius: 34,
     opacity: 0.86,
   },
-  topHighlight: {
-    position: "absolute",
-    left: 24,
-    right: 24,
-    top: 7,
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.88)",
-  },
   innerBorder: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 42,
@@ -296,14 +286,6 @@ const styles = StyleSheet.create({
   bubbleTint: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: ACTIVE_BACKGROUND,
-  },
-  bubbleHighlight: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    top: 8,
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.82)",
   },
   row: {
     flex: 1,
