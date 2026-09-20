@@ -25,6 +25,7 @@ import { locationMatchScore, usePreferredLocationOptional } from "@/providers/Pr
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 
 type Props = {
   detailRoute: "/(food)/item/[id]" | "/(student)/food/[id]";
@@ -126,6 +127,7 @@ function initials(fullName?: string | null, email?: string | null) {
 export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }: Props) {
   const router = useRouter();
   const { theme } = useStudentTheme();
+  const contentBottomPadding = useFloatingNavContentPadding();
   const restaurantRoute = detailRoute === "/(student)/food/[id]" ? "/(student)/food/restaurant/[vendorId]" : "/(food)/restaurant/[vendorId]";
   const ordersRoute = detailRoute === "/(student)/food/[id]" ? "/(student)/(tabs)/orders" : "/(food)/(tabs)/orders";
   const homeRoute = "/(student)/(tabs)/home";
@@ -297,7 +299,7 @@ export default function FoodBrowseScreen({ detailRoute, showModeSwitch = false }
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.topSection}>
           <View style={styles.brandRow}>
             <BackHomeButton onPress={() => router.replace(homeRoute as any)} />
@@ -587,7 +589,7 @@ function MetaTag({ icon, label, dark = false }: { icon: React.ReactNode; label: 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#eef6f8" },
-  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 160, gap: 18 },
+  content: { paddingHorizontal: 16, paddingTop: 10, gap: 18 },
   skeletonWrap: { padding: 16, gap: 12 },
   skeletonHero: { height: 190, borderRadius: 28, backgroundColor: "#d8e8ef" },
   skeletonSearch: { height: 58, borderRadius: 20, backgroundColor: "#d8e8ef" },
