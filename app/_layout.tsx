@@ -4,6 +4,7 @@ import React from "react";
 import { Stack } from "expo-router";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "../providers/AuthProvider";
 import { NetworkProvider } from "@/providers/NetworkProvider";
 import SavedRoomsQueueSyncProvider from "@/providers/SavedRoomsQueueSyncProvider";
@@ -50,13 +51,15 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <NetworkProvider>
-      <AuthProvider>
-        <StudentThemeProvider>
-          <ThemedRuntime showLaunchAnimation={showLaunchAnimation} onLaunchComplete={handleLaunchComplete} />
-        </StudentThemeProvider>
-      </AuthProvider>
-    </NetworkProvider>
+    <SafeAreaProvider>
+      <NetworkProvider>
+        <AuthProvider>
+          <StudentThemeProvider>
+            <ThemedRuntime showLaunchAnimation={showLaunchAnimation} onLaunchComplete={handleLaunchComplete} />
+          </StudentThemeProvider>
+        </AuthProvider>
+      </NetworkProvider>
+    </SafeAreaProvider>
   );
 }
 
