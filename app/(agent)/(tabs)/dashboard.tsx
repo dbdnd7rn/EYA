@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import { Clock3, Truck, WalletCards } from "lucide-react-native";
 import SoftPageGlow from "@/components/SoftPageGlow";
@@ -12,6 +13,7 @@ function kwacha(value: number) {
 }
 
 export default function AgentDashboardScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { workspace, metrics, loading, error, setOnlineStatus } = useAgentWorkspace();
@@ -31,7 +33,7 @@ export default function AgentDashboardScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
         <SoftPageGlow variant="home" />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color="#2c3068" />
@@ -41,9 +43,9 @@ export default function AgentDashboardScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <SoftPageGlow variant="home" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Online</Text>
 
         <Pressable style={[styles.heroCard, !workspace.profile.isOnline && styles.heroCardOff]} onPress={() => void toggleOnline()}>
@@ -111,7 +113,7 @@ function Tile({ icon, label, value }: { icon: React.ReactNode; label: string; va
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f3eefb" },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 18, paddingBottom: 130, gap: 16 },
+  content: { padding: 18, gap: 16 },
   title: { color: "#262a63", fontSize: 25, fontWeight: "900" },
   heroCard: {
     borderRadius: 28,
