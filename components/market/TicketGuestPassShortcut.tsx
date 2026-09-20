@@ -1,14 +1,16 @@
 import React from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Send } from "lucide-react-native";
 import { EYA_ACCENT as ACCENT } from "@/components/market/ticketingUi";
 
 export default function TicketGuestPassShortcut({ ticketId, bottom = 166 }: { ticketId?: string | null; bottom?: number }) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   return (
     <Pressable
-      style={[styles.button, { bottom }]}
+      style={[styles.button, { bottom: bottom + insets.bottom }]}
       onPress={() => router.push({ pathname: "/(student)/market/ticket-guest-pass", params: ticketId ? { ticketId } : {} } as never)}
     >
       <Send size={17} color="#ffffff" strokeWidth={2.5} />
