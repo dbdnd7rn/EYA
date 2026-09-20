@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { BadgeCheck, Camera, CheckCircle2, Mail, Phone, Sparkles, User2 } from "lucide-react-native";
@@ -95,6 +96,7 @@ async function uploadAvatarExpo(asset: { uri: string; fileName?: string | null; 
 }
 
 export default function StudentProfileScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const { user, role: authRole, loading: authLoading } = useAuth();
   const { width } = useWindowDimensions();
@@ -305,7 +307,7 @@ export default function StudentProfileScreen() {
     <SafeAreaView style={styles.root}>
       <SoftPageGlow variant="account" />
       <TopNav title="Profile" />
-      <Animated.ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} style={revealStyle}>
+      <Animated.ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false} style={revealStyle}>
         <View style={styles.heroCard}>
           <View pointerEvents="none" style={styles.heroArt}>
             <View style={styles.heroPanel} />
@@ -460,7 +462,7 @@ export default function StudentProfileScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f2fb" },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 14, gap: 14, paddingBottom: 110 },
+  content: { padding: 14, gap: 14 },
 
   heroCard: {
     position: "relative",
