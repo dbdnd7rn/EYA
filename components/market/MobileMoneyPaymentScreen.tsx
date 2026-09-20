@@ -92,6 +92,8 @@ function getHowSteps(providerLabel: string): HowStep[] {
 
 export default function MobileMoneyPaymentScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const contentBottomPadding = 100 + insets.bottom + 24;
   const { eventId, quantity: quantityParam, tierId } = useLocalSearchParams<{ eventId?: string; tierId?: string; quantity?: string }>();
   const { session } = useAuth();
   const [phoneNumber, setPhoneNumber] = React.useState("");
@@ -197,7 +199,7 @@ export default function MobileMoneyPaymentScreen() {
     <View style={styles.root}>
       <SafeAreaView edges={["top"]} style={styles.safeArea}>
         <Header />
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }]}>
           <PaymentStepper />
           <EventOrderCard event={event} quantity={quantity} tier={tier} total={total} />
 
@@ -425,7 +427,7 @@ function SecurityBanner() {
 
 function StickyPayBar({ enabled, loading, onPay, total }: { enabled: boolean; loading: boolean; onPay: () => void; total: number }) {
   const insets = useSafeAreaInsets();
-  const bottom = Math.max(14, insets.bottom + 8);
+  const bottom = Math.max(insets.bottom, 14);
 
   return (
     <View style={[styles.payBarOuter, { bottom }]}>
@@ -460,7 +462,7 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, color: TEXT, fontSize: 18, fontWeight: "900", textAlign: "center", letterSpacing: 0 },
   secureBadge: { minWidth: 104, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 7 },
   secureText: { color: GREEN, fontSize: 13, fontWeight: "900" },
-  scrollContent: { paddingHorizontal: 18, paddingBottom: 162 },
+  scrollContent: { paddingHorizontal: 18 },
   stepper: { paddingTop: 20, paddingBottom: 28 },
   stepperTrack: { flexDirection: "row", alignItems: "flex-start", justifyContent: "center" },
   stepPoint: { width: 94, alignItems: "center" },
