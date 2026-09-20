@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useRouter } from "expo-router";
 import { Bell, ChartLine, Search } from "lucide-react-native";
 import { useSellerWorkspace } from "@/components/seller/useSellerWorkspace";
@@ -27,6 +28,7 @@ function withinRange(iso: string, mode: WindowMode) {
 }
 
 export default function RestaurantEarningsPage() {
+  const contentBottomPadding = useFloatingNavContentPadding();
   const router = useRouter();
   const { workspace, metrics, setOrderStatus } = useSellerWorkspace("food");
   const [mode, setMode] = useState<WindowMode>("today");
@@ -57,7 +59,7 @@ export default function RestaurantEarningsPage() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={styles.title}>Earnings</Text>
           <View style={styles.headerActions}>
@@ -159,7 +161,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f1eff9" },
-  content: { padding: 18, paddingBottom: 126, gap: 14 },
+  content: { padding: 18, gap: 14 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   title: { color: "#232c54", fontSize: 38, fontWeight: "900" },
   headerActions: { flexDirection: "row", gap: 8 },
