@@ -23,6 +23,7 @@ import RoomsSectionHeader from "@/components/rooms/RoomsSectionHeader";
 import { useLiveProximity } from "@/lib/liveProximity";
 import { rankRoomListing } from "@/lib/roomProximity";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
+import { LIQUID_GLASS_NAV_HEIGHT, useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 
 type ListingType = "hostel" | "bedsitter";
 type SortKey = "newest" | "cheapest";
@@ -50,6 +51,7 @@ function formatPrice(amount?: number | null) {
 export default function RoomsScreen() {
   const router = useRouter();
   const { theme } = useStudentTheme();
+  const contentBottomPadding = useFloatingNavContentPadding(LIQUID_GLASS_NAV_HEIGHT);
   const { isOnline } = useNetwork();
   const preferredLocation = usePreferredLocation().location;
   const { point: liveLocation } = useLiveProximity(true);
@@ -136,7 +138,7 @@ export default function RoomsScreen() {
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView
         style={styles.scroller}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => setRefreshing(true)} tintColor={theme.accent} />}
       >
@@ -259,7 +261,7 @@ export default function RoomsScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f3f4f7" },
   scroller: { flex: 1 },
-  content: { padding: 16, paddingBottom: 164, gap: 12 },
+  content: { padding: 16, gap: 12 },
   hero: { gap: 4 },
   h1: { color: "#0e2756", fontSize: 27, fontWeight: "900" },
   sub: { color: "#6e7892", fontSize: 13, fontWeight: "600" },
