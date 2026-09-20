@@ -587,12 +587,12 @@ function MetaTag({ icon, label, dark = false }: { icon: React.ReactNode; label: 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#eef6f8" },
-  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 128, gap: 16 },
+  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 160, gap: 18 },
   skeletonWrap: { padding: 16, gap: 12 },
   skeletonHero: { height: 190, borderRadius: 28, backgroundColor: "#d8e8ef" },
   skeletonSearch: { height: 58, borderRadius: 20, backgroundColor: "#d8e8ef" },
   skeletonCard: { height: 120, borderRadius: 24, backgroundColor: "#d8e8ef" },
-  topSection: { gap: 14 },
+  topSection: { gap: 16 },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 2 },
   brandTag: { color: "#16315f", fontSize: 16, fontWeight: "900" },
   backHomeBtn: { width: 54, height: 38, justifyContent: "center" },
