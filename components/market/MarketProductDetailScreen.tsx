@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, CalendarClock, ChevronLeft, ChevronRight, Heart, MapPin, MessageCircle, ShieldCheck, Star, Truck, X } from "lucide-react-native";
 import { kwacha } from "@/lib/currency";
@@ -41,6 +41,9 @@ function formatDateLabel(value: string) {
 
 export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const footerBottom = Math.max(insets.bottom, 12);
+  const contentBottomPadding = 72 + insets.bottom + 24;
   const { user } = useAuth();
   const isStudentView = fallbackRoute !== "/(market)/(tabs)/marketplace";
   const params = useLocalSearchParams<{ id?: string }>();
@@ -136,8 +139,8 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.topRow}>
           <Pressable style={styles.iconBtn} onPress={() => goBackOrFallback(router, fallbackRoute as any)}>
             <ArrowLeft size={18} color="#0b3d4f" />
@@ -302,7 +305,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
         ) : null}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { bottom: footerBottom }]}>
         <View style={styles.footerTotal}>
           <Text style={styles.footerLabel}>Total</Text>
           <Text style={styles.footerPrice} numberOfLines={1} adjustsFontSizeToFit>{kwacha(total)}</Text>
@@ -387,7 +390,7 @@ function InfoLine({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#eaf7f9" },
-  content: { padding: 16, paddingBottom: 132, gap: 14 },
+  content: { padding: 16, gap: 14 },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   screenTitle: { flex: 1, textAlign: "center", color: "#0b3d4f", fontWeight: "900", fontSize: 16 },
   iconBtn: {
@@ -595,7 +598,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 12,
     minHeight: 72,
     borderRadius: 20,
     backgroundColor: "#fcfeff",
