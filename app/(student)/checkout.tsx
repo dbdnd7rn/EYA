@@ -14,7 +14,7 @@ import {
   Ticket,
   Truck,
 } from "lucide-react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import PaymentBrandLogo from "@/components/payment/PaymentBrandLogo";
 import { formatCacheTime } from "@/lib/offlineCache";
 import { goBackOrFallback } from "@/lib/navigation";
@@ -93,6 +93,9 @@ function parseSelectionMap(raw: string | string[] | undefined) {
 
 export default function CheckoutScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const checkoutFooterBottom = Math.max(insets.bottom, 8);
+  const checkoutContentBottomPadding = 84 + insets.bottom + 24;
   const { user, session } = useAuth();
   const { isOnline } = useNetwork();
   const params = useLocalSearchParams<{
@@ -235,7 +238,7 @@ export default function CheckoutScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
         <View style={styles.skeletonWrap}>
           <View style={[styles.skeletonCard, { height: 126 }]} />
           <View style={[styles.skeletonCard, { height: 260 }]} />
@@ -425,7 +428,7 @@ export default function CheckoutScreen() {
       <View style={styles.bgOrbTwo} />
 
       <Animated.ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: checkoutContentBottomPadding }]}
         showsVerticalScrollIndicator={false}
         style={{
           opacity: reveal,
@@ -635,7 +638,7 @@ export default function CheckoutScreen() {
         </View>
       </Animated.ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { bottom: checkoutFooterBottom }]}>
         <View style={styles.footerAmountWrap}>
           <Text style={styles.footerLabel}>Total</Text>
           <Text style={styles.footerTotal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>
@@ -971,7 +974,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#eef5ff",
     opacity: 0.7,
   },
-  content: { padding: 22, paddingBottom: 210, gap: 20 },
+  content: { padding: 22, gap: 20 },
   skeletonWrap: { padding: 22, gap: 16 },
   skeletonCard: {
     borderRadius: 30,
@@ -1269,7 +1272,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 12,
     right: 12,
-    bottom: 8,
     borderRadius: 20,
     backgroundColor: "#fbfbff",
     borderWidth: 1,
