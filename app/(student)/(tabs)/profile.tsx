@@ -294,7 +294,7 @@ export default function StudentProfileScreen() {
 
   if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
         <TopNav title="Profile" />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color="#ff0f64" />
@@ -304,7 +304,7 @@ export default function StudentProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.root}>
       <SoftPageGlow variant="account" />
       <TopNav title="Profile" />
       <Animated.ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false} style={revealStyle}>
