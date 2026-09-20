@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, Clock3, QrCode, ShieldCheck, UserPlus, Users, XCircle } from "lucide-react-native";
 import {
@@ -34,6 +35,7 @@ function formatWhen(value?: string | null) {
 }
 
 export default function OrganizerGateStaffScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ eventId?: string | string[] }>();
   const eventId = one(params.eventId);
@@ -115,13 +117,13 @@ export default function OrganizerGateStaffScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable style={styles.back} onPress={() => router.back()}><ArrowLeft size={20} color="#ffffff" /></Pressable>
         <View style={styles.flexOne}><Text style={styles.kicker}>TICKET MANAGEMENT</Text><Text style={styles.title}>Gate Operations</Text></View>
         <View style={styles.shield}><ShieldCheck size={20} color="#ffffff" /></View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} />}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} />}>
         {loading ? <View style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Loading Gate Operations...</Text></View> : null}
         {!loading && error ? <View style={styles.errorCard}><Text style={styles.errorTitle}>Gate Operations unavailable</Text><Text style={styles.errorText}>{error}</Text></View> : null}
 
@@ -195,8 +197,8 @@ function StaffRow({ member, disabled, onRevoke }: { member: OrganizerGateStaffMe
 }
 
 const styles = StyleSheet.create({
-  root:{flex:1,backgroundColor:"#f5f7ff"},flexOne:{flex:1},header:{backgroundColor:"#102a54",paddingTop:52,paddingHorizontal:16,paddingBottom:20,flexDirection:"row",alignItems:"center",gap:12},back:{width:44,height:44,borderRadius:22,backgroundColor:"rgba(255,255,255,.13)",alignItems:"center",justifyContent:"center"},kicker:{color:"rgba(255,255,255,.62)",fontSize:10,fontWeight:"900",letterSpacing:1.1},title:{color:"#fff",fontSize:27,fontWeight:"900"},shield:{width:44,height:44,borderRadius:22,backgroundColor:"#5c6ee6",alignItems:"center",justifyContent:"center"},
-  content:{padding:16,gap:14,paddingBottom:44},center:{padding:30,alignItems:"center",gap:10},muted:{color:"#6d7891",fontSize:12,lineHeight:18,fontWeight:"700",textAlign:"center"},errorCard:{backgroundColor:"#fff5f4",borderRadius:20,borderWidth:1,borderColor:"#f2d0cc",padding:18},errorTitle:{color:"#b42318",fontSize:16,fontWeight:"900"},errorText:{color:"#7f4a45",fontSize:12,lineHeight:18,fontWeight:"700",marginTop:4},
+  root:{flex:1,backgroundColor:"#f5f7ff"},flexOne:{flex:1},header:{backgroundColor:"#102a54",paddingHorizontal:16,paddingBottom:20,flexDirection:"row",alignItems:"center",gap:12},back:{width:44,height:44,borderRadius:22,backgroundColor:"rgba(255,255,255,.13)",alignItems:"center",justifyContent:"center"},kicker:{color:"rgba(255,255,255,.62)",fontSize:10,fontWeight:"900",letterSpacing:1.1},title:{color:"#fff",fontSize:27,fontWeight:"900"},shield:{width:44,height:44,borderRadius:22,backgroundColor:"#5c6ee6",alignItems:"center",justifyContent:"center"},
+  content:{padding:16,gap:14,paddingBottom:24},center:{padding:30,alignItems:"center",gap:10},muted:{color:"#6d7891",fontSize:12,lineHeight:18,fontWeight:"700",textAlign:"center"},errorCard:{backgroundColor:"#fff5f4",borderRadius:20,borderWidth:1,borderColor:"#f2d0cc",padding:18},errorTitle:{color:"#b42318",fontSize:16,fontWeight:"900"},errorText:{color:"#7f4a45",fontSize:12,lineHeight:18,fontWeight:"700",marginTop:4},
   eventCard:{backgroundColor:"#eef2ff",borderRadius:22,borderWidth:1,borderColor:"#dce3ff",padding:16},eventTitle:{color:"#153465",fontSize:19,fontWeight:"900"},windowRow:{flexDirection:"row",alignItems:"center",gap:8,marginTop:8},windowText:{flex:1,color:"#66728c",fontSize:11,lineHeight:17,fontWeight:"800"},metricsRow:{flexDirection:"row",gap:10},metric:{flex:1,backgroundColor:"#fff",borderRadius:18,borderWidth:1,borderColor:"#e3e8f7",padding:13},metricValue:{color:"#102a54",fontSize:20,fontWeight:"900"},metricLabel:{color:"#7b879e",fontSize:10,fontWeight:"900",textTransform:"uppercase",marginTop:2},
   card:{backgroundColor:"#fff",borderRadius:24,borderWidth:1,borderColor:"#e3e8f7",padding:15,gap:12},sectionHead:{flexDirection:"row",alignItems:"center",gap:10},sectionTitle:{color:"#153465",fontSize:16,fontWeight:"900"},sectionSub:{color:"#7b879e",fontSize:10,fontWeight:"700",marginTop:2},input:{minHeight:50,borderRadius:16,borderWidth:1,borderColor:"#dfe5f4",paddingHorizontal:13,color:"#102a54",fontSize:13,fontWeight:"800",backgroundColor:"#fbfcff"},primaryBtn:{minHeight:50,borderRadius:16,backgroundColor:"#5c6ee6",flexDirection:"row",gap:8,alignItems:"center",justifyContent:"center"},primaryText:{color:"#fff",fontSize:13,fontWeight:"900"},disabled:{opacity:.5},
   staffRow:{borderTopWidth:1,borderTopColor:"#eef1f7",paddingTop:12,flexDirection:"row",alignItems:"center",gap:10},staffName:{color:"#203856",fontSize:13,fontWeight:"900"},staffMeta:{color:"#78849b",fontSize:10,lineHeight:16,fontWeight:"700",marginTop:2},revokeBtn:{borderRadius:13,backgroundColor:"#fff5f4",borderWidth:1,borderColor:"#f2d0cc",paddingHorizontal:10,paddingVertical:8,flexDirection:"row",alignItems:"center",gap:5},revokeText:{color:"#b42318",fontSize:10,fontWeight:"900"},
