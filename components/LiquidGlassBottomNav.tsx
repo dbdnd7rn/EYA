@@ -2,6 +2,7 @@ import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useFloatingNavBottomOffset } from "@/lib/floatingNavLayout";
 import Animated, {
   Easing,
   interpolate,
@@ -54,7 +55,7 @@ export function LiquidGlassBottomNav({ activeKey, items }: LiquidGlassBottomNavP
   const tabCount = items.length || 1;
   const tabWidth = barWidth > 0 ? barWidth / tabCount : 0;
   const bubbleX = useSharedValue(0);
-  const bottomOffset = 6;
+  const bottomOffset = useFloatingNavBottomOffset();
 
   React.useEffect(() => {
     bubbleX.value = withSpring(activeIndex * tabWidth, {
