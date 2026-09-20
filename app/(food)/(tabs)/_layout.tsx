@@ -4,12 +4,12 @@ import { createTabScreenOptions, renderAnimatedTabBar } from "@/components/Anima
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
 
 const LIGHT_FOOD_TAB_THEME = {
-  activeColor: "#ff4b6e",
+  activeColor: "#ffffff",
   inactiveColor: "#9fa8c0",
   backgroundColor: "rgba(13,16,26,0.98)",
   borderColor: "#293041",
-  indicatorColor: "rgba(255,75,110,0.18)",
-  glowColor: "#ff4b6e",
+  indicatorColor: "#5e73dd",
+  glowColor: "#4458b8",
   sceneBackgroundColor: "#07090f",
   blurTint: "dark",
 } as const;
@@ -22,8 +22,8 @@ export default function FoodTabs() {
         inactiveColor: "#9eaec8",
         backgroundColor: "rgba(9,15,27,0.96)",
         borderColor: "#2a3d5c",
-        indicatorColor: "rgba(255,102,137,0.22)",
-        glowColor: "#ff6689",
+        indicatorColor: "#5e73dd",
+        glowColor: "#4458b8",
         sceneBackgroundColor: theme.background,
         blurTint: "dark" as const,
       }
