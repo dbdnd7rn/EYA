@@ -1,7 +1,7 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFloatingNavBottomOffset } from "@/lib/floatingNavLayout";
 import Animated, {
   Easing,
   interpolateColor,
@@ -35,7 +35,7 @@ type Props = BottomTabBarProps & {
 type TabBadge = string | number | undefined;
 
 export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleTabNames }: Props) {
-  const insets = useSafeAreaInsets();
+  const bottomOffset = useFloatingNavBottomOffset();
   const activeRouteKey = state.routes[state.index]?.key;
   const visibleRoutes = React.useMemo(
     () =>
@@ -72,7 +72,7 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
   }));
 
   return (
-    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: Math.max(10, insets.bottom + 8) }]}> 
+    <View pointerEvents="box-none" style={[styles.safeArea, { bottom: bottomOffset }]}> 
       <View
         onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
         style={[
