@@ -393,7 +393,7 @@ function PaymentMethodCard({ active, method, onPress }: { active: boolean; metho
     >
       <View style={[styles.methodIconBox, { backgroundColor: isMobileMoney ? "#ffffff" : theme.icon }]}>
         {isMobileMoney ? (
-          <PaymentBrandLogo brand={method.id} size={58} active={active} />
+          <PaymentBrandLogo brand={method.id as "airtel_money" | "mpamba"} size={58} active={active} />
         ) : method.id === "bank_transfer" ? <Landmark size={28} color={active ? theme.border : TEXT} /> : <CreditCard size={28} color={active ? theme.border : TEXT} />}
       </View>
       <View style={styles.methodCopy}>
