@@ -206,19 +206,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           if (isNetworkUnavailableError(error)) {
-            setSession(data.session ?? null);
-            setUser(data.session?.user ?? null);
-            if (data.session?.user) {
-              await refreshRole(data.session.user).catch(() => undefined);
+            const nextSession = (data as { session: Session | null }).session ?? null;
+            setSession(nextSession);
+            setUser(nextSession?.user ?? null);
+            if (nextSession?.user) {
+              await refreshRole(nextSession.user).catch(() => undefined);
             }
             return;
           }
           throw error;
         }
-        setSession(data.session ?? null);
-        setUser(data.session?.user ?? null);
+        const nextSession = (data as { session: Session | null }).session ?? null;
+        setSession(nextSession);
+        setUser(nextSession?.user ?? null);
         await withTimeout(
-          refreshRole(data.session?.user ?? null),
+          refreshRole(nextSession?.user ?? null),
           AUTH_STARTUP_TIMEOUT_MS,
           "Auth role lookup timed out.",
         );
