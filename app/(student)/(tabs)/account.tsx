@@ -214,7 +214,7 @@ export default function AccountScreen() {
 
           <Pressable
             style={[styles.rolesWorkspaceBtn, { backgroundColor: theme.surface, borderColor: theme.accent }]}
-            onPress={() => router.push("/onboarding")}
+            onPress={() => router.push("/(student)/workspaces" as any)}
           >
             <View style={[styles.rolesWorkspaceIconWrap, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
               <Star size={17} color={theme.accent} />

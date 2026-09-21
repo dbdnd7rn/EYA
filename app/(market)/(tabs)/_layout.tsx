@@ -6,16 +6,17 @@ import { useStudentTheme } from "@/providers/StudentThemeProvider";
 const LIGHT_MARKET_TAB_THEME = {
   activeColor: "#1f2e55",
   inactiveColor: "#7e84a8",
-  backgroundColor: "rgba(255,255,255,0.94)",
-  borderColor: "#dde0f2",
-  indicatorColor: "rgba(96,102,168,0.14)",
-  glowColor: "#1f2e55",
+  backgroundColor: "rgba(255,255,255,0.76)",
+  borderColor: "rgba(255,255,255,0.78)",
+  indicatorColor: "rgba(96,102,168,0.10)",
+  glowColor: "#5e73dd",
   sceneBackgroundColor: "#f1eff9",
   floatingTabName: "orders",
   floatingTabBackgroundColor: "#d74f84",
   floatingTabIconColor: "#ffffff",
-  floatingTabBorderColor: "#f8f4ff",
+  floatingTabBorderColor: "rgba(255,255,255,0.92)",
   floatingTabShadowColor: "#ce5b8d",
+  blurTint: "light" as const,
 } as const;
 
 export default function MarketTabs() {
@@ -24,15 +25,15 @@ export default function MarketTabs() {
     ? {
         activeColor: "#ffffff",
         inactiveColor: "#9facbf",
-        backgroundColor: "rgba(9,15,27,0.96)",
-        borderColor: "#2a3d5c",
-        indicatorColor: "rgba(124,147,255,0.22)",
+        backgroundColor: "rgba(9,15,27,0.82)",
+        borderColor: "rgba(69,88,120,0.72)",
+        indicatorColor: "rgba(124,147,255,0.14)",
         glowColor: "#7c93ff",
         sceneBackgroundColor: theme.background,
         floatingTabName: "orders",
         floatingTabBackgroundColor: "#ff6d9d",
         floatingTabIconColor: "#ffffff",
-        floatingTabBorderColor: "#0f1727",
+        floatingTabBorderColor: "rgba(15,23,39,0.92)",
         floatingTabShadowColor: "#ff6d9d",
         blurTint: "dark" as const,
       }

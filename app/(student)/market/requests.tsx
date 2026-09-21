@@ -6,7 +6,7 @@ import MarketBottomNav from "@/components/market/MarketBottomNav";
 export default function StudentMarketRequestsPage() {
   return (
     <View style={styles.root}>
-      <StudentRequestsPage contentBottomPadding={164} />
+      <StudentRequestsPage contentBottomPadding={28} />
       <MarketBottomNav active="requests" />
     </View>
   );

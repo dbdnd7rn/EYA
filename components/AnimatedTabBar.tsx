@@ -1,9 +1,11 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { BlurView } from "expo-blur";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useFloatingNavBottomOffset } from "@/lib/floatingNavLayout";
 import Animated, {
   Easing,
+  interpolate,
   interpolateColor,
   useAnimatedStyle,
   useSharedValue,
@@ -34,6 +36,9 @@ type Props = BottomTabBarProps & {
 
 type TabBadge = string | number | undefined;
 
+const INDICATOR_MIN_WIDTH = 48;
+const INDICATOR_MAX_WIDTH = 72;
+
 export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleTabNames }: Props) {
   const bottomOffset = useFloatingNavBottomOffset();
   const activeRouteKey = state.routes[state.index]?.key;
@@ -56,17 +61,22 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
   const [barWidth, setBarWidth] = React.useState(0);
   const tabCount = visibleRoutes.length || 1;
   const tabWidth = barWidth > 0 ? barWidth / tabCount : 0;
+  const indicatorWidth = tabWidth > 0
+    ? Math.max(INDICATOR_MIN_WIDTH, Math.min(INDICATOR_MAX_WIDTH, tabWidth - 14))
+    : 0;
   const indicatorX = useSharedValue(0);
 
   React.useEffect(() => {
-    indicatorX.value = withSpring(activeVisibleIndex * tabWidth, {
-      damping: 18,
-      stiffness: 180,
-      mass: 0.9,
+    const centeredOffset = Math.max(0, (tabWidth - indicatorWidth) / 2);
+    indicatorX.value = withSpring(activeVisibleIndex * tabWidth + centeredOffset, {
+      damping: 20,
+      stiffness: 210,
+      mass: 0.78,
     });
-  }, [activeVisibleIndex, indicatorX, tabWidth]);
+  }, [activeVisibleIndex, indicatorWidth, indicatorX, tabWidth]);
 
   const indicatorStyle = useAnimatedStyle(() => ({
+    width: indicatorWidth,
     transform: [{ translateX: indicatorX.value }],
     opacity: tabWidth > 0 && !activeRouteIsFloating ? 1 : 0,
   }));
@@ -79,12 +89,20 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
           styles.shell,
           hasFloatingTab && styles.shellFloating,
           {
-            backgroundColor: theme.backgroundColor,
             borderColor: theme.borderColor,
             shadowColor: theme.glowColor,
           },
         ]}
       >
+        <BlurView
+          pointerEvents="none"
+          intensity={32}
+          tint={theme.blurTint ?? "light"}
+          style={styles.blurLayer}
+        >
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.backgroundColor }]} />
+        </BlurView>
+
         <Animated.View
           pointerEvents="none"
           style={[
@@ -131,7 +149,7 @@ export function AnimatedTabBar({ state, descriptors, navigation, theme, visibleT
               icon={options.tabBarIcon?.({
                 focused: isFocused,
                 color: iconColor,
-                size: isFloating ? 34 : 22,
+                size: isFloating ? 28 : 21,
               })}
               onPress={() => {
                 const event = navigation.emit({
@@ -192,7 +210,7 @@ function TabBarItem({
 
   React.useEffect(() => {
     focusProgress.value = withTiming(isFocused ? 1 : 0, {
-      duration: 220,
+      duration: 190,
       easing: Easing.out(Easing.cubic),
     });
   }, [focusProgress, isFocused]);
@@ -213,7 +231,7 @@ function TabBarItem({
       [0, 1],
       [theme.inactiveColor, theme.activeColor],
     ),
-    opacity: withTiming(isFocused ? 1 : 0.84, { duration: 160 }),
+    opacity: interpolate(focusProgress.value, [0, 1], [0.78, 1]),
   }));
 
   return (
@@ -222,9 +240,7 @@ function TabBarItem({
         styles.itemWrap,
         isFloating && styles.itemWrapFloating,
         animatedStyle,
-        {
-          width: tabWidth || undefined,
-        },
+        { width: tabWidth || undefined },
       ]}
     >
       <Pressable
@@ -234,10 +250,10 @@ function TabBarItem({
         hitSlop={8}
         onLongPress={onLongPress}
         onPressIn={() => {
-          pressedScale.value = withTiming(0.95, { duration: 80 });
+          pressedScale.value = withTiming(0.94, { duration: 80 });
         }}
         onPressOut={() => {
-          pressedScale.value = withSpring(1, { damping: 12, stiffness: 220 });
+          pressedScale.value = withSpring(1, { damping: 14, stiffness: 260 });
         }}
         onPress={onPress}
         style={[
@@ -294,12 +310,12 @@ export function renderAnimatedTabBar(theme: AnimatedTabTheme, visibleTabNames?: 
 const styles = StyleSheet.create({
   safeArea: {
     position: "absolute",
-    left: 10,
-    right: 10,
+    left: 12,
+    right: 12,
   },
   shell: {
-    overflow: "hidden",
-    borderRadius: 32,
+    minHeight: 66,
+    borderRadius: 28,
     borderWidth: 1,
     minHeight: 66,
     flexDirection: "row",
@@ -314,7 +330,11 @@ const styles = StyleSheet.create({
   },
   shellFloating: {
     overflow: "visible",
-    paddingTop: 2,
+  },
+  blurLayer: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 28,
+    overflow: "hidden",
   },
   indicator: {
     position: "absolute",
@@ -336,7 +356,7 @@ const styles = StyleSheet.create({
   itemWrapFloating: {
     alignItems: "center",
     justifyContent: "center",
-    marginTop: -34,
+    marginTop: -20,
   },
   pressable: {
     minHeight: 54,
@@ -348,19 +368,19 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   pressableFloating: {
-    width: 88,
-    minHeight: 88,
-    borderRadius: 44,
-    borderWidth: 6,
+    width: 64,
+    minHeight: 64,
+    borderRadius: 32,
+    borderWidth: 4,
     paddingHorizontal: 0,
     paddingVertical: 0,
-    shadowOpacity: 0.32,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 12,
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 8,
   },
   iconWrap: {
-    minHeight: 24,
+    minHeight: 23,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -380,11 +400,11 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     color: "#fff",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
   },
   label: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0,
     textAlign: "center",
