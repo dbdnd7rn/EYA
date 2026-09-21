@@ -43,6 +43,8 @@ type IconComponent = React.ComponentType<{
 }>;
 
 export default function SelectTicketsScreen() {
+  const insets = useSafeAreaInsets();
+  const contentBottomPadding = 112 + insets.bottom + 24;
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
   const [event, setEvent] = React.useState<TicketEvent | null>(null);
   const [loading, setLoading] = React.useState(true);
