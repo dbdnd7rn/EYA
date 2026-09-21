@@ -268,7 +268,7 @@ export default function HybridTicketCheckoutScreen() {
           </View>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, { paddingBottom: Math.max(205, insets.bottom + 175) }]}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, { paddingBottom: 86 + insets.bottom + 24 }]}>
           <EventCard event={event} />
 
           <Text style={styles.kicker}>ORDER SUMMARY</Text>
@@ -339,7 +339,7 @@ export default function HybridTicketCheckoutScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      <View style={[styles.payBarOuter, { bottom: Math.max(14, insets.bottom + 8) }]}>
+      <View style={[styles.payBarOuter, { bottom: Math.max(insets.bottom, 14) }]}>
         <View style={styles.payBar}>
           <View style={styles.payTotalWrap}><Text style={styles.payLabel}>TOTAL</Text><Text style={styles.payAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{money(estimatedTotal)}</Text></View>
           <Pressable disabled={!canContinue} style={[styles.payButton, !canContinue && styles.payButtonDisabled]} onPress={() => void handlePay()}>
