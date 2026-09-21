@@ -1,0 +1,46 @@
+name: Reconciliation Check
+
+on:
+  push:
+    branches:
+      - reconcile/eya-main-backend-20260822
+  pull_request:
+    branches:
+      - feat/payment-architecture-v1-hybrid-checkout
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check canonical backend
+        run: |
+          node --check index.js
+          node --check src/local-server.js
+          node --check src/auth.js
+          node --check src/commercePolicy.js
+          node --check src/commerceData.js
+          node --check src/deliveryRoutes.js
+          node --check src/checkoutHandoffRoutes.js
+          node --check src/ticketReadRoutes.js
+          node --check src/ticketFinanceRoutes.js
+          node --check src/adminCommerceRoutes.js
+          node --check src/adminCatalogRoutes.js
+          node --check src/adminUserRoutes.js
+          node --check src/server-v2.js
+          node --check src/secure-entry.js
+
+      - name: Security and route-surface tests
+        run: npm run test:security

@@ -1,0 +1,21 @@
+{
+  "name": "eya-main-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/local-server.js",
+    "start": "node src/local-server.js",
+    "test:security": "node --test test/security-policy.test.js test/commerce-policy.test.js test/canonical-route-surface.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "qrcode": "^1.5.4"
+  }
+}

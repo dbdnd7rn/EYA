@@ -1,0 +1,7 @@
+node_modules/
+.dev.vars
+.wrangler/
+.wrangler-dry-run/
+worker-configuration.d.ts
+*.sqlite
+*.sqlite3

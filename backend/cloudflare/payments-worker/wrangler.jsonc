@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vac-payments",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-19",
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "ENVIRONMENT": "staging",
+    "PAYCHANGU_CALLBACK_URL": "https://vac-payments.mwalechimango265.workers.dev/v1/paychangu/callback",
+    "PAYCHANGU_RETURN_URL": "https://vac-payments.mwalechimango265.workers.dev/v1/paychangu/return"
+  },
+  "d1_databases": [
+    {
+      "binding": "PAYMENTS_DB",
+      "database_name": "vac-payments",
+      "database_id": "4acaecac-8d10-49cc-8bdb-4533488d35a3"
+    }
+  ]
+}

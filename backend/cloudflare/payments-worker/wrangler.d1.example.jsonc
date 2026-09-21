@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vac-payments",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-19",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "ENVIRONMENT": "development"
+  },
+  "d1_databases": [
+    {
+      "binding": "PAYMENTS_DB",
+      "database_name": "vac-payments",
+      "database_id": "REPLACE_WITH_THE_UUID_RETURNED_BY_WRANGLER",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
