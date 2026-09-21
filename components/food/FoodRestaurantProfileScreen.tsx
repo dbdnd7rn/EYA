@@ -127,23 +127,11 @@ export default function FoodRestaurantProfileScreen({ fallbackRoute }: Props) {
     });
   };
 
-  const checkoutBuilderMeal = () => {
+  const contactRestaurantAboutMeal = () => {
     if (!builderItem || !builderSummary || missingBuilderChoices || !restaurant?.isOpen) return;
     router.push({
-      pathname: "/(student)/checkout",
-      params: {
-        mode: "food",
-        title: builderSummary.itemTitle,
-        base: String(builderSummary.unitPrice),
-        delivery: String(builderDeliveryFee),
-        item_id: builderItem.id,
-        vendor_id: builderItem.vendorId,
-        channel: "food",
-        delivery_mode: serviceMode === "delivery" ? "doorstep" : "pickup",
-        food_selection: JSON.stringify(builderSelections),
-        food_summary: builderSummary.summaryText,
-        food_base_title: builderItem.meal,
-      },
+      pathname: "/(student)/vendor-chat/[vendorId]",
+      params: { vendorId: restaurant.id, channel: "food" },
     } as any);
   };
 
@@ -257,7 +245,7 @@ export default function FoodRestaurantProfileScreen({ fallbackRoute }: Props) {
           <View style={styles.builderHeader}>
             <View>
               <Text style={styles.sectionTitle}>Build your plate</Text>
-              <Text style={styles.builderSub}>Choose a meal base, pick your options, then checkout from here.</Text>
+              <Text style={styles.builderSub}>Choose a meal base and options, then contact the restaurant.</Text>
             </View>
             <View style={styles.builderBadge}>
               <Text style={styles.builderBadgeText}>EYA custom</Text>
@@ -326,9 +314,9 @@ export default function FoodRestaurantProfileScreen({ fallbackRoute }: Props) {
                   <Pressable
                     style={[styles.checkoutButton, (!restaurant.isOpen || missingBuilderChoices) && styles.checkoutButtonDisabled]}
                     disabled={!restaurant.isOpen || missingBuilderChoices}
-                    onPress={checkoutBuilderMeal}
+                    onPress={contactRestaurantAboutMeal}
                   >
-                    <Text style={styles.checkoutButtonText}>{missingBuilderChoices ? "Complete" : "Checkout"}</Text>
+                    <Text style={styles.checkoutButtonText}>{missingBuilderChoices ? "Complete" : "Contact"}</Text>
                     {!missingBuilderChoices && restaurant.isOpen ? <ChevronRight size={17} color="#ffffff" /> : null}
                   </Pressable>
                 </View>

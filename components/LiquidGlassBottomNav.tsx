@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     opacity: 0.86,
   },
   innerBorder: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 28,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.28)",

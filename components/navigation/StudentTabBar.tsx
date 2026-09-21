@@ -1,4 +1,4 @@
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { Tabs } from "expo-router";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,6 +11,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import type { AnimatedTabTheme } from "@/components/AnimatedTabBar";
+
+type BottomTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>["tabBar"]>>[0];
 
 type TabBadge = string | number | undefined;
 

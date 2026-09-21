@@ -3,7 +3,10 @@ name: Android APK Validation
 on:
   push:
     branches:
-      - feat/hybrid-checkout
+      - develop
+  pull_request:
+    branches:
+      - develop
   workflow_dispatch:
 
 permissions:
@@ -42,7 +45,7 @@ jobs:
         run: npm run typecheck
 
       - name: Generate Android native project
-        run: npx expo prebuild --platform android --clean --non-interactive
+        run: npx expo prebuild --platform android --clean
 
       - name: Make Gradle executable
         run: chmod +x android/gradlew

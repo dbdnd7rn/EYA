@@ -296,35 +296,6 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
         ) : null}
       </ScrollView>
 
-      <View style={[styles.footer, { bottom: footerBottom }]}>
-        <View style={styles.footerTotal}>
-          <Text style={styles.footerLabel}>Total</Text>
-          <Text style={styles.footerPrice} numberOfLines={1} adjustsFontSizeToFit>{kwacha(total)}</Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Proceed to checkout"
-          style={styles.cta}
-          onPress={() =>
-            router.push({
-              pathname: "/(student)/checkout",
-              params: {
-                mode: "market",
-                title: item.name,
-                base: String(item.price),
-                delivery: String(deliver ? item.deliveryFee : 0),
-                item_id: item.id,
-                vendor_id: item.vendorId,
-                channel: "market",
-                delivery_mode: deliver ? "doorstep" : "pickup",
-              },
-            })
-          }
-        >
-          <Text style={styles.ctaText}>Checkout</Text>
-          <ChevronRight size={18} color="#ffffff" />
-        </Pressable>
-      </View>
 
       <Modal visible={photoViewerOpen} animationType="fade" transparent onRequestClose={() => setPhotoViewerOpen(false)}>
         <SafeAreaView style={styles.photoViewer}>

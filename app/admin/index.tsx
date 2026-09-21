@@ -712,7 +712,7 @@ export default function AdminPortalPage() {
         loadAdminSource<AdminProfile>(fetchAdminProfile(user), fallbackAdminProfile(user)),
         loadAdminSource(
           supabase.from("profiles").select("id,full_name,first_name,last_name,email,role").in("role", ["agent", "admin"]).limit(120),
-          { data: [], error: null, count: null, status: 200, statusText: "OK" },
+          { data: [], error: null, count: null, status: 200, statusText: "OK", success: true },
         ),
       ]);
 

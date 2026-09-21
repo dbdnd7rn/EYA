@@ -214,27 +214,11 @@ export default function FoodRestaurantExperienceScreen({ fallbackRoute }: Props)
     setSelectedItem(null);
   };
 
-  const checkoutBasket = () => {
+  const contactRestaurantAboutBasket = () => {
     if (!basket || !basketSummary || !restaurant?.isOpen) return;
-    const foodSummary = [basketSummary.summaryText, basket.note ? `Note: ${basket.note}` : ""]
-      .filter(Boolean)
-      .join(" | ");
     router.push({
-      pathname: "/(student)/checkout",
-      params: {
-        mode: "food",
-        title: basketSummary.itemTitle,
-        base: String(basketSummary.unitPrice),
-        delivery: String(basketDeliveryFee),
-        quantity: String(basket.quantity),
-        item_id: basket.item.id,
-        vendor_id: basket.item.vendorId,
-        channel: "food",
-        delivery_mode: serviceMode === "delivery" ? "doorstep" : "pickup",
-        food_selection: JSON.stringify(basket.selections),
-        food_summary: foodSummary,
-        food_base_title: basket.item.meal,
-      },
+      pathname: "/(student)/vendor-chat/[vendorId]",
+      params: { vendorId: restaurant.id, channel: "food" },
     } as any);
   };
 
@@ -457,12 +441,12 @@ export default function FoodRestaurantExperienceScreen({ fallbackRoute }: Props)
 
       {basket && basketSummary ? (
         <View style={[styles.basketDock, { paddingBottom: basketDockBottomPadding }]}>
-          <Pressable style={styles.basketButton} onPress={checkoutBasket}>
+          <Pressable style={styles.basketButton} onPress={contactRestaurantAboutBasket}>
             <View style={styles.basketIcon}>
               <ShoppingBag size={20} color="#ffffff" />
             </View>
             <View style={styles.basketCopy}>
-              <Text style={styles.basketTitle}>View basket</Text>
+              <Text style={styles.basketTitle}>Contact restaurant</Text>
               <Text style={styles.basketMeta}>{basket.quantity} item{basket.quantity === 1 ? "" : "s"} • {serviceMode}</Text>
             </View>
             <Text style={styles.basketTotal}>{kwacha(basketTotal)}</Text>

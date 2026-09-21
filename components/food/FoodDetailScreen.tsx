@@ -240,40 +240,6 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { bottom: footerBottom }]}>
-        <View style={styles.footerCopy}>
-          <Text style={styles.footerLabel}>Total</Text>
-          <Text style={styles.footerTotal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{kwacha(total)}</Text>
-        </View>
-        <Pressable
-          style={[styles.cta, (!item.isOpen || missingRequiredChoices) && styles.ctaDisabled]}
-          disabled={!item.isOpen || missingRequiredChoices}
-          onPress={() =>
-            item.isOpen &&
-            router.push({
-              pathname: "/(student)/checkout",
-              params: {
-                mode: "food",
-                title: selectionSummary.itemTitle,
-                base: String(selectionSummary.unitPrice),
-                delivery: String(deliver ? item.deliveryFee : 0),
-                item_id: item.id,
-                vendor_id: item.vendorId,
-                channel: "food",
-                delivery_mode: deliver ? "doorstep" : "pickup",
-                food_selection: JSON.stringify(selectionMap),
-                food_summary: selectionSummary.summaryText,
-                food_base_title: item.meal,
-              },
-            })
-          }
-        >
-          <Text style={styles.ctaText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>
-            {!item.isOpen ? "Currently closed" : missingRequiredChoices ? "Complete your plate" : "Proceed to checkout"}
-          </Text>
-          {item.isOpen && !missingRequiredChoices ? <ChevronRight size={20} color="#ffffff" /> : null}
-        </Pressable>
-      </View>
     </SafeAreaView>
   );
 }

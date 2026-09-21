@@ -1,4 +1,4 @@
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { Tabs } from "expo-router";
 import { BlurView } from "expo-blur";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -12,6 +12,8 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+
+type BottomTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>["tabBar"]>>[0];
 
 export type AnimatedTabTheme = {
   activeColor: string;
@@ -317,7 +319,6 @@ const styles = StyleSheet.create({
     minHeight: 66,
     borderRadius: 28,
     borderWidth: 1,
-    minHeight: 66,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -332,7 +333,7 @@ const styles = StyleSheet.create({
     overflow: "visible",
   },
   blurLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 28,
     overflow: "hidden",
   },

@@ -872,10 +872,18 @@ export async function checkInAdminTicket(input: {
       "Permanent ticket references are not admission credentials. Use the holder's current live, guest, or offline entry pass.",
     );
   }
+  if (input.eventId) {
+    return checkInLiveTicketCredential({
+      credential,
+      method,
+      eventId: input.eventId,
+      deviceLabel: input.deviceLabel ?? null,
+    });
+  }
   return checkInLiveTicketCredential({
     credential,
     method,
-    eventId: input.eventId ?? null,
+    eventId: null,
     deviceLabel: input.deviceLabel ?? null,
   });
 }

@@ -78,7 +78,7 @@ function ThemedRuntime({
         <SavedRoomsQueueSyncProvider>
           <MutationOutboxSyncProvider>
             <View style={[styles.keyboardRoot, { backgroundColor: theme.background }]}>
-              <StatusBar style={mode === "dark" ? "light" : "dark"} backgroundColor={theme.background} />
+              <StatusBar style={mode === "dark" ? "light" : "dark"} />
               <Stack
                 screenOptions={{
                   headerShown: false,
