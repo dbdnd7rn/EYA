@@ -46,6 +46,7 @@ import {
 } from "@/lib/tickets";
 import PaymentBrandLogo from "@/components/payment/PaymentBrandLogo";
 import TicketBottomNav from "@/components/market/TicketBottomNav";
+import { useFloatingNavContentPadding } from "@/lib/floatingNavLayout";
 import { useStudentTheme } from "@/providers/StudentThemeProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNetwork } from "@/providers/NetworkProvider";
@@ -64,6 +65,7 @@ function firstAvailableTier(event: TicketEvent) {
 }
 
 export default function TicketsScreen() {
+  const contentBottomPadding = useFloatingNavContentPadding(70);
   const router = useRouter();
   const { theme } = useStudentTheme();
   const { user, session } = useAuth();
@@ -270,7 +272,7 @@ export default function TicketsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Pressable style={[styles.iconBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => router.back()}>
             <ArrowLeft size={20} color={theme.heading} />
@@ -833,7 +835,7 @@ function SuccessReceipt({ receipt, onBack }: { receipt: BookingReceipt; onBack: 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f2fb" },
-  content: { padding: 14, paddingBottom: 118, gap: 16 },
+  content: { padding: 14, gap: 16 },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   iconBtn: {
     width: 44,
