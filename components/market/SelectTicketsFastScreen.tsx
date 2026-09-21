@@ -67,7 +67,7 @@ export default function SelectTicketsFastScreen() {
           <Text style={styles.headerTitle}>Select Tickets</Text>
           <View style={styles.secure}><ShieldCheck color={ACCENT} size={18} /><Text style={styles.secureText}>Verified Checkout</Text></View>
         </View>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: Math.max(230, insets.bottom + 190) }]}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: 112 + insets.bottom + 24 }]}>
           <Text style={styles.kicker}>CHOOSE YOUR TICKET</Text>
           {event.tiers.map((tier, index) => {
             const active = tier.id === tierId && qty > 0;
@@ -98,7 +98,7 @@ export default function SelectTicketsFastScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
-      <View style={[styles.bottom, { bottom: Math.max(14, insets.bottom + 8) }]}>
+      <View style={[styles.bottom, { bottom: Math.max(insets.bottom, 14) }]}>
         <View style={styles.bottomTop}><View style={styles.bottomCopy}><Text style={styles.bottomLabel}>TOTAL</Text><Text style={styles.bottomAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{money(total)}</Text></View><Text style={styles.details}>View Details</Text></View>
         <Pressable disabled={!selectedTier || qty <= 0} style={[styles.checkout, (!selectedTier || qty <= 0) && styles.checkoutOff]} onPress={() => router.push({ pathname: "/(student)/market/mobile-money-payment", params: { eventId: event.id, tierId: selectedTier?.id, quantity: String(qty) } } as any)}><Text style={styles.checkoutText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.76}>Proceed to Checkout</Text><Lock color="#fff" size={17} /></Pressable>
       </View>
