@@ -97,7 +97,7 @@ export async function listPendingAdminTicketEvents(): Promise<AdminTicketReviewE
     tiersByEvent.set(eventId, current);
   }
 
-  const organizerById = new Map((organizers ?? []).map((row: any) => [String(row.id), row]));
+  const organizerById = new Map<string, any>((organizers ?? []).map((row: any) => [String(row.id), row] as [string, any]));
   return rows.map((row) => {
     const organizer = organizerById.get(String(row.organizer_id || ""));
     return {
