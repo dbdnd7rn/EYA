@@ -1,0 +1,66 @@
+name: Android APK Validation
+
+on:
+  push:
+    branches:
+      - feat/hybrid-checkout
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android-apk:
+    name: Build Android release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Generate Android native project
+        run: npx expo prebuild --platform android --clean --non-interactive
+
+      - name: Make Gradle executable
+        run: chmod +x android/gradlew
+
+      - name: Build installable release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Collect APK
+        run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/release/*.apk artifacts/EYA-android-validation.apk
+          ls -lh artifacts
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EYA-android-validation-apk
+          path: artifacts/EYA-android-validation.apk
+          if-no-files-found: error
+          retention-days: 14
