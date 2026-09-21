@@ -16,7 +16,7 @@ import EyaWordmark from "@/components/brand/EyaWordmark";
 const REDIRECT_WATCHDOG_MS = 7000;
 const REDIRECT_STEP_TIMEOUT_MS = 3500;
 
-async function withRedirectTimeout<T>(promise: Promise<T>, ms = REDIRECT_STEP_TIMEOUT_MS): Promise<T> {
+async function withRedirectTimeout<T>(promise: PromiseLike<T>, ms = REDIRECT_STEP_TIMEOUT_MS): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     return await Promise.race([
