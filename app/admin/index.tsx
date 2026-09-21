@@ -3858,7 +3858,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8f8ff",
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: "hidden",
   },
   glowTopRight: {

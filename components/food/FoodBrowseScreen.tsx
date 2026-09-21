@@ -781,7 +781,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#bcd8e0",
   },
   featuredImage: { width: "100%", height: "100%", position: "absolute" },
-  featuredOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(13,25,49,0.34)" },
+  featuredOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(13,25,49,0.34)" },
   featuredTop: { flexDirection: "row", justifyContent: "space-between", padding: 14 },
   featuredBadge: {
     backgroundColor: "rgba(255,255,255,0.88)",

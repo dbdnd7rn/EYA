@@ -1319,7 +1319,7 @@ const styles = StyleSheet.create({
   },
   map: { width: "100%", height: "100%" },
   mapOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "flex-end",
     alignItems: "center",
     padding: 14,

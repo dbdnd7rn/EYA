@@ -1,6 +1,6 @@
-import type { Href, Router } from "expo-router";
+import type { Href, router as expoRouter } from "expo-router";
 
-export function goBackOrFallback(router: Router, fallback: Href) {
+export function goBackOrFallback(router: typeof expoRouter, fallback: Href) {
   if (router.canGoBack()) {
     router.back();
     return;

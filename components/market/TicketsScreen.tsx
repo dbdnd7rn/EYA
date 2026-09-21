@@ -858,7 +858,7 @@ const styles = StyleSheet.create({
   },
   hero: { minHeight: 256, justifyContent: "flex-end" },
   heroImage: { borderRadius: 28 },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.58)" },
+  heroOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.58)" },
   heroGlow: {
     position: "absolute",
     right: -50,
@@ -944,7 +944,7 @@ const styles = StyleSheet.create({
   bookingCard: { borderRadius: 28, borderWidth: 1, padding: 16, gap: 15 },
   detailHero: { minHeight: 230, justifyContent: "flex-end", overflow: "hidden", borderRadius: 24 },
   detailHeroImage: { borderRadius: 24 },
-  detailHeroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.48)" },
+  detailHeroOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.48)" },
   detailHeroContent: { padding: 16, gap: 9 },
   detailTag: {
     alignSelf: "flex-start",

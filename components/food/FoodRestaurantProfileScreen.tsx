@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
   content: { paddingBottom: 38 },
   heroCard: { height: 228, overflow: "hidden", backgroundColor: "#d9e6ea" },
   heroImage: { height: 228, backgroundColor: "#d9e6ea" },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(11,21,39,0.33)" },
+  heroOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(11,21,39,0.33)" },
   heroTopBar: {
     position: "absolute",
     top: 14,
