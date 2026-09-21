@@ -39,7 +39,7 @@ function normalizeEmail(value: string | null | undefined) {
 }
 
 export function getConfiguredAdminEmails() {
-  return ENV.ADMIN_EMAILS.split(",").map((value) => normalizeEmail(value)).filter(Boolean);
+  return ENV.ADMIN_EMAILS.split(",").map((value: string) => normalizeEmail(value)).filter(Boolean);
 }
 
 export function isConfiguredAdminEmail(email: string | null | undefined) {
