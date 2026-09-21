@@ -21,6 +21,12 @@ jobs:
     name: Build Android release APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME: ${{ vars.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME }}
+      EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET: ${{ vars.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET }}
+      EXPO_PUBLIC_APP_ENV: production
 
     steps:
       - name: Checkout
@@ -44,23 +50,36 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Verify APK configuration
+        if: github.event_name != 'pull_request'
+        run: |
+          if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ] || [ -z "$EXPO_PUBLIC_SUPABASE_ANON_KEY" ]; then
+            echo 'Configure EXPO_PUBLIC_SUPABASE_URL (Actions variable) and EXPO_PUBLIC_SUPABASE_ANON_KEY (Actions secret) before building an APK.' >&2
+            exit 1
+          fi
+
       - name: Generate Android native project
+        if: github.event_name != 'pull_request'
         run: npx expo prebuild --platform android --clean
 
       - name: Make Gradle executable
+        if: github.event_name != 'pull_request'
         run: chmod +x android/gradlew
 
       - name: Build installable release APK
+        if: github.event_name != 'pull_request'
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Collect APK
+        if: github.event_name != 'pull_request'
         run: |
           mkdir -p artifacts
           cp android/app/build/outputs/apk/release/*.apk artifacts/EYA-android-validation.apk
           ls -lh artifacts
 
       - name: Upload APK artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: EYA-android-validation-apk

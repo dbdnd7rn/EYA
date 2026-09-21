@@ -38,4 +38,6 @@ npm run db:migrate:local
 
 The `Android APK Validation` GitHub Action builds a release APK for `develop` and uploads it as a workflow artifact. It validates the source without publishing a production app. The EAS preview profile in `eas.json` is also configured for APK output.
 
+For a usable Actions APK, configure the repository Actions variable `EXPO_PUBLIC_SUPABASE_URL` and Actions secret `EXPO_PUBLIC_SUPABASE_ANON_KEY`. The workflow stops before building if either is missing. The optional Actions variables `EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME` and `EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET` enable image uploads. These `EXPO_PUBLIC_` values are embedded in the client bundle, so never use a Supabase service role key or a private Cloudinary credential here.
+
 Old GitHub branches and the former backend repository are retained while the consolidated app is verified. New app and backend work should target `develop`.
