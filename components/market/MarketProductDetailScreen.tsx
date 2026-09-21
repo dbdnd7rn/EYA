@@ -49,7 +49,6 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
   const params = useLocalSearchParams<{ id?: string }>();
   const [item, setItem] = React.useState<MarketCard | null>(null);
   const [similar, setSimilar] = React.useState<MarketCard[]>([]);
-  const [deliver, setDeliver] = React.useState(true);
   const [liked, setLiked] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = React.useState(0);
@@ -103,7 +102,6 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
     );
   }
 
-  const total = item.price + (deliver ? item.deliveryFee : 0);
   const photos = item.images?.length ? item.images : [item.image];
   const activePhotoIndex = Math.min(selectedPhotoIndex, Math.max(photos.length - 1, 0));
   const selectedPhoto = photos[activePhotoIndex] ?? item.image;
@@ -187,7 +185,7 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
 
           <View style={styles.statRow}>
             <InfoLine icon={<Star size={14} color="#f5b940" fill="#f5b940" />} text={`Condition: New - ${item.rating.toFixed(1)} rated`} />
-            <InfoLine icon={<Truck size={14} color="#0f6d80" />} text={`Delivery: Fast - ${deliver ? "30 mins" : "Pickup only"}`} />
+            <InfoLine icon={<Truck size={14} color="#0f6d80" />} text="Delivery: Arrange directly with the seller" />
             <InfoLine icon={<MapPin size={14} color="#0f6d80" />} text={`Location: ${item.area}, ${item.campus}`} />
             <InfoLine icon={<CalendarClock size={14} color="#102a54" />} text={`Listed on ${formatDateLabel(item.listedAt)} | refreshed ${formatDateLabel(item.refreshedAt)}`} />
             <InfoLine icon={<ShieldCheck size={14} color="#0d7a37" />} text={`Seller: ${item.vendor} - Verified`} />
@@ -276,13 +274,6 @@ export default function MarketProductDetailScreen({ fallbackRoute }: Props) {
               </Pressable>
             </View>
           ) : null}
-
-          <Pressable style={[styles.deliveryPill, deliver && styles.deliveryPillActive]} onPress={() => setDeliver((current) => !current)}>
-            <Truck size={15} color={deliver ? "#fff" : "#0f6d80"} />
-            <Text style={[styles.deliveryPillText, deliver && styles.deliveryPillTextActive]}>
-              {deliver ? `Delivery added - ${kwacha(item.deliveryFee)}` : "Add doorstep delivery"}
-            </Text>
-          </Pressable>
         </View>
 
         {similar.length ? (
@@ -565,22 +556,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pickupBtnText: { color: "#102a54", fontSize: 13, fontWeight: "900" },
-  deliveryPill: {
-    marginTop: 4,
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#a8c8d2",
-    backgroundColor: "#f7fdff",
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  deliveryPillActive: { backgroundColor: "#0f6d80", borderColor: "#0f6d80" },
-  deliveryPillText: { color: "#0f6d80", fontWeight: "900", fontSize: 13 },
-  deliveryPillTextActive: { color: "#fff" },
   similarCard: {
     borderRadius: 22,
     backgroundColor: "#fcfeff",

@@ -80,12 +80,6 @@ function escapeHtml(value: unknown) {
     .replace(/'/g, "&#039;");
 }
 
-function validQrSource(value?: string | null) {
-  const normalized = String(value || "").trim();
-  if (normalized.startsWith("data:image/") || normalized.startsWith("https://")) return normalized;
-  return null;
-}
-
 function eventStart(event: any) {
   const raw = event?.starts_at || event?.startsAt;
   if (!raw) return null;
@@ -105,7 +99,6 @@ function eventEnd(event: any, start: Date) {
 function ticketPdfHtml(detail: TicketOrderDetail, ticket: IssuedTicket) {
   const event = detail.event as any;
   const tier = detail.tier as any;
-  const qr = validQrSource(ticket.qr_data_url);
   const title = escapeHtml(event?.title || "EYA Ticket");
   const tierName = escapeHtml(tier?.name || "Ticket");
   const date = escapeHtml(eventDateLabel(event));
@@ -114,9 +107,7 @@ function ticketPdfHtml(detail: TicketOrderDetail, ticket: IssuedTicket) {
   const ticketCode = escapeHtml(ticket.ticket_code);
   const orderId = escapeHtml(detail.order.id);
   const amount = escapeHtml(money(detail.order.total_mwk));
-  const qrMarkup = qr
-    ? `<img src="${escapeHtml(qr)}" style="width:190px;height:190px;object-fit:contain;border-radius:14px;" />`
-    : `<div style="width:190px;height:190px;border:2px dashed #cbd4f7;border-radius:14px;display:flex;align-items:center;justify-content:center;text-align:center;color:#6e7892;font-weight:700;padding:16px;box-sizing:border-box;">Open this ticket in EYA to refresh the entry QR.</div>`;
+  const qrMarkup = `<div style="width:190px;height:190px;border:2px dashed #cbd4f7;border-radius:14px;display:flex;align-items:center;justify-content:center;text-align:center;color:#33467f;font-weight:700;padding:16px;box-sizing:border-box;">Open this ticket inside EYA at the gate to display the rotating live QR and backup code.</div>`;
 
   return `<!doctype html>
 <html>
@@ -155,7 +146,7 @@ function ticketPdfHtml(detail: TicketOrderDetail, ticket: IssuedTicket) {
       <div class="status">PAID • ACTIVE</div>
     </div>
     <div class="body">
-      <div class="eyebrow">Official ticket</div>
+      <div class="eyebrow">Ticket confirmation</div>
       <h1>${title}</h1>
       <div class="tier">${tierName}</div>
       <div class="ticket">
@@ -172,7 +163,7 @@ function ticketPdfHtml(detail: TicketOrderDetail, ticket: IssuedTicket) {
         <div style="text-align:right"><small>Amount paid</small><div class="amount">${amount}</div></div>
       </div>
     </div>
-    <div class="foot">Keep this ticket secure. The live ticket stored in EYA is the authoritative entry credential and each ticket can be admitted once.</div>
+    <div class="foot">This PDF is a purchase record and ticket reference only. It is not an admission credential. Open the live ticket inside EYA at the entrance to display the rotating credential used for admission.</div>
   </div>
 </body>
 </html>`;
@@ -424,7 +415,7 @@ function TicketPreview({ detail, ticket }: { detail: TicketOrderDetail; ticket: 
       <View style={styles.cardHeader}>
         <View>
           <Text style={styles.cardEyebrow}>YOUR TICKET</Text>
-          <Text style={styles.cardTitle}>Ready for entry</Text>
+          <Text style={styles.cardTitle}>Open live ticket for entry</Text>
         </View>
         <View style={styles.readyBadge}>
           <ShieldCheck size={15} color={GREEN} strokeWidth={2.4} />
@@ -453,19 +444,15 @@ function TicketPreview({ detail, ticket }: { detail: TicketOrderDetail; ticket: 
         <View style={styles.ticketDivider} />
 
         <View style={styles.qrArea}>
-          {ticket.qr_data_url ? (
-            <View style={styles.qrFrame}>
-              <Image source={{ uri: ticket.qr_data_url }} style={styles.qrImage} />
+          <View style={styles.qrPreparing}>
+            <View style={styles.qrPreparingIcon}>
+              <QrCode size={33} color={ACCENT} strokeWidth={2} />
             </View>
-          ) : (
-            <View style={styles.qrPreparing}>
-              <View style={styles.qrPreparingIcon}>
-                <QrCode size={33} color={ACCENT} strokeWidth={2} />
-              </View>
-              <Text style={styles.qrPreparingTitle}>Entry QR is preparing</Text>
-              <Text style={styles.qrPreparingText}>Open the ticket to refresh the secure entry code.</Text>
-            </View>
-          )}
+            <Text style={styles.qrPreparingTitle}>Open your live ticket</Text>
+            <Text style={styles.qrPreparingText}>
+              Tap this ticket to display the rotating QR and backup code used for admission.
+            </Text>
+          </View>
 
           <View style={styles.ticketCodeWrap}>
             <Text style={styles.ticketCodeLabel}>TICKET ID</Text>
@@ -681,7 +668,7 @@ function ImportantNote() {
       </View>
       <View style={styles.importantCopy}>
         <Text style={styles.importantTitle}>Keep your ticket secure</Text>
-        <Text style={styles.importantText}>Use the ticket stored in EYA at the entrance. Each ticket can be admitted once.</Text>
+        <Text style={styles.importantText}>Open the live ticket inside EYA at the entrance. Screenshots and permanent Ticket IDs are references only and are not valid admission credentials.</Text>
       </View>
     </View>
   );

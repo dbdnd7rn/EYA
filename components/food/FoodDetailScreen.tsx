@@ -5,7 +5,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowLeft,
   BadgeCheck,
-  Bike,
   ChevronRight,
   Clock3,
   MapPin,
@@ -42,7 +41,6 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
   const isStudentView = fallbackRoute === "/(student)/(tabs)/food";
   const params = useLocalSearchParams<{ id?: string }>();
   const [item, setItem] = React.useState<FoodCard | null>(null);
-  const [deliver, setDeliver] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
   const [selectionMap, setSelectionMap] = React.useState<FoodMenuSelectionMap>({});
 
@@ -95,8 +93,6 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
   }
 
   const selectionSummary = buildFoodSelectionSummary(item.meal, item.mealPrice, item.menuConfig, selectionMap);
-  const total = selectionSummary.unitPrice + (deliver ? item.deliveryFee : 0);
-  const missingRequiredChoices = selectionSummary.missingRequiredSectionIds.length > 0;
 
   const toggleOption = (sectionId: string, optionId: string, selection: "single" | "multiple") => {
     setSelectionMap((current) => {
@@ -158,7 +154,7 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
           {item.menuConfig?.sections?.length ? (
             <View style={styles.customizerCard}>
               <Text style={styles.customizerTitle}>Build your plate</Text>
-              <Text style={styles.customizerSub}>Choose your preferred base meal and add any extras before checkout.</Text>
+              <Text style={styles.customizerSub}>Choose your preferred base meal and extras, then contact the restaurant.</Text>
 
               {item.menuConfig.sections.map((section) => {
                 const selectedIds = selectionMap[section.id] ?? [];
@@ -241,21 +237,6 @@ export default function FoodDetailScreen({ fallbackRoute }: Props) {
               </Pressable>
             ) : null}
           </View>
-
-          <Pressable style={[styles.deliveryToggle, deliver && styles.deliveryToggleActive]} onPress={() => setDeliver((current) => !current)}>
-            <View style={styles.deliveryToggleLeft}>
-              <Bike size={18} color={deliver ? "#ffffff" : "#0f6d80"} />
-              <View>
-                <Text style={[styles.deliveryToggleTitle, deliver && styles.deliveryToggleTitleActive]}>
-                  {deliver ? "Door delivery selected" : "Add door delivery"}
-                </Text>
-                <Text style={[styles.deliveryToggleSub, deliver && styles.deliveryToggleSubActive]}>
-                  {deliver ? `${kwacha(item.deliveryFee)} included in total` : "Pickup only if left off"}
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={18} color={deliver ? "#ffffff" : "#0f6d80"} />
-          </Pressable>
         </View>
       </ScrollView>
 
