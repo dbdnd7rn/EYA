@@ -59,7 +59,7 @@ export default function TicketsHomeScreenSafe() {
   return (
     <View style={styles.root}>
       <SafeAreaView edges={["top"]} style={styles.safeArea}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: Math.max(188, insets.bottom + 154) }]}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: 88 + insets.bottom + 24 }]}>
           <View style={styles.header}>
             <EyaTicketsWordmark width={compactHeader ? 158 : 210} height={compactHeader ? 38 : 50} />
             <Pressable style={styles.myTicketsBtn} onPress={() => router.push("/(student)/market/my-tickets" as any)}>
@@ -168,7 +168,7 @@ function InfoLine({ icon, light, text }: { icon: React.ReactNode; light?: boolea
 function TicketsBottomNav({ active }: { active: "home" | "tickets" }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const bottom = Math.max(18, insets.bottom + 8);
+  const bottom = Math.max(insets.bottom, 18);
   return <View style={[styles.bottomNavOuter, { bottom }]}><View style={styles.bottomNav}><Pressable style={styles.bottomItem}><Home size={24} color={active === "home" ? ACCENT : MUTED} fill={active === "home" ? ACCENT : "transparent"} /><Text style={[styles.bottomLabel, active === "home" && styles.bottomLabelActive]}>Home</Text><View style={[styles.bottomLine, active === "home" && styles.bottomLineActive]} /></Pressable><Pressable style={styles.bottomItem} onPress={() => router.push("/(student)/market/my-tickets" as any)}><Ticket size={24} color={MUTED} /><Text style={styles.bottomLabel}>Tickets</Text><View style={styles.bottomLine} /></Pressable></View></View>;
 }
 
