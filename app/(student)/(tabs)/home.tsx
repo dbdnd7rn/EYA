@@ -669,7 +669,7 @@ const styles = StyleSheet.create({
   },
   discoveryMedia: { height: 150, padding: 14, justifyContent: "space-between" },
   discoveryMediaImg: { borderTopLeftRadius: 28, borderTopRightRadius: 28 },
-  discoveryMediaShade: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,18,35,0.14)" },
+  discoveryMediaShade: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(15,18,35,0.14)" },
   discoveryTopRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
   discoveryEyebrow: {
     flexDirection: "row",
@@ -701,7 +701,7 @@ const styles = StyleSheet.create({
   featureCard: { width: 296, height: 220, borderRadius: 28, overflow: "hidden", padding: 14, justifyContent: "space-between" },
   featureCardSmall: { width: 176 },
   featureImage: { borderRadius: 28 },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(12,16,28,0.30)" },
+  overlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(12,16,28,0.30)" },
   topPickChip: {
     alignSelf: "flex-start",
     borderRadius: 999,

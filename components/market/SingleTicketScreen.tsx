@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
   ticketCard: { position: "relative", minHeight: 690, borderRadius: 18, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD, flexDirection: "row", shadowColor: "#13285f", shadowOpacity: 0.1, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 6 },
   ticketStrip: { overflow: "hidden", borderTopLeftRadius: 18, borderBottomLeftRadius: 18, alignItems: "center", justifyContent: "center" },
   stripImage: { opacity: 0.45 },
-  stripOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(94,115,221,0.9)" },
+  stripOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(94,115,221,0.9)" },
   stripTextWrap: { alignItems: "center", gap: 10 },
   stripBrand: { color: "#FFFFFF", fontSize: 32, fontWeight: "900", fontStyle: "italic", letterSpacing: 0 },
   stripLabel: { color: "#FFFFFF", fontSize: 18, fontWeight: "900", letterSpacing: 0.4 },

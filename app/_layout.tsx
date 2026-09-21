@@ -80,7 +80,7 @@ function ThemedRuntime({
               keyboardVerticalOffset={0}
               style={[styles.keyboardRoot, { backgroundColor: theme.background }]}
             >
-              <StatusBar style={mode === "dark" ? "light" : "dark"} backgroundColor={theme.background} />
+              <StatusBar style={mode === "dark" ? "light" : "dark"} />
               <Stack
                 screenOptions={{
                   headerShown: false,

@@ -171,7 +171,7 @@ export default function MapPicker({
       <View style={styles.mapWrap}>
         <MapView
           ref={mapRef}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           initialRegion={regionFor(mapPoint)}
           onPress={handleMapPress}
           showsUserLocation={permissionGranted}

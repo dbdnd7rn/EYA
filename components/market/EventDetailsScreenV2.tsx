@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
   highlightTitle: { color: NAVY, fontSize: 15, fontWeight: "900", textAlign: "center" },
   highlightSub: { color: MUTED, fontSize: 12, fontWeight: "700", textAlign: "center", marginTop: 5 },
   bookingBarOuter: { position: "absolute", left: 18, right: 18, zIndex: 60, elevation: 24 },
-  bookPulseRing: { ...StyleSheet.absoluteFillObject, borderRadius: 28, backgroundColor: NAVY },
+  bookPulseRing: { ...StyleSheet.absoluteFill, borderRadius: 28, backgroundColor: NAVY },
   bookCta: { minHeight: 92, borderRadius: 24, backgroundColor: NAVY, borderWidth: 1, borderColor: "rgba(255,255,255,0.18)", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, shadowColor: NAVY, shadowOpacity: 0.36, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 16 },
   bookCtaDisabled: { opacity: 0.7, backgroundColor: "#9aa3bd", shadowOpacity: 0.12 },
   bookPriceBlock: { flex: 1, minWidth: 0 },

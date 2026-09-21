@@ -257,7 +257,7 @@ export default function SignupScreen() {
                 disabled={loading || googleLoading}
               >
                 <View style={styles.primaryButtonGradient}>
-                  <Svg width="100%" height="100%" style={StyleSheet.absoluteFillObject}>
+                  <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
                     <Defs>
                       <LinearGradient id="signup-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
                         <Stop offset="0%" stopColor="#55c39d" />

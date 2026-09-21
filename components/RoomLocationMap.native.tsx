@@ -48,10 +48,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#dbe7ff",
   },
   map: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   mapOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "flex-end",
     alignItems: "flex-end",
     padding: 12,

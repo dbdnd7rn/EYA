@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#bfd7de",
   },
   heroImage: { width: "100%", height: "100%", position: "absolute" },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(12,24,48,0.36)" },
+  heroOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(12,24,48,0.36)" },
   heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", padding: 16 },
   statusChip: {
     backgroundColor: "#e9fbef",

@@ -662,7 +662,7 @@ const styles = StyleSheet.create({
   contentWithBasket: { paddingBottom: 132 },
   hero: { height: 250, overflow: "hidden", backgroundColor: COLORS.navy },
   heroImage: { width: "100%", height: "100%" },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7,18,42,0.44)" },
+  heroOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(7,18,42,0.44)" },
   heroActions: { position: "absolute", top: 16, left: 16, right: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   heroRightActions: { flexDirection: "row", gap: 10 },
   heroButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(9,25,52,0.62)", borderWidth: 1, borderColor: "rgba(255,255,255,0.24)", alignItems: "center", justifyContent: "center" },

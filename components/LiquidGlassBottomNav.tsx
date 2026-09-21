@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   glassTint: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: BAR_BACKGROUND,
   },
   refractionWash: {
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.88)",
   },
   innerBorder: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 42,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.36)",
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   bubbleTint: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: ACTIVE_BACKGROUND,
   },
   bubbleHighlight: {

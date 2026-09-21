@@ -641,7 +641,7 @@ const styles = StyleSheet.create({
   },
   ticketHeroImage: { minHeight: 150, justifyContent: "center" },
   ticketHeroImageStyle: { borderRadius: 24 },
-  ticketHeroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(9,12,35,0.56)" },
+  ticketHeroOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(9,12,35,0.56)" },
   ticketHeroContent: { padding: 18, gap: 7, maxWidth: 420 },
   ticketHeroTitle: { color: "#ffffff", fontSize: 25, lineHeight: 29, fontWeight: "900" },
   ticketHeroSub: { color: "rgba(255,255,255,0.86)", fontSize: 13, lineHeight: 19, fontWeight: "700" },

@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
   backText: { color: "#0d3950", fontSize: 13, fontWeight: "800" },
   heroCard: { height: 270, borderRadius: 30, overflow: "hidden", backgroundColor: "#d7edf3" },
   heroImage: { width: "100%", height: "100%", position: "absolute" },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(12,29,47,0.34)" },
+  heroOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(12,29,47,0.34)" },
   heroBadge: {
     marginTop: 16,
     marginLeft: 16,

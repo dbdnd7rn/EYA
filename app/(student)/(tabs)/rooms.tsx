@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
   card: { borderRadius: 22, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e7ebf5", overflow: "hidden" },
   cover: { height: 200, justifyContent: "space-between", padding: 12 },
   coverImg: { borderTopLeftRadius: 22, borderTopRightRadius: 22 },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(8,13,24,0.34)" },
+  overlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(8,13,24,0.34)" },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   typeChip: { backgroundColor: "rgba(255,255,255,0.9)", color: "#0e2756", fontWeight: "800", fontSize: 11, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, overflow: "hidden" },
   priceChip: { backgroundColor: "rgba(14,39,86,0.9)", color: "#fff", fontWeight: "900", fontSize: 11, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 999, overflow: "hidden" },
