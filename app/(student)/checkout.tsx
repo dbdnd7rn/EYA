@@ -205,7 +205,7 @@ export default function CheckoutScreen() {
       const cached = await getCheckoutDraft(user?.id);
       if (!active) return;
       if (cached?.data?.scope === draftScope) {
-        setPayMethod(cached.data.payMethod);
+        setPayMethod(cached.data.payMethod === "wallet" ? "mpamba" : cached.data.payMethod);
         setMobileNumber(cached.data.mobileNumber);
         setCouponCode(cached.data.couponCode);
         setQuantity(Math.max(1, Math.min(99, Number(cached.data.quantity ?? initialQuantity) || initialQuantity)));
