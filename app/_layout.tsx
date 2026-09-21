@@ -2,7 +2,7 @@ import "../global.css";
 import { installRuntimeDiagnostics } from "@/lib/runtimeDiagnostics";
 import React from "react";
 import { Stack } from "expo-router";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput } from "react-native";
+import { ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "../providers/AuthProvider";
@@ -77,12 +77,7 @@ function ThemedRuntime({
       <NotificationInboxProvider>
         <SavedRoomsQueueSyncProvider>
           <MutationOutboxSyncProvider>
-            <KeyboardAvoidingView
-              behavior={Platform.select({ ios: "padding", android: "height" })}
-              enabled={Platform.OS !== "web"}
-              keyboardVerticalOffset={0}
-              style={[styles.keyboardRoot, { backgroundColor: theme.background }]}
-            >
+            <View style={[styles.keyboardRoot, { backgroundColor: theme.background }]}>
               <StatusBar style={mode === "dark" ? "light" : "dark"} backgroundColor={theme.background} />
               <Stack
                 screenOptions={{
@@ -93,7 +88,7 @@ function ThemedRuntime({
               {showLaunchAnimation ? (
                 <EyaLaunchAnimation onComplete={onLaunchComplete} />
               ) : null}
-            </KeyboardAvoidingView>
+            </View>
           </MutationOutboxSyncProvider>
         </SavedRoomsQueueSyncProvider>
       </NotificationInboxProvider>
